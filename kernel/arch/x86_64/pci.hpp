@@ -15,7 +15,7 @@ struct XHCIControllerInfo {
     uint8_t class_code;
     uint8_t subclass;
     uint8_t prog_if;
-    uint32_t mmio_base;
+    uint64_t mmio_base;
 };
 
 void InitializePCI();

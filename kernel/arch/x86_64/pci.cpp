@@ -44,8 +44,24 @@ uint16_t ReadDeviceId(uint8_t bus, uint8_t device, uint8_t function) {
     return static_cast<uint16_t>((ReadConfig32(bus, device, function, 0x00) >> 16) & 0xFFFF);
 }
 
-uint32_t ReadBAR0(uint8_t bus, uint8_t device, uint8_t function) {
-    return ReadConfig32(bus, device, function, 0x10);
+uint32_t ReadBAR(uint8_t bus, uint8_t device, uint8_t function, uint8_t bar_index) {
+    const uint8_t reg = static_cast<uint8_t>(0x10 + bar_index * 4);
+    return ReadConfig32(bus, device, function, reg);
+}
+
+uint64_t ReadMMIOBase(uint8_t bus, uint8_t device, uint8_t function) {
+    const uint32_t bar0 = ReadBAR(bus, device, function, 0);
+    if ((bar0 & 0x1u) != 0) {
+        return 0; // I/O BAR
+    }
+    const uint32_t type = (bar0 >> 1) & 0x3u;
+    if (type == 0x2u) {
+        const uint32_t bar1 = ReadBAR(bus, device, function, 1);
+        const uint64_t low = static_cast<uint64_t>(bar0 & ~0x0Fu);
+        const uint64_t high = static_cast<uint64_t>(bar1);
+        return (high << 32) | low;
+    }
+    return static_cast<uint64_t>(bar0 & ~0x0Fu);
 }
 
 void TryRegisterXHCI(uint8_t bus, uint8_t device, uint8_t function) {
@@ -66,10 +82,17 @@ void TryRegisterXHCI(uint8_t bus, uint8_t device, uint8_t function) {
     g_xhci.class_code = class_code;
     g_xhci.subclass = subclass;
     g_xhci.prog_if = prog_if;
-    const uint32_t bar0 = ReadBAR0(bus, device, function);
-    g_xhci.mmio_base = bar0 & ~0x0Fu;
+    g_xhci.mmio_base = ReadMMIOBase(bus, device, function);
 }
 }  // namespace
+
+extern "C" void* memset(void* s, int c, uint64_t n) {
+    uint8_t* p = reinterpret_cast<uint8_t*>(s);
+    while (n--) {
+        *p++ = static_cast<uint8_t>(c);
+    }
+    return s;
+}
 
 void InitializePCI() {
     g_xhci = {};

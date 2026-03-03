@@ -69,6 +69,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "ps2.hpp"
 #include "pci.hpp"
 #include "io.hpp"
+#include "usb/xhci.hpp"
 #include "queue.hpp"
 #include "input/message.hpp"
 #include "boot_info.h"
@@ -130,6 +131,7 @@ bool g_jp_layout = false;
 const BootInfo* g_boot_info = nullptr;
 bool g_dirs_initialized = false;
 char g_cwd[96] = "/";
+XHCICapabilityInfo g_xhci_caps = {};
 
 char KeycodeToAscii(uint8_t keycode, bool shift, bool caps_lock) {
     if (g_jp_layout) {
@@ -800,7 +802,11 @@ char WaitPagerKey() {
         __asm__ volatile("sti");
 
         if (msg.type == Message::Type::kInterruptMouse) {
-            mouse_cursor->Move(msg.dx, msg.dy);
+            if (msg.pointer_mode == Message::PointerMode::kAbsolute) {
+                mouse_cursor->SetPosition(msg.x, msg.y);
+            } else {
+                mouse_cursor->Move(msg.dx, msg.dy);
+            }
             layer_manager->Draw();
             continue;
         }
@@ -995,6 +1001,8 @@ const char* const kBuiltInCommands[] = {
     "layout",
     "set",
     "alias",
+    "xhciinfo",
+    "mouseabs",
 };
 const int kBuiltInCommandCount = sizeof(kBuiltInCommands) / sizeof(kBuiltInCommands[0]);
 
@@ -1007,6 +1015,26 @@ void Reboot() {
     while (1) {
         __asm__ volatile("hlt");
     }
+}
+
+int ParseInt(const char* s) {
+    if (s == nullptr || s[0] == '\0') {
+        return 0;
+    }
+    int sign = 1;
+    int i = 0;
+    if (s[0] == '-') {
+        sign = -1;
+        i = 1;
+    }
+    int value = 0;
+    for (; s[i] != '\0'; ++i) {
+        if (s[i] < '0' || s[i] > '9') {
+            break;
+        }
+        value = value * 10 + (s[i] - '0');
+    }
+    return value * sign;
 }
 
 void ExecuteCommand(const char* command) {
@@ -1030,13 +1058,60 @@ void ExecuteCommand(const char* command) {
         console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
         console->PrintLine("help: fs2   rm rmdir mv ls stat cat");
         console->PrintLine("help: misc  history clearhistory inputstat about");
-        console->PrintLine("help: cfg   repeat layout set alias");
+        console->PrintLine("help: cfg   repeat layout set alias xhciinfo mouseabs");
         return;
     }
 
     if (StrEqual(cmd, "about")) {
         console->PrintLine("Native OS shell");
         console->PrintLine("arch: x86_64 / mode: kernel");
+        return;
+    }
+
+    if (StrEqual(cmd, "xhciinfo")) {
+        const auto& info = GetXHCIControllerInfo();
+        if (!info.found) {
+            console->PrintLine("xhci: not found");
+            return;
+        }
+        console->Print("xhci: ");
+        console->PrintDec(info.address.bus);
+        console->Print(":");
+        console->PrintDec(info.address.device);
+        console->Print(".");
+        console->PrintDec(info.address.function);
+        console->Print(" vendor=0x");
+        console->PrintHex(info.vendor_id, 4);
+        console->Print(" device=0x");
+        console->PrintHex(info.device_id, 4);
+        console->Print(" mmio=0x");
+        console->PrintHex(info.mmio_base, 16);
+        console->Print("\n");
+        if (g_xhci_caps.valid) {
+            console->Print("xhci caplen=0x");
+            console->PrintHex(g_xhci_caps.cap_length, 2);
+            console->Print(" ver=0x");
+            console->PrintHex(g_xhci_caps.hci_version, 4);
+            console->Print(" hcs1=0x");
+            console->PrintHex(g_xhci_caps.hcs_params1, 8);
+            console->Print(" hcc1=0x");
+            console->PrintHex(g_xhci_caps.hcc_params1, 8);
+            console->Print("\n");
+        }
+        return;
+    }
+
+    if (StrEqual(cmd, "mouseabs")) {
+        char sx[16];
+        char sy[16];
+        if (!NextToken(command, &pos, sx, sizeof(sx)) ||
+            !NextToken(command, &pos, sy, sizeof(sy))) {
+            console->PrintLine("mouseabs: x y required");
+            return;
+        }
+        int x = ParseInt(sx);
+        int y = ParseInt(sy);
+        EnqueueAbsolutePointerEvent(x, y, 0);
         return;
     }
 
@@ -2049,8 +2124,19 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         console->Print(", device=0x");
         console->PrintHex(xhci.device_id, 4);
         console->Print(", mmio=0x");
-        console->PrintHex(xhci.mmio_base, 8);
+        console->PrintHex(xhci.mmio_base, 16);
         console->Print(")\n");
+        if (ProbeXHCIController(xhci, &g_xhci_caps) && g_xhci_caps.valid) {
+            console->Print("xHCI caps: ver=0x");
+            console->PrintHex(g_xhci_caps.hci_version, 4);
+            console->Print(" caplen=0x");
+            console->PrintHex(g_xhci_caps.cap_length, 2);
+            console->Print(" db=0x");
+            console->PrintHex(g_xhci_caps.db_off, 8);
+            console->Print(" rts=0x");
+            console->PrintHex(g_xhci_caps.rts_off, 8);
+            console->Print("\n");
+        }
     } else {
         console->Print("xHCI not found.\n");
     }
