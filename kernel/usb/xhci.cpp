@@ -18,8 +18,11 @@ struct alignas(64) EventRingSegmentTableEntry {
 struct XHCISlotState {
     bool used;
     bool addressed;
+    bool ep1_configured;
     uint8_t root_port;
     uint8_t port_speed;
+    uint16_t ep1_max_packet_size;
+    uint8_t ep1_interval;
 };
 
 alignas(64) uint64_t g_dcbaa[256];
@@ -32,6 +35,9 @@ alignas(64) uint8_t g_device_contexts[kXHCIMaxManagedSlots][1024];
 alignas(64) TRB g_ep0_rings[kXHCIMaxManagedSlots][256];
 alignas(64) TRB g_ep1in_rings[kXHCIMaxManagedSlots][256];
 XHCISlotState g_slot_states[kXHCIMaxManagedSlots];
+uint8_t g_ep1_cycle_bits[kXHCIMaxManagedSlots];
+uint16_t g_ep1_enqueue_indices[kXHCIMaxManagedSlots];
+alignas(64) uint8_t g_ep1_buffers[kXHCIMaxManagedSlots][64];
 bool g_rings_initialized = false;
 uint32_t g_command_enqueue_index = 0;
 uint8_t g_command_cycle_bit = 1;
@@ -92,6 +98,14 @@ void RingCommandDoorbell(const XHCICapabilityInfo& info) {
     WriteMMIO32(DoorbellBase(info) + 0x00, 0);
 }
 
+void RingEndpointDoorbell(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t endpoint_id) {
+    if (slot_id == 0) {
+        return;
+    }
+    const uint64_t db = DoorbellBase(info) + static_cast<uint64_t>(slot_id) * 4;
+    WriteMMIO32(db, static_cast<uint32_t>(endpoint_id));
+}
+
 void AdvanceEventDequeue(const XHCICapabilityInfo& info) {
     ++g_event_dequeue_index;
     if (g_event_dequeue_index >= 256) {
@@ -147,6 +161,41 @@ bool SubmitCommandAndWait(const XHCICapabilityInfo& info, const TRB& command, XH
         out_result->completion_code = ccode;
         out_result->slot_id = slot_id;
         out_result->ok = (ccode == 1);
+        return true;
+    }
+    return false;
+}
+
+bool WaitTransferEvent(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t endpoint_id, XHCIInterruptInResult* out_result, uint32_t timeout_iters) {
+    if (out_result == nullptr) {
+        return false;
+    }
+    for (uint32_t i = 0; i < timeout_iters; ++i) {
+        TRB& ev = g_event_ring[g_event_dequeue_index];
+        const uint8_t cycle = static_cast<uint8_t>(ev.dword3 & 1u);
+        if (cycle != g_event_cycle_bit) {
+            continue;
+        }
+
+        const uint8_t type = static_cast<uint8_t>((ev.dword3 >> 10) & 0x3Fu);
+        const uint8_t ev_endpoint_id = static_cast<uint8_t>((ev.dword3 >> 16) & 0x1Fu);
+        const uint8_t ev_slot_id = static_cast<uint8_t>((ev.dword3 >> 24) & 0xFFu);
+        const uint8_t ccode = static_cast<uint8_t>((ev.dword2 >> 24) & 0xFFu);
+        const uint32_t residual = (ev.dword2 & 0x00FFFFFFu);
+        AdvanceEventDequeue(info);
+
+        if (type != 32) {  // Transfer Event
+            continue;
+        }
+        if (ev_slot_id != slot_id || ev_endpoint_id != endpoint_id) {
+            continue;
+        }
+
+        out_result->ok = (ccode == 1);
+        out_result->completion_code = ccode;
+        out_result->slot_id = ev_slot_id;
+        out_result->endpoint_id = ev_endpoint_id;
+        out_result->transfer_length = residual;
         return true;
     }
     return false;
@@ -331,6 +380,9 @@ bool XHCIInitializeCommandAndEventRings(const XHCICapabilityInfo& info) {
     MemorySet(g_ep0_rings, 0, sizeof(g_ep0_rings));
     MemorySet(g_ep1in_rings, 0, sizeof(g_ep1in_rings));
     MemorySet(g_slot_states, 0, sizeof(g_slot_states));
+    MemorySet(g_ep1_cycle_bits, 0, sizeof(g_ep1_cycle_bits));
+    MemorySet(g_ep1_enqueue_indices, 0, sizeof(g_ep1_enqueue_indices));
+    MemorySet(g_ep1_buffers, 0, sizeof(g_ep1_buffers));
 
     // Command ring link TRB at last entry.
     TRB& link = g_command_ring[255];
@@ -377,6 +429,8 @@ bool XHCIInitializeCommandAndEventRings(const XHCICapabilityInfo& info) {
         ep1_link.dword1 = static_cast<uint32_t>(ep1_ring_base >> 32);
         ep1_link.dword2 = 0;
         ep1_link.dword3 = (6u << 10) | (1u << 1);
+        g_ep1_cycle_bits[i] = 1;
+        g_ep1_enqueue_indices[i] = 0;
     }
 
     g_command_enqueue_index = 0;
@@ -480,6 +534,7 @@ bool XHCIAddressDevice(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t 
     if (r.ok) {
         g_slot_states[idx].used = true;
         g_slot_states[idx].addressed = true;
+        g_slot_states[idx].ep1_configured = false;
         g_slot_states[idx].root_port = root_port;
         g_slot_states[idx].port_speed = port_speed;
     }
@@ -555,5 +610,74 @@ bool XHCIConfigureInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t sl
     out_result->completion_code = r.completion_code;
     out_result->slot_id = r.slot_id;
     out_result->ok = r.ok;
+    if (r.ok) {
+        g_slot_states[idx].ep1_configured = true;
+        g_slot_states[idx].ep1_max_packet_size = max_packet_size;
+        g_slot_states[idx].ep1_interval = interval;
+    }
+    return true;
+}
+
+bool XHCIPollInterruptIn(const XHCICapabilityInfo& info, uint8_t slot_id, uint32_t request_length, XHCIInterruptInResult* out_result, uint32_t timeout_iters) {
+    if (out_result == nullptr) {
+        return false;
+    }
+    out_result->ok = false;
+    out_result->completion_code = 0;
+    out_result->slot_id = slot_id;
+    out_result->endpoint_id = 3;
+    out_result->transfer_length = 0;
+    out_result->data_length = 0;
+    MemorySet(out_result->data, 0, sizeof(out_result->data));
+
+    const int idx = SlotIndexFromId(slot_id);
+    if (!info.valid || idx < 0 || !g_slot_states[idx].ep1_configured) {
+        return false;
+    }
+    if (request_length == 0) {
+        request_length = g_slot_states[idx].ep1_max_packet_size;
+    }
+    if (request_length > sizeof(g_ep1_buffers[idx])) {
+        request_length = sizeof(g_ep1_buffers[idx]);
+    }
+
+    uint16_t enqueue = g_ep1_enqueue_indices[idx];
+    if (enqueue >= 255) {
+        enqueue = 0;
+    }
+
+    const uint64_t buf_ptr = reinterpret_cast<uint64_t>(&g_ep1_buffers[idx][0]);
+    TRB trb{};
+    trb.dword0 = static_cast<uint32_t>(buf_ptr & 0xFFFFFFFFu);
+    trb.dword1 = static_cast<uint32_t>(buf_ptr >> 32);
+    trb.dword2 = request_length;  // transfer length
+    // Normal TRB(Type=1), IOC=1, cycle=producer cycle.
+    trb.dword3 = (1u << 10) | (1u << 5) | (g_ep1_cycle_bits[idx] ? 1u : 0u);
+    g_ep1in_rings[idx][enqueue] = trb;
+
+    ++enqueue;
+    if (enqueue == 255) {
+        enqueue = 0;
+        g_ep1_cycle_bits[idx] ^= 1;
+    }
+    g_ep1_enqueue_indices[idx] = enqueue;
+
+    RingEndpointDoorbell(info, slot_id, 3);
+
+    if (!WaitTransferEvent(info, slot_id, 3, out_result, timeout_iters)) {
+        return false;
+    }
+
+    if (out_result->ok) {
+        uint32_t residual = out_result->transfer_length;
+        uint32_t actual = (request_length > residual) ? (request_length - residual) : 0;
+        if (actual > sizeof(out_result->data)) {
+            actual = sizeof(out_result->data);
+        }
+        for (uint32_t i = 0; i < actual; ++i) {
+            out_result->data[i] = g_ep1_buffers[idx][i];
+        }
+        out_result->data_length = actual;
+    }
     return true;
 }

@@ -1011,6 +1011,7 @@ const char* const kBuiltInCommands[] = {
     "xhcienableslot",
     "xhciaddress",
     "xhciconfigep",
+    "xhciintrin",
     "mouseabs",
     "usbports",
 };
@@ -1068,7 +1069,7 @@ void ExecuteCommand(const char* command) {
         console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
         console->PrintLine("help: fs2   rm rmdir mv ls stat cat");
         console->PrintLine("help: misc  history clearhistory inputstat about");
-        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep mouseabs usbports");
+        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin mouseabs usbports");
         return;
     }
 
@@ -1348,6 +1349,54 @@ void ExecuteCommand(const char* command) {
         console->PrintDec(mps);
         console->Print(" interval=");
         console->PrintDec(interval);
+        console->Print("\n");
+        return;
+    }
+
+    if (StrEqual(cmd, "xhciintrin")) {
+        if (!g_xhci_caps.valid) {
+            console->PrintLine("xhciintrin: xhci not ready");
+            return;
+        }
+        int slot = g_last_xhci_slot_id;
+        int req_len = 8;
+        char t0[16];
+        char t1[16];
+        if (NextToken(command, &pos, t0, sizeof(t0))) {
+            slot = ParseInt(t0);
+        }
+        if (NextToken(command, &pos, t1, sizeof(t1))) {
+            req_len = ParseInt(t1);
+        }
+        if (slot <= 0 || slot > 255) {
+            console->PrintLine("xhciintrin: invalid slot");
+            return;
+        }
+        if (req_len <= 0 || req_len > 64) {
+            console->PrintLine("xhciintrin: len must be 1..64");
+            return;
+        }
+
+        XHCIInterruptInResult rr{};
+        if (!XHCIPollInterruptIn(g_xhci_caps, static_cast<uint8_t>(slot), static_cast<uint32_t>(req_len), &rr)) {
+            console->PrintLine("xhciintrin: timeout/fail");
+            return;
+        }
+        console->Print("xhciintrin: ccode=");
+        console->PrintDec(rr.completion_code);
+        console->Print(" slot=");
+        console->PrintDec(rr.slot_id);
+        console->Print(" ep=");
+        console->PrintDec(rr.endpoint_id);
+        console->Print(" len=");
+        console->PrintDec(rr.data_length);
+        console->Print(" data=");
+        for (uint32_t i = 0; i < rr.data_length; ++i) {
+            console->PrintHex(rr.data[i], 2);
+            if (i + 1 < rr.data_length) {
+                console->Print(" ");
+            }
+        }
         console->Print("\n");
         return;
     }
