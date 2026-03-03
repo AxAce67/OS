@@ -13,4 +13,17 @@ struct XHCICapabilityInfo {
     uint64_t operational_base;
 };
 
+struct XHCIPortStatus {
+    uint32_t port_id;
+    bool connected;
+    bool enabled;
+    bool over_current;
+    bool resetting;
+    bool power;
+    uint8_t speed;
+    uint32_t raw_portsc;
+};
+
 bool ProbeXHCIController(const XHCIControllerInfo& controller, XHCICapabilityInfo* out_info);
+int XHCIMaxPorts(const XHCICapabilityInfo& info);
+int ReadXHCIPortStatus(const XHCICapabilityInfo& info, XHCIPortStatus* ports, int max_ports);

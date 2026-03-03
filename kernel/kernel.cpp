@@ -1003,6 +1003,7 @@ const char* const kBuiltInCommands[] = {
     "alias",
     "xhciinfo",
     "mouseabs",
+    "usbports",
 };
 const int kBuiltInCommandCount = sizeof(kBuiltInCommands) / sizeof(kBuiltInCommands[0]);
 
@@ -1058,7 +1059,7 @@ void ExecuteCommand(const char* command) {
         console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
         console->PrintLine("help: fs2   rm rmdir mv ls stat cat");
         console->PrintLine("help: misc  history clearhistory inputstat about");
-        console->PrintLine("help: cfg   repeat layout set alias xhciinfo mouseabs");
+        console->PrintLine("help: cfg   repeat layout set alias xhciinfo mouseabs usbports");
         return;
     }
 
@@ -1112,6 +1113,35 @@ void ExecuteCommand(const char* command) {
         int x = ParseInt(sx);
         int y = ParseInt(sy);
         EnqueueAbsolutePointerEvent(x, y, 0);
+        return;
+    }
+
+    if (StrEqual(cmd, "usbports")) {
+        if (!g_xhci_caps.valid) {
+            console->PrintLine("usbports: xhci not ready");
+            return;
+        }
+        XHCIPortStatus ports[32];
+        int n = ReadXHCIPortStatus(g_xhci_caps, ports, 32);
+        if (n <= 0) {
+            console->PrintLine("usbports: no ports");
+            return;
+        }
+        for (int i = 0; i < n; ++i) {
+            console->Print("port ");
+            console->PrintDec(ports[i].port_id);
+            console->Print(": conn=");
+            console->Print(ports[i].connected ? "1" : "0");
+            console->Print(" en=");
+            console->Print(ports[i].enabled ? "1" : "0");
+            console->Print(" pwr=");
+            console->Print(ports[i].power ? "1" : "0");
+            console->Print(" spd=");
+            console->PrintDec(ports[i].speed);
+            console->Print(" raw=0x");
+            console->PrintHex(ports[i].raw_portsc, 8);
+            console->Print("\n");
+        }
         return;
     }
 

@@ -44,3 +44,35 @@ bool ProbeXHCIController(const XHCIControllerInfo& controller, XHCICapabilityInf
     out_info->operational_base = base + cap_length;
     return true;
 }
+
+int XHCIMaxPorts(const XHCICapabilityInfo& info) {
+    if (!info.valid) {
+        return 0;
+    }
+    return static_cast<int>((info.hcs_params1 >> 24) & 0xFF);
+}
+
+int ReadXHCIPortStatus(const XHCICapabilityInfo& info, XHCIPortStatus* ports, int max_ports) {
+    if (!info.valid || ports == nullptr || max_ports <= 0) {
+        return 0;
+    }
+    int hw_ports = XHCIMaxPorts(info);
+    if (hw_ports < 0) {
+        hw_ports = 0;
+    }
+    int count = (hw_ports < max_ports) ? hw_ports : max_ports;
+    const uint64_t portsc_base = info.operational_base + 0x400;
+    for (int i = 0; i < count; ++i) {
+        const uint64_t addr = portsc_base + static_cast<uint64_t>(i) * 0x10;
+        const uint32_t v = ReadMMIO32(addr);
+        ports[i].port_id = static_cast<uint32_t>(i + 1);
+        ports[i].connected = (v & (1u << 0)) != 0;
+        ports[i].enabled = (v & (1u << 1)) != 0;
+        ports[i].over_current = (v & (1u << 3)) != 0;
+        ports[i].resetting = (v & (1u << 4)) != 0;
+        ports[i].power = (v & (1u << 9)) != 0;
+        ports[i].speed = static_cast<uint8_t>((v >> 10) & 0x0F);
+        ports[i].raw_portsc = v;
+    }
+    return count;
+}
