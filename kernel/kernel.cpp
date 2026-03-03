@@ -1447,6 +1447,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     InitializeLAPICTimer();
 
     console->Print("Waiting for hardware interrupts (Keyboard/Mouse/LAPIC Timer)...\n");
+    console->Print("Input mode: layout=");
+    console->Print(g_jp_layout ? "jp" : "us");
+    console->Print(" ime=");
+    console->Print(g_ime_enabled ? "on" : "off");
+    console->Print("\n");
     PrintPrompt();
 
     // 全ての初期化プロセスが終わった時点で、溜まったコンソール出力をVRAMへ全画面描画（反映）する
