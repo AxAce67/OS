@@ -16,6 +16,11 @@ uint32_t ReadMMIO32(uint64_t addr) {
     return *p;
 }
 
+void WriteMMIO32(uint64_t addr, uint32_t value) {
+    volatile uint32_t* p = reinterpret_cast<volatile uint32_t*>(addr);
+    *p = value;
+}
+
 uint64_t ReadMMIO64(uint64_t addr) {
     const uint64_t lo = ReadMMIO32(addr);
     const uint64_t hi = ReadMMIO32(addr + 4);
@@ -105,4 +110,60 @@ bool ReadXHCIOperationalStatus(const XHCICapabilityInfo& info, XHCIOperationalSt
     out_status->event_interrupt = (out_status->usbsts & (1u << 3)) != 0;
     out_status->port_change_detect = (out_status->usbsts & (1u << 4)) != 0;
     return true;
+}
+
+bool XHCISetRunStop(const XHCICapabilityInfo& info, bool run, uint32_t timeout_iters) {
+    if (!info.valid) {
+        return false;
+    }
+    const uint64_t op = info.operational_base;
+    uint32_t cmd = ReadMMIO32(op + 0x00);
+    if (run) {
+        cmd |= 0x1u;
+    } else {
+        cmd &= ~0x1u;
+    }
+    WriteMMIO32(op + 0x00, cmd);
+
+    for (uint32_t i = 0; i < timeout_iters; ++i) {
+        const uint32_t sts = ReadMMIO32(op + 0x04);
+        const bool halted = (sts & 0x1u) != 0;
+        if (run) {
+            if (!halted) {
+                return true;
+            }
+        } else {
+            if (halted) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool XHCIResetController(const XHCICapabilityInfo& info, uint32_t timeout_iters) {
+    if (!info.valid) {
+        return false;
+    }
+    const uint64_t op = info.operational_base;
+
+    // xHCI reset is only valid in halted state.
+    if (!XHCISetRunStop(info, false, timeout_iters)) {
+        return false;
+    }
+
+    uint32_t cmd = ReadMMIO32(op + 0x00);
+    cmd |= (1u << 1);  // HCRST
+    WriteMMIO32(op + 0x00, cmd);
+
+    for (uint32_t i = 0; i < timeout_iters; ++i) {
+        const uint32_t cur_cmd = ReadMMIO32(op + 0x00);
+        const uint32_t sts = ReadMMIO32(op + 0x04);
+        const bool hcrst_set = (cur_cmd & (1u << 1)) != 0;
+        const bool halted = (sts & 0x1u) != 0;
+        if (!hcrst_set && halted) {
+            return true;
+        }
+    }
+    return false;
 }

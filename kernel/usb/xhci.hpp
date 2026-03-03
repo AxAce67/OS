@@ -47,3 +47,5 @@ bool ProbeXHCIController(const XHCIControllerInfo& controller, XHCICapabilityInf
 int XHCIMaxPorts(const XHCICapabilityInfo& info);
 int ReadXHCIPortStatus(const XHCICapabilityInfo& info, XHCIPortStatus* ports, int max_ports);
 bool ReadXHCIOperationalStatus(const XHCICapabilityInfo& info, XHCIOperationalStatus* out_status);
+bool XHCISetRunStop(const XHCICapabilityInfo& info, bool run, uint32_t timeout_iters = 1000000);
+bool XHCIResetController(const XHCICapabilityInfo& info, uint32_t timeout_iters = 2000000);

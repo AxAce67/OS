@@ -1003,6 +1003,9 @@ const char* const kBuiltInCommands[] = {
     "alias",
     "xhciinfo",
     "xhciregs",
+    "xhcistop",
+    "xhcistart",
+    "xhcireset",
     "mouseabs",
     "usbports",
 };
@@ -1060,7 +1063,7 @@ void ExecuteCommand(const char* command) {
         console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
         console->PrintLine("help: fs2   rm rmdir mv ls stat cat");
         console->PrintLine("help: misc  history clearhistory inputstat about");
-        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs mouseabs usbports");
+        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset mouseabs usbports");
         return;
     }
 
@@ -1144,6 +1147,45 @@ void ExecuteCommand(const char* command) {
         console->Print(" pcd=");
         console->Print(st.port_change_detect ? "1" : "0");
         console->Print("\n");
+        return;
+    }
+
+    if (StrEqual(cmd, "xhcistop")) {
+        if (!g_xhci_caps.valid) {
+            console->PrintLine("xhcistop: xhci not ready");
+            return;
+        }
+        if (XHCISetRunStop(g_xhci_caps, false)) {
+            console->PrintLine("xhcistop: ok");
+        } else {
+            console->PrintLine("xhcistop: timeout");
+        }
+        return;
+    }
+
+    if (StrEqual(cmd, "xhcistart")) {
+        if (!g_xhci_caps.valid) {
+            console->PrintLine("xhcistart: xhci not ready");
+            return;
+        }
+        if (XHCISetRunStop(g_xhci_caps, true)) {
+            console->PrintLine("xhcistart: ok");
+        } else {
+            console->PrintLine("xhcistart: timeout");
+        }
+        return;
+    }
+
+    if (StrEqual(cmd, "xhcireset")) {
+        if (!g_xhci_caps.valid) {
+            console->PrintLine("xhcireset: xhci not ready");
+            return;
+        }
+        if (XHCIResetController(g_xhci_caps)) {
+            console->PrintLine("xhcireset: ok");
+        } else {
+            console->PrintLine("xhcireset: timeout");
+        }
         return;
     }
 
