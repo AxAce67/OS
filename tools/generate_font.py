@@ -1,4 +1,3 @@
-import sys
 import os
 from PIL import Image, ImageDraw, ImageFont
 
@@ -18,24 +17,24 @@ def generate_font():
             break
 
     try:
-        # 8x16に収まりやすいサイズで生成
+        # 8x16セルで上切れしにくいサイズに固定
         if font_path is None:
             raise FileNotFoundError("no font file")
-        font = ImageFont.truetype(font_path, 15)
-    except:
+        font = ImageFont.truetype(font_path, 12)
+    except Exception:
         font = ImageFont.load_default()
 
     # ASCII印字可能文字 (32-126) を画像化してドットとして取得
     for i in range(32, 127):
         img = Image.new('L', (8, 16), color=0)
         draw = ImageDraw.Draw(img)
-        # 太りすぎを避けるため少し上寄せで描画
-        draw.text((0, -3), chr(i), fill=255, font=font)
+        # 固定ベースラインで描画して行の揺れを防ぐ
+        draw.text((0, 1), chr(i), fill=255, font=font)
         
         for y in range(16):
             row_val = 0
             for x in range(8):
-                if img.getpixel((x, y)) > 96:
+                if img.getpixel((x, y)) > 120:
                     row_val |= (1 << (7 - x)) # 上位ビット側からピクセルを詰める
             font_data[i][y] = row_val
 

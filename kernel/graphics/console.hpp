@@ -12,7 +12,7 @@ public:
     static const int kCellWidth = kFontWidth * kFontScale;
     static const int kCellHeight = kFontHeight * kFontScale;
     static const int kMarginX = 8;
-    static const int kMarginY = 8;
+    static const int kMarginY = 12;
     static const int kMaxRows = 200;
     static const int kMaxColumns = 320;
     static const int kScrollbackLines = 512;
