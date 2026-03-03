@@ -186,6 +186,25 @@ bool ExtractBootKeyboardPayload(const uint8_t* data, uint32_t len, uint32_t* out
 
 uint8_t g_prev_modifiers = 0;
 uint8_t g_prev_keys[6] = {0, 0, 0, 0, 0, 0};
+uint8_t g_repeat_usage = 0;
+uint8_t g_repeat_hold_count = 0;
+uint8_t g_repeat_interval_count = 0;
+const uint8_t kInitialRepeatDelayReports = 12;
+const uint8_t kRepeatIntervalReports = 3;
+
+uint8_t FindRepeatCandidate(const uint8_t* keys) {
+    for (int i = 0; i < 6; ++i) {
+        const uint8_t usage = keys[i];
+        if (usage == 0) {
+            continue;
+        }
+        Set1Code sc{};
+        if (MapHIDUsageToSet1(usage, &sc)) {
+            return usage;
+        }
+    }
+    return 0;
+}
 
 }  // namespace
 
@@ -249,6 +268,38 @@ bool DecodeHIDBootKeyboardToSet1(const uint8_t* data,
             continue;
         }
         AppendSet1(sc, false, out_scancodes, out_count, max_out);
+    }
+
+    // Software repeat for HID boot keyboards: unchanged reports imply "key still held".
+    const bool modifiers_changed = (modifiers != g_prev_modifiers);
+    bool keys_changed = false;
+    for (int i = 0; i < 6; ++i) {
+        if (keys[i] != g_prev_keys[i]) {
+            keys_changed = true;
+            break;
+        }
+    }
+    if (modifiers_changed || keys_changed) {
+        g_repeat_usage = FindRepeatCandidate(keys);
+        g_repeat_hold_count = 0;
+        g_repeat_interval_count = 0;
+    } else if (g_repeat_usage != 0 && ContainsUsage(keys, g_repeat_usage)) {
+        if (g_repeat_hold_count < kInitialRepeatDelayReports) {
+            ++g_repeat_hold_count;
+        } else {
+            ++g_repeat_interval_count;
+            if (g_repeat_interval_count >= kRepeatIntervalReports) {
+                g_repeat_interval_count = 0;
+                Set1Code sc{};
+                if (MapHIDUsageToSet1(g_repeat_usage, &sc)) {
+                    AppendSet1(sc, false, out_scancodes, out_count, max_out);
+                }
+            }
+        }
+    } else {
+        g_repeat_usage = FindRepeatCandidate(keys);
+        g_repeat_hold_count = 0;
+        g_repeat_interval_count = 0;
     }
 
     g_prev_modifiers = modifiers;
