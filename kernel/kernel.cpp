@@ -1953,6 +1953,60 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
     };
 
+    auto HandleExtendedKey = [&](uint8_t ext) {
+        if ((ext & 0x7F) == 0x1D) { // Right Ctrl
+            keyboard_state.right_ctrl = ((ext & 0x80) == 0);
+            return;
+        }
+        if ((ext & 0x80) != 0) {
+            return;
+        }
+        if ((ext & 0x7F) == 0x49) { // Page Up
+            console->ScrollUp(3);
+            RefreshConsole();
+        } else if ((ext & 0x7F) == 0x51) { // Page Down
+            console->ScrollDown(3);
+            RefreshConsole();
+        } else if ((ext & 0x7F) == 0x53) { // Delete
+            EnsureLiveConsole();
+            DeleteAtCursor();
+        } else if ((ext & 0x7F) == 0x4B) { // Arrow Left
+            EnsureLiveConsole();
+            if (cursor_pos > 0) {
+                ClearSelection();
+                --cursor_pos;
+                RenderInputLine();
+                RefreshInputLine();
+            }
+        } else if ((ext & 0x7F) == 0x4D) { // Arrow Right
+            EnsureLiveConsole();
+            if (cursor_pos < command_len) {
+                ClearSelection();
+                ++cursor_pos;
+                RenderInputLine();
+                RefreshInputLine();
+            }
+        } else if ((ext & 0x7F) == 0x47) { // Home
+            EnsureLiveConsole();
+            ClearSelection();
+            cursor_pos = 0;
+            RenderInputLine();
+            RefreshInputLine();
+        } else if ((ext & 0x7F) == 0x4F) { // End
+            EnsureLiveConsole();
+            ClearSelection();
+            cursor_pos = command_len;
+            RenderInputLine();
+            RefreshInputLine();
+        } else if ((ext & 0x7F) == 0x48) { // Arrow Up
+            EnsureLiveConsole();
+            BrowseHistoryUp();
+        } else if ((ext & 0x7F) == 0x50) { // Arrow Down
+            EnsureLiveConsole();
+            BrowseHistoryDown();
+        }
+    };
+
     while (1) {
         // 処理すべきイベントがあるか、割り込みを禁止(cli)した上で安全にチェックする（競合対策）
         __asm__ volatile("cli");
@@ -1987,57 +2041,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 if (e0_prefix) {
                     uint8_t ext = msg.keycode;
                     e0_prefix = false;
-                    if ((ext & 0x7F) == 0x1D) { // Right Ctrl
-                        keyboard_state.right_ctrl = ((ext & 0x80) == 0);
-                        break;
-                    }
-                    if ((ext & 0x80) != 0) {
-                        break;
-                    }
-                    if ((ext & 0x7F) == 0x49) { // Page Up
-                        console->ScrollUp(3);
-                        RefreshConsole();
-                    } else if ((ext & 0x7F) == 0x51) { // Page Down
-                        console->ScrollDown(3);
-                        RefreshConsole();
-                    } else if ((ext & 0x7F) == 0x53) { // Delete
-                        EnsureLiveConsole();
-                        DeleteAtCursor();
-                    } else if ((ext & 0x7F) == 0x4B) { // Arrow Left
-                        EnsureLiveConsole();
-                        if (cursor_pos > 0) {
-                            ClearSelection();
-                            --cursor_pos;
-                            RenderInputLine();
-                            RefreshInputLine();
-                        }
-                    } else if ((ext & 0x7F) == 0x4D) { // Arrow Right
-                        EnsureLiveConsole();
-                        if (cursor_pos < command_len) {
-                            ClearSelection();
-                            ++cursor_pos;
-                            RenderInputLine();
-                            RefreshInputLine();
-                        }
-                    } else if ((ext & 0x7F) == 0x47) { // Home
-                        EnsureLiveConsole();
-                        ClearSelection();
-                        cursor_pos = 0;
-                        RenderInputLine();
-                        RefreshInputLine();
-                    } else if ((ext & 0x7F) == 0x4F) { // End
-                        EnsureLiveConsole();
-                        ClearSelection();
-                        cursor_pos = command_len;
-                        RenderInputLine();
-                        RefreshInputLine();
-                    } else if ((ext & 0x7F) == 0x48) { // Arrow Up
-                        EnsureLiveConsole();
-                        BrowseHistoryUp();
-                    } else if ((ext & 0x7F) == 0x50) { // Arrow Down
-                        EnsureLiveConsole();
-                        BrowseHistoryDown();
-                    }
+                    HandleExtendedKey(ext);
                     break;
                 }
 
