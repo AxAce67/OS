@@ -1890,16 +1890,19 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
     };
 
-    auto HandleExtendedKey = [&](uint8_t key) {
+    auto HandleExtendedKey = [&](uint8_t key) -> bool {
         if (key == 0x49) { // Page Up
             console->ScrollUp(3);
             RefreshConsole();
+            return true;
         } else if (key == 0x51) { // Page Down
             console->ScrollDown(3);
             RefreshConsole();
+            return true;
         } else if (key == 0x53) { // Delete
             EnsureLiveConsole();
             DeleteAtCursor();
+            return true;
         } else if (key == 0x4B) { // Arrow Left
             EnsureLiveConsole();
             if (cursor_pos > 0) {
@@ -1908,6 +1911,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RenderInputLine();
                 RefreshInputLine();
             }
+            return true;
         } else if (key == 0x4D) { // Arrow Right
             EnsureLiveConsole();
             if (cursor_pos < command_len) {
@@ -1916,25 +1920,31 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RenderInputLine();
                 RefreshInputLine();
             }
+            return true;
         } else if (key == 0x47) { // Home
             EnsureLiveConsole();
             ClearSelection();
             cursor_pos = 0;
             RenderInputLine();
             RefreshInputLine();
+            return true;
         } else if (key == 0x4F) { // End
             EnsureLiveConsole();
             ClearSelection();
             cursor_pos = command_len;
             RenderInputLine();
             RefreshInputLine();
+            return true;
         } else if (key == 0x48) { // Arrow Up
             EnsureLiveConsole();
             BrowseHistoryUp();
+            return true;
         } else if (key == 0x50) { // Arrow Down
             EnsureLiveConsole();
             BrowseHistoryDown();
+            return true;
         }
+        return false;
     };
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
@@ -2081,11 +2091,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     }
                     break;
                 }
-                if (key_event.extended) {
-                    HandleExtendedKey(key_event.keycode);
-                    break;
-                }
                 const uint8_t key = key_event.keycode;
+                if (key_event.extended) {
+                    if (HandleExtendedKey(key)) {
+                        break;
+                    }
+                    // Extended keypad Enter and keypad Slash should behave as text input keys.
+                    if (key != 0x1C && key != 0x35) {
+                        break;
+                    }
+                }
                 if (key < 128 && !g_key_repeat_enabled && key_down[key]) {
                     break;
                 }
