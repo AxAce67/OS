@@ -15,6 +15,12 @@ uint32_t ReadMMIO32(uint64_t addr) {
     volatile const uint32_t* p = reinterpret_cast<volatile const uint32_t*>(addr);
     return *p;
 }
+
+uint64_t ReadMMIO64(uint64_t addr) {
+    const uint64_t lo = ReadMMIO32(addr);
+    const uint64_t hi = ReadMMIO32(addr + 4);
+    return lo | (hi << 32);
+}
 }  // namespace
 
 bool ProbeXHCIController(const XHCIControllerInfo& controller, XHCICapabilityInfo* out_info) {
@@ -42,6 +48,10 @@ bool ProbeXHCIController(const XHCIControllerInfo& controller, XHCICapabilityInf
     out_info->db_off = db_off;
     out_info->rts_off = rts_off;
     out_info->operational_base = base + cap_length;
+    out_info->max_slots = static_cast<uint8_t>(hcs_params1 & 0xFF);
+    out_info->max_interrupters = static_cast<uint8_t>((hcs_params1 >> 8) & 0x7FF);
+    out_info->max_ports = static_cast<uint8_t>((hcs_params1 >> 24) & 0xFF);
+    out_info->page_size_bitmap = static_cast<uint16_t>(ReadMMIO32(base + 0x08) & 0xFFFF);
     return true;
 }
 
@@ -49,7 +59,7 @@ int XHCIMaxPorts(const XHCICapabilityInfo& info) {
     if (!info.valid) {
         return 0;
     }
-    return static_cast<int>((info.hcs_params1 >> 24) & 0xFF);
+    return static_cast<int>(info.max_ports);
 }
 
 int ReadXHCIPortStatus(const XHCICapabilityInfo& info, XHCIPortStatus* ports, int max_ports) {
@@ -75,4 +85,24 @@ int ReadXHCIPortStatus(const XHCICapabilityInfo& info, XHCIPortStatus* ports, in
         ports[i].raw_portsc = v;
     }
     return count;
+}
+
+bool ReadXHCIOperationalStatus(const XHCICapabilityInfo& info, XHCIOperationalStatus* out_status) {
+    if (!info.valid || out_status == nullptr) {
+        return false;
+    }
+    const uint64_t op = info.operational_base;
+    out_status->valid = true;
+    out_status->usbcmd = ReadMMIO32(op + 0x00);
+    out_status->usbsts = ReadMMIO32(op + 0x04);
+    out_status->dnctrl = ReadMMIO32(op + 0x14);
+    out_status->crcr = ReadMMIO64(op + 0x18);
+    out_status->dcbaap = ReadMMIO64(op + 0x30);
+    out_status->config = ReadMMIO32(op + 0x38);
+    out_status->run_stop = (out_status->usbcmd & 0x1u) != 0;
+    out_status->hc_halted = (out_status->usbsts & 0x1u) != 0;
+    out_status->host_system_error = (out_status->usbsts & (1u << 2)) != 0;
+    out_status->event_interrupt = (out_status->usbsts & (1u << 3)) != 0;
+    out_status->port_change_detect = (out_status->usbsts & (1u << 4)) != 0;
+    return true;
 }

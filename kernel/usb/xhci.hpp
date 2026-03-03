@@ -11,6 +11,10 @@ struct XHCICapabilityInfo {
     uint32_t db_off;
     uint32_t rts_off;
     uint64_t operational_base;
+    uint8_t max_slots;
+    uint16_t max_interrupters;
+    uint8_t max_ports;
+    uint16_t page_size_bitmap;
 };
 
 struct XHCIPortStatus {
@@ -24,6 +28,22 @@ struct XHCIPortStatus {
     uint32_t raw_portsc;
 };
 
+struct XHCIOperationalStatus {
+    bool valid;
+    uint32_t usbcmd;
+    uint32_t usbsts;
+    uint32_t dnctrl;
+    uint64_t crcr;
+    uint64_t dcbaap;
+    uint32_t config;
+    bool run_stop;
+    bool hc_halted;
+    bool host_system_error;
+    bool event_interrupt;
+    bool port_change_detect;
+};
+
 bool ProbeXHCIController(const XHCIControllerInfo& controller, XHCICapabilityInfo* out_info);
 int XHCIMaxPorts(const XHCICapabilityInfo& info);
 int ReadXHCIPortStatus(const XHCICapabilityInfo& info, XHCIPortStatus* ports, int max_ports);
+bool ReadXHCIOperationalStatus(const XHCICapabilityInfo& info, XHCIOperationalStatus* out_status);

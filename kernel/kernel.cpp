@@ -1002,6 +1002,7 @@ const char* const kBuiltInCommands[] = {
     "set",
     "alias",
     "xhciinfo",
+    "xhciregs",
     "mouseabs",
     "usbports",
 };
@@ -1059,7 +1060,7 @@ void ExecuteCommand(const char* command) {
         console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
         console->PrintLine("help: fs2   rm rmdir mv ls stat cat");
         console->PrintLine("help: misc  history clearhistory inputstat about");
-        console->PrintLine("help: cfg   repeat layout set alias xhciinfo mouseabs usbports");
+        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs mouseabs usbports");
         return;
     }
 
@@ -1093,12 +1094,56 @@ void ExecuteCommand(const char* command) {
             console->PrintHex(g_xhci_caps.cap_length, 2);
             console->Print(" ver=0x");
             console->PrintHex(g_xhci_caps.hci_version, 4);
+            console->Print(" slots=");
+            console->PrintDec(g_xhci_caps.max_slots);
+            console->Print(" intr=");
+            console->PrintDec(g_xhci_caps.max_interrupters);
+            console->Print(" ports=");
+            console->PrintDec(g_xhci_caps.max_ports);
+            console->Print(" pages=0x");
+            console->PrintHex(g_xhci_caps.page_size_bitmap, 4);
             console->Print(" hcs1=0x");
             console->PrintHex(g_xhci_caps.hcs_params1, 8);
             console->Print(" hcc1=0x");
             console->PrintHex(g_xhci_caps.hcc_params1, 8);
             console->Print("\n");
         }
+        return;
+    }
+
+    if (StrEqual(cmd, "xhciregs")) {
+        if (!g_xhci_caps.valid) {
+            console->PrintLine("xhciregs: xhci not ready");
+            return;
+        }
+        XHCIOperationalStatus st{};
+        if (!ReadXHCIOperationalStatus(g_xhci_caps, &st) || !st.valid) {
+            console->PrintLine("xhciregs: read failed");
+            return;
+        }
+        console->Print("usbcmd=0x");
+        console->PrintHex(st.usbcmd, 8);
+        console->Print(" usbsts=0x");
+        console->PrintHex(st.usbsts, 8);
+        console->Print(" config=0x");
+        console->PrintHex(st.config, 8);
+        console->Print("\n");
+        console->Print("crcr=0x");
+        console->PrintHex(st.crcr, 16);
+        console->Print(" dcbaap=0x");
+        console->PrintHex(st.dcbaap, 16);
+        console->Print("\n");
+        console->Print("flags: run=");
+        console->Print(st.run_stop ? "1" : "0");
+        console->Print(" halted=");
+        console->Print(st.hc_halted ? "1" : "0");
+        console->Print(" hse=");
+        console->Print(st.host_system_error ? "1" : "0");
+        console->Print(" eint=");
+        console->Print(st.event_interrupt ? "1" : "0");
+        console->Print(" pcd=");
+        console->Print(st.port_change_detect ? "1" : "0");
+        console->Print("\n");
         return;
     }
 
@@ -2161,6 +2206,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             console->PrintHex(g_xhci_caps.hci_version, 4);
             console->Print(" caplen=0x");
             console->PrintHex(g_xhci_caps.cap_length, 2);
+            console->Print(" slots=");
+            console->PrintDec(g_xhci_caps.max_slots);
+            console->Print(" ports=");
+            console->PrintDec(g_xhci_caps.max_ports);
             console->Print(" db=0x");
             console->PrintHex(g_xhci_caps.db_off, 8);
             console->Print(" rts=0x");
