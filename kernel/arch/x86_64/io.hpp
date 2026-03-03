@@ -13,6 +13,18 @@ static inline uint8_t In8(uint16_t port) {
     return data;
 }
 
+// I/Oポートへの4バイト出力
+static inline void Out32(uint16_t port, uint32_t data) {
+    __asm__ volatile("outl %0, %1" : : "a"(data), "Nd"(port));
+}
+
+// I/Oポートからの4バイト入力
+static inline uint32_t In32(uint16_t port) {
+    uint32_t data;
+    __asm__ volatile("inl %1, %0" : "=a"(data) : "Nd"(port));
+    return data;
+}
+
 // 少し待機する（I/Oポートのアクセス待機用）
 static inline void IoWait() {
     __asm__ volatile("outb %%al, $0x80" : : "a"(0));

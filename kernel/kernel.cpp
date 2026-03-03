@@ -67,6 +67,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "interrupt_handler.hpp"
 #include "pic.hpp"
 #include "ps2.hpp"
+#include "pci.hpp"
 #include "io.hpp"
 #include "queue.hpp"
 #include "input/message.hpp"
@@ -2032,6 +2033,27 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
 
     // 最初に1度だけ画面全体を合成描画する
     layer_manager->Draw();
+
+    console->Print("Scanning PCI bus...\n");
+    InitializePCI();
+    const auto& xhci = GetXHCIControllerInfo();
+    if (xhci.found) {
+        console->Print("xHCI found at ");
+        console->PrintDec(xhci.address.bus);
+        console->Print(":");
+        console->PrintDec(xhci.address.device);
+        console->Print(".");
+        console->PrintDec(xhci.address.function);
+        console->Print(" (vendor=0x");
+        console->PrintHex(xhci.vendor_id, 4);
+        console->Print(", device=0x");
+        console->PrintHex(xhci.device_id, 4);
+        console->Print(", mmio=0x");
+        console->PrintHex(xhci.mmio_base, 8);
+        console->Print(")\n");
+    } else {
+        console->Print("xHCI not found.\n");
+    }
 
     // 5. 本格的なハードウェア割り込みを受け取るための環境構築
     console->Print("Initializing Interrupt Controller (PIC)...\n");
