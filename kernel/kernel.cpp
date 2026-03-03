@@ -363,7 +363,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
 
     // OSのメインループ（イベントループ）
     uint64_t last_tick = 0;
-    KeyboardState keyboard_state{false, false, false};
+    KeyboardState keyboard_state;
+    keyboard_state.left_shift = false;
+    keyboard_state.right_shift = false;
+    keyboard_state.caps_lock = false;
     while (1) {
         // 処理すべきイベントがあるか、割り込みを禁止(cli)した上で安全にチェックする（競合対策）
         __asm__ volatile("cli");
