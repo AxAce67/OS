@@ -133,6 +133,10 @@ bool g_dirs_initialized = false;
 char g_cwd[96] = "/";
 XHCICapabilityInfo g_xhci_caps = {};
 uint8_t g_last_xhci_slot_id = 0;
+bool g_xhci_hid_auto_enabled = false;
+uint8_t g_xhci_hid_auto_slot = 0;
+uint32_t g_xhci_hid_auto_len = 8;
+uint64_t g_xhci_hid_last_poll_tick = 0;
 
 int ClampInt(int v, int min_v, int max_v) {
     if (v < min_v) return min_v;
@@ -200,6 +204,53 @@ bool DecodeHIDAbsoluteXY(const uint8_t* data, uint32_t len, int* out_x, int* out
     if (len >= 6) {
         int8_t wh = static_cast<int8_t>(data[len - 1]);
         *out_wheel = static_cast<int>(wh);
+    }
+    return true;
+}
+
+bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose) {
+    XHCIInterruptInResult rr{};
+    if (!XHCIPollInterruptIn(g_xhci_caps, slot, req_len, &rr)) {
+        if (verbose) {
+            console->PrintLine("xhcihidpoll: timeout/fail");
+        }
+        return false;
+    }
+    if (!rr.ok) {
+        if (verbose) {
+            console->Print("xhcihidpoll: transfer ccode=");
+            console->PrintDec(rr.completion_code);
+            console->Print("\n");
+        }
+        return false;
+    }
+
+    int x = 0;
+    int y = 0;
+    int wheel = 0;
+    if (!DecodeHIDAbsoluteXY(rr.data, rr.data_length, &x, &y, &wheel)) {
+        if (verbose) {
+            console->Print("xhcihidpoll: raw=");
+            for (uint32_t i = 0; i < rr.data_length; ++i) {
+                console->PrintHex(rr.data[i], 2);
+                if (i + 1 < rr.data_length) {
+                    console->Print(" ");
+                }
+            }
+            console->Print("\n");
+        }
+        return false;
+    }
+
+    EnqueueAbsolutePointerEvent(x, y, wheel);
+    if (verbose) {
+        console->Print("xhcihidpoll: x=");
+        console->PrintDec(x);
+        console->Print(" y=");
+        console->PrintDec(y);
+        console->Print(" wheel=");
+        console->PrintDec(wheel);
+        console->Print("\n");
     }
     return true;
 }
@@ -1083,6 +1134,7 @@ const char* const kBuiltInCommands[] = {
     "xhciconfigep",
     "xhciintrin",
     "xhcihidpoll",
+    "xhciauto",
     "mouseabs",
     "usbports",
 };
@@ -1140,7 +1192,7 @@ void ExecuteCommand(const char* command) {
         console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
         console->PrintLine("help: fs2   rm rmdir mv ls stat cat");
         console->PrintLine("help: misc  history clearhistory inputstat about");
-        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll mouseabs usbports");
+        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll xhciauto mouseabs usbports");
         return;
     }
 
@@ -1496,40 +1548,61 @@ void ExecuteCommand(const char* command) {
             return;
         }
 
-        XHCIInterruptInResult rr{};
-        if (!XHCIPollInterruptIn(g_xhci_caps, static_cast<uint8_t>(slot), static_cast<uint32_t>(req_len), &rr)) {
-            console->PrintLine("xhcihidpoll: timeout/fail");
-            return;
-        }
-        if (!rr.ok) {
-            console->Print("xhcihidpoll: transfer ccode=");
-            console->PrintDec(rr.completion_code);
+        PollHIDAndApply(static_cast<uint8_t>(slot), static_cast<uint32_t>(req_len), true);
+        return;
+    }
+
+    if (StrEqual(cmd, "xhciauto")) {
+        char mode[16];
+        if (!NextToken(command, &pos, mode, sizeof(mode))) {
+            console->Print("xhciauto: ");
+            console->Print(g_xhci_hid_auto_enabled ? "on" : "off");
+            console->Print(" slot=");
+            console->PrintDec(g_xhci_hid_auto_slot);
+            console->Print(" len=");
+            console->PrintDec(g_xhci_hid_auto_len);
             console->Print("\n");
             return;
         }
-
-        int x = 0;
-        int y = 0;
-        int wheel = 0;
-        if (!DecodeHIDAbsoluteXY(rr.data, rr.data_length, &x, &y, &wheel)) {
-            console->Print("xhcihidpoll: raw=");
-            for (uint32_t i = 0; i < rr.data_length; ++i) {
-                console->PrintHex(rr.data[i], 2);
-                if (i + 1 < rr.data_length) {
-                    console->Print(" ");
-                }
-            }
-            console->Print("\n");
+        if (StrEqual(mode, "off")) {
+            g_xhci_hid_auto_enabled = false;
+            console->PrintLine("xhciauto: off");
             return;
         }
-
-        EnqueueAbsolutePointerEvent(x, y, wheel);
-        console->Print("xhcihidpoll: x=");
-        console->PrintDec(x);
-        console->Print(" y=");
-        console->PrintDec(y);
-        console->Print(" wheel=");
-        console->PrintDec(wheel);
+        if (!StrEqual(mode, "on")) {
+            console->PrintLine("xhciauto: use on/off");
+            return;
+        }
+        if (!g_xhci_caps.valid) {
+            console->PrintLine("xhciauto: xhci not ready");
+            return;
+        }
+        int slot = g_last_xhci_slot_id;
+        int req_len = static_cast<int>(g_xhci_hid_auto_len);
+        char t0[16];
+        char t1[16];
+        if (NextToken(command, &pos, t0, sizeof(t0))) {
+            slot = ParseInt(t0);
+        }
+        if (NextToken(command, &pos, t1, sizeof(t1))) {
+            req_len = ParseInt(t1);
+        }
+        if (slot <= 0 || slot > 255) {
+            console->PrintLine("xhciauto: invalid slot");
+            return;
+        }
+        if (req_len <= 0 || req_len > 64) {
+            console->PrintLine("xhciauto: len must be 1..64");
+            return;
+        }
+        g_xhci_hid_auto_slot = static_cast<uint8_t>(slot);
+        g_xhci_hid_auto_len = static_cast<uint32_t>(req_len);
+        g_xhci_hid_auto_enabled = true;
+        g_xhci_hid_last_poll_tick = CurrentTick();
+        console->Print("xhciauto: on slot=");
+        console->PrintDec(slot);
+        console->Print(" len=");
+        console->PrintDec(req_len);
         console->Print("\n");
         return;
     }
@@ -2804,8 +2877,18 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         // 処理すべきイベントがあるか、割り込みを禁止(cli)した上で安全にチェックする（競合対策）
         __asm__ volatile("cli");
         if (main_queue->Count() == 0) {
-            // キューが空ならば、割り込みを許可(sti)すると同時にCPUを休止(hlt)させる
-            __asm__ volatile("sti\n\thlt");
+            __asm__ volatile("sti");
+            if (g_xhci_hid_auto_enabled && g_xhci_hid_auto_slot > 0) {
+                uint64_t now_tick = CurrentTick();
+                if (now_tick != g_xhci_hid_last_poll_tick) {
+                    g_xhci_hid_last_poll_tick = now_tick;
+                    if (PollHIDAndApply(g_xhci_hid_auto_slot, g_xhci_hid_auto_len, false)) {
+                        continue;
+                    }
+                }
+            }
+            // キューが空ならばCPUを休止(hlt)させる
+            __asm__ volatile("hlt");
             continue;
         }
 
