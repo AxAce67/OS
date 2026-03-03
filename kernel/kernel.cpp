@@ -99,7 +99,6 @@ extern ArrayQueue<Message, 256>* main_queue;
 extern MouseCursor* mouse_cursor;
 extern LayerManager* layer_manager;
 
-namespace {
 struct KeyboardState {
     bool left_shift;
     bool right_shift;
@@ -1256,8 +1255,6 @@ int ParseInt(const char* s) {
 
 #include "shell/cmd_core.cpp"
 
-#include "shell/cmd_dispatch.cpp"
-
 #include "shell/cmd_xhci.cpp"
 
 void ExecuteCommand(const char* command) {
@@ -1294,7 +1291,6 @@ void PrintHistory(char history[][128], int history_count) {
         console->Print(": ");
         console->PrintLine(history[i]);
     }
-}
 }
 
 // C++標準ライブラリ（<new>）が存在しないため、配置new（Placement new）を自作する
