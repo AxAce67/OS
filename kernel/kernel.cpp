@@ -126,7 +126,7 @@ ShellPair g_vars[16];
 ShellPair g_aliases[16];
 ShellDir g_dirs[32];
 ShellFile g_files[64];
-bool g_key_repeat_enabled = false;
+bool g_key_repeat_enabled = true;
 bool g_jp_layout = false;
 const BootInfo* g_boot_info = nullptr;
 bool g_dirs_initialized = false;
@@ -3100,8 +3100,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     char draft_buffer[128];
     draft_buffer[0] = '\0';
     bool e0_prefix = false;
-    uint8_t last_make_key = 0;
-    bool last_make_valid = false;
+    bool key_down[128];
+    for (int i = 0; i < 128; ++i) {
+        key_down[i] = false;
+    }
     int input_row = console->CursorRow();
     int input_col = console->CursorColumn();
     int rendered_len = 0;
@@ -3506,18 +3508,19 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 }
                 if ((msg.keycode & 0x80) != 0) {
                     uint8_t keyup = msg.keycode & 0x7F;
-                    if (last_make_valid && keyup == last_make_key) {
-                        last_make_valid = false;
+                    if (keyup < 128) {
+                        key_down[keyup] = false;
                     }
                     break;
                 }
                 if ((msg.keycode & 0x80) == 0) {
                     const uint8_t key = msg.keycode & 0x7F;
-                    if (!g_key_repeat_enabled && last_make_valid && key == last_make_key) {
+                    if (key < 128 && !g_key_repeat_enabled && key_down[key]) {
                         break;
                     }
-                    last_make_key = key;
-                    last_make_valid = true;
+                    if (key < 128) {
+                        key_down[key] = true;
+                    }
                     if (IsCtrlPressed(keyboard_state)) {
                         if (key == 0x1E) { // Ctrl + A
                             EnsureLiveConsole();
