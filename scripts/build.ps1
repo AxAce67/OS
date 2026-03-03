@@ -156,6 +156,7 @@ if (Test-Path $ovmf) {
     }
     & $qemu -m 512M `
         -display "gtk,show-menubar=off" `
+        -k ja `
         -device qemu-xhci `
         -device usb-tablet `
         -pflash "OVMF.fd" `
@@ -166,6 +167,7 @@ else {
     # 警告を出しつつFATディレクトリを指定して通常起動
     & $qemu -m 512M `
         -display "gtk,show-menubar=off" `
+        -k ja `
         -device qemu-xhci `
         -device usb-tablet `
         -drive "format=raw,file=fat:rw:disk"
