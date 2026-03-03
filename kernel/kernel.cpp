@@ -82,6 +82,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "shell/commands.hpp"
 #include "shell/context.hpp"
 #include "shell/cmd_dispatch.hpp"
+#include "shell/cmd_xhci.hpp"
 #include "shell/text.hpp"
 
 extern Console* console;
@@ -1250,8 +1251,6 @@ int ParseInt(const char* s) {
     }
     return value * sign;
 }
-
-#include "shell/cmd_xhci.cpp"
 
 void ExecuteCommand(const char* command) {
     if (command[0] == '\0') {

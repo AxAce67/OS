@@ -1,3 +1,37 @@
+#include <stdint.h>
+#include "console.hpp"
+#include "usb/xhci.hpp"
+#include "timer.hpp"
+#include "shell/text.hpp"
+#include "shell/cmd_xhci.hpp"
+
+extern Console* console;
+extern XHCICapabilityInfo g_xhci_caps;
+extern uint8_t g_last_xhci_slot_id;
+extern bool g_xhci_hid_auto_enabled;
+extern uint8_t g_xhci_hid_auto_slot;
+extern uint32_t g_xhci_hid_auto_len;
+extern uint64_t g_xhci_hid_last_poll_tick;
+extern uint32_t g_xhci_hid_auto_consecutive_failures;
+extern uint64_t g_xhci_hid_auto_fail_count;
+extern uint64_t g_xhci_hid_auto_recover_count;
+extern uint64_t g_xhci_hid_next_recover_tick;
+extern uint8_t g_hid_format_mode;
+extern uint32_t g_hid_observed_max_raw;
+extern uint32_t g_hid_sample_count;
+extern bool g_hid_calibrated;
+extern uint16_t g_hid_min_x;
+extern uint16_t g_hid_min_y;
+extern uint16_t g_hid_max_x;
+extern uint16_t g_hid_max_y;
+extern uint8_t g_hid_buttons_mask;
+
+int ParseInt(const char* s);
+void ResetHIDDecodeLearning();
+bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t timeout_iters = 3000000);
+bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval);
+void EnqueueAbsolutePointerEvent(int x, int y, int wheel, uint8_t buttons = 0);
+
 bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
     int& pos = *pos_ptr;
     if (StrEqual(cmd, "xhciinfo")) {
