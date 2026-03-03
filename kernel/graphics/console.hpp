@@ -8,11 +8,11 @@ class Console {
 public:
     static const int kFontWidth = 8;
     static const int kFontHeight = 16;
-    static const int kFontScale = 2;
+    static const int kFontScale = 1;
     static const int kCellWidth = kFontWidth * kFontScale;
     static const int kCellHeight = kFontHeight * kFontScale;
-    static const int kMaxRows = 90;
-    static const int kMaxColumns = 120;
+    static const int kMaxRows = 200;
+    static const int kMaxColumns = 320;
     static const int kScrollbackLines = 512;
 
     Console(Window* window,
