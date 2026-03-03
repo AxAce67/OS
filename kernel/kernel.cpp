@@ -80,6 +80,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "apic.hpp"
 #include "timer.hpp"
 #include "shell/commands.hpp"
+#include "shell/cmd_dispatch.hpp"
 #include "shell/text.hpp"
 
 extern Console* console;
@@ -1296,15 +1297,8 @@ void ExecuteCommand(const char* command) {
         return;
     }
 
-    for (int i = 0; i < static_cast<int>(sizeof(kShellCommandTable) / sizeof(kShellCommandTable[0])); ++i) {
-        const ShellCommandEntry& entry = kShellCommandTable[i];
-        if (!StrEqual(cmd, entry.name)) {
-            continue;
-        }
-        if (entry.handler(cmd, command, rest, &pos)) {
-            return;
-        }
-        break;
+    if (DispatchShellCommand(cmd, command, rest, &pos)) {
+        return;
     }
 
     console->Print("unknown command: ");
