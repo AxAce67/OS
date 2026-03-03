@@ -475,6 +475,35 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
     return true;
 }
 
+bool HandleXHCIAutoPollOnIdle() {
+    if (!g_xhci_hid_auto_enabled || g_xhci_hid_auto_slot == 0) {
+        return false;
+    }
+
+    uint64_t now_tick = CurrentTick();
+    if (now_tick != g_xhci_hid_last_poll_tick) {
+        g_xhci_hid_last_poll_tick = now_tick;
+        if (PollHIDAndApply(g_xhci_hid_auto_slot, g_xhci_hid_auto_len, false)) {
+            g_xhci_hid_auto_consecutive_failures = 0;
+            return true;
+        }
+        ++g_xhci_hid_auto_fail_count;
+        ++g_xhci_hid_auto_consecutive_failures;
+    }
+
+    const uint32_t kRecoverFailThreshold = 24;
+    if (g_xhci_hid_auto_consecutive_failures >= kRecoverFailThreshold &&
+        now_tick >= g_xhci_hid_next_recover_tick) {
+        g_xhci_hid_next_recover_tick = now_tick + 120;  // retry after a short cool down
+        ResetHIDDecodeLearning();
+        if (StartXHCIAutoMouse(g_xhci_hid_auto_len, g_xhci_hid_auto_mps, g_xhci_hid_auto_interval)) {
+            ++g_xhci_hid_auto_recover_count;
+            g_xhci_hid_auto_consecutive_failures = 0;
+        }
+    }
+    return false;
+}
+
 char KeycodeToAscii(uint8_t keycode, bool shift, bool caps_lock) {
     if (g_jp_layout) {
         switch (keycode) {
@@ -1860,29 +1889,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         __asm__ volatile("cli");
         if (main_queue->Count() == 0) {
             __asm__ volatile("sti");
-            if (g_xhci_hid_auto_enabled && g_xhci_hid_auto_slot > 0) {
-                uint64_t now_tick = CurrentTick();
-                if (now_tick != g_xhci_hid_last_poll_tick) {
-                    g_xhci_hid_last_poll_tick = now_tick;
-                    if (PollHIDAndApply(g_xhci_hid_auto_slot, g_xhci_hid_auto_len, false)) {
-                        g_xhci_hid_auto_consecutive_failures = 0;
-                        continue;
-                    } else {
-                        ++g_xhci_hid_auto_fail_count;
-                        ++g_xhci_hid_auto_consecutive_failures;
-                    }
-                }
-
-                const uint32_t kRecoverFailThreshold = 24;
-                if (g_xhci_hid_auto_consecutive_failures >= kRecoverFailThreshold &&
-                    now_tick >= g_xhci_hid_next_recover_tick) {
-                    g_xhci_hid_next_recover_tick = now_tick + 120;  // retry after a short cool down
-                    ResetHIDDecodeLearning();
-                    if (StartXHCIAutoMouse(g_xhci_hid_auto_len, g_xhci_hid_auto_mps, g_xhci_hid_auto_interval)) {
-                        ++g_xhci_hid_auto_recover_count;
-                        g_xhci_hid_auto_consecutive_failures = 0;
-                    }
-                }
+            if (HandleXHCIAutoPollOnIdle()) {
+                continue;
             }
             // キューが空ならばCPUを休止(hlt)させる
             __asm__ volatile("hlt");
