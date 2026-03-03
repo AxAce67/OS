@@ -134,6 +134,76 @@ char g_cwd[96] = "/";
 XHCICapabilityInfo g_xhci_caps = {};
 uint8_t g_last_xhci_slot_id = 0;
 
+int ClampInt(int v, int min_v, int max_v) {
+    if (v < min_v) return min_v;
+    if (v > max_v) return max_v;
+    return v;
+}
+
+int ScreenWidth() {
+    if (g_boot_info == nullptr || g_boot_info->frame_buffer_config == nullptr) {
+        return 1;
+    }
+    return static_cast<int>(g_boot_info->frame_buffer_config->horizontal_resolution);
+}
+
+int ScreenHeight() {
+    if (g_boot_info == nullptr || g_boot_info->frame_buffer_config == nullptr) {
+        return 1;
+    }
+    return static_cast<int>(g_boot_info->frame_buffer_config->vertical_resolution);
+}
+
+bool DecodeHIDAbsoluteXY(const uint8_t* data, uint32_t len, int* out_x, int* out_y, int* out_wheel) {
+    if (data == nullptr || out_x == nullptr || out_y == nullptr || len < 5) {
+        return false;
+    }
+    *out_wheel = 0;
+
+    // Candidate A: [buttons][x_lo][x_hi][y_lo][y_hi](...)
+    uint16_t ax = static_cast<uint16_t>(data[1] | (static_cast<uint16_t>(data[2]) << 8));
+    uint16_t ay = static_cast<uint16_t>(data[3] | (static_cast<uint16_t>(data[4]) << 8));
+
+    // Candidate B: [report_id][buttons][x_lo][x_hi][y_lo][y_hi](...)
+    uint16_t bx = 0;
+    uint16_t by = 0;
+    bool has_b = false;
+    if (len >= 6) {
+        bx = static_cast<uint16_t>(data[2] | (static_cast<uint16_t>(data[3]) << 8));
+        by = static_cast<uint16_t>(data[4] | (static_cast<uint16_t>(data[5]) << 8));
+        has_b = true;
+    }
+
+    uint16_t raw_x = ax;
+    uint16_t raw_y = ay;
+    if (has_b) {
+        const bool a_reasonable = (ax <= 0x7FFFu && ay <= 0x7FFFu);
+        const bool b_reasonable = (bx <= 0x7FFFu && by <= 0x7FFFu);
+        if (!a_reasonable && b_reasonable) {
+            raw_x = bx;
+            raw_y = by;
+        }
+    }
+
+    uint32_t max_raw = 0xFFFFu;
+    if (raw_x <= 0x7FFFu && raw_y <= 0x7FFFu) {
+        max_raw = 0x7FFFu;
+    }
+
+    const int w = ScreenWidth();
+    const int h = ScreenHeight();
+    const int px = static_cast<int>((static_cast<uint64_t>(raw_x) * (w - 1)) / max_raw);
+    const int py = static_cast<int>((static_cast<uint64_t>(raw_y) * (h - 1)) / max_raw);
+    *out_x = ClampInt(px, 0, w - 1);
+    *out_y = ClampInt(py, 0, h - 1);
+
+    if (len >= 6) {
+        int8_t wh = static_cast<int8_t>(data[len - 1]);
+        *out_wheel = static_cast<int>(wh);
+    }
+    return true;
+}
+
 char KeycodeToAscii(uint8_t keycode, bool shift, bool caps_lock) {
     if (g_jp_layout) {
         switch (keycode) {
@@ -1012,6 +1082,7 @@ const char* const kBuiltInCommands[] = {
     "xhciaddress",
     "xhciconfigep",
     "xhciintrin",
+    "xhcihidpoll",
     "mouseabs",
     "usbports",
 };
@@ -1069,7 +1140,7 @@ void ExecuteCommand(const char* command) {
         console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
         console->PrintLine("help: fs2   rm rmdir mv ls stat cat");
         console->PrintLine("help: misc  history clearhistory inputstat about");
-        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin mouseabs usbports");
+        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll mouseabs usbports");
         return;
     }
 
@@ -1397,6 +1468,68 @@ void ExecuteCommand(const char* command) {
                 console->Print(" ");
             }
         }
+        console->Print("\n");
+        return;
+    }
+
+    if (StrEqual(cmd, "xhcihidpoll")) {
+        if (!g_xhci_caps.valid) {
+            console->PrintLine("xhcihidpoll: xhci not ready");
+            return;
+        }
+        int slot = g_last_xhci_slot_id;
+        int req_len = 8;
+        char t0[16];
+        char t1[16];
+        if (NextToken(command, &pos, t0, sizeof(t0))) {
+            slot = ParseInt(t0);
+        }
+        if (NextToken(command, &pos, t1, sizeof(t1))) {
+            req_len = ParseInt(t1);
+        }
+        if (slot <= 0 || slot > 255) {
+            console->PrintLine("xhcihidpoll: invalid slot");
+            return;
+        }
+        if (req_len <= 0 || req_len > 64) {
+            console->PrintLine("xhcihidpoll: len must be 1..64");
+            return;
+        }
+
+        XHCIInterruptInResult rr{};
+        if (!XHCIPollInterruptIn(g_xhci_caps, static_cast<uint8_t>(slot), static_cast<uint32_t>(req_len), &rr)) {
+            console->PrintLine("xhcihidpoll: timeout/fail");
+            return;
+        }
+        if (!rr.ok) {
+            console->Print("xhcihidpoll: transfer ccode=");
+            console->PrintDec(rr.completion_code);
+            console->Print("\n");
+            return;
+        }
+
+        int x = 0;
+        int y = 0;
+        int wheel = 0;
+        if (!DecodeHIDAbsoluteXY(rr.data, rr.data_length, &x, &y, &wheel)) {
+            console->Print("xhcihidpoll: raw=");
+            for (uint32_t i = 0; i < rr.data_length; ++i) {
+                console->PrintHex(rr.data[i], 2);
+                if (i + 1 < rr.data_length) {
+                    console->Print(" ");
+                }
+            }
+            console->Print("\n");
+            return;
+        }
+
+        EnqueueAbsolutePointerEvent(x, y, wheel);
+        console->Print("xhcihidpoll: x=");
+        console->PrintDec(x);
+        console->Print(" y=");
+        console->PrintDec(y);
+        console->Print(" wheel=");
+        console->PrintDec(wheel);
         console->Print("\n");
         return;
     }
