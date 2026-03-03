@@ -108,7 +108,7 @@ ShellPair g_aliases[16];
 ShellDir g_dirs[32];
 ShellFile g_files[64];
 bool g_key_repeat_enabled = true;
-bool g_jp_layout = false;
+bool g_jp_layout = true;
 bool g_ime_enabled = false;
 uint64_t g_keyboard_irq_count = 0;
 uint8_t g_keyboard_last_raw = 0;
@@ -2010,6 +2010,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (key == 0x0F) { // Tab
             EnsureLiveConsole();
             HandleTabCompletion();
+            return true;
+        }
+        if (key == 0x29) { // Hankaku/Zenkaku (JP)
+            g_ime_enabled = !g_ime_enabled;
+            g_jp_layout = true;
+            RepaintPromptAndInput();
             return true;
         }
         if (key == 0x70) { // Kana

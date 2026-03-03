@@ -19,7 +19,7 @@ char KeycodeToAsciiByLayout(uint8_t keycode, bool shift, bool caps_lock, bool nu
             case 0x1B: return shift ? '{' : '[';
             case 0x27: return shift ? '+' : ';';
             case 0x28: return shift ? '*' : ':';
-            case 0x29: return shift ? '|' : '\\';
+            case 0x29: return 0;  // Hankaku/Zenkaku handled as mode toggle
             case 0x2B: return shift ? '}' : ']';
             case 0x33: return shift ? '<' : ',';
             case 0x34: return shift ? '>' : '.';
