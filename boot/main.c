@@ -154,8 +154,13 @@ static void SelectBestGraphicsMode(EFI_GRAPHICS_OUTPUT_PROTOCOL* gop, EFI_SYSTEM
         return;
     }
 
+    // 極端に大きいモードはカーネル側の初期バッファ確保を圧迫しやすいので上限を設ける。
+    const UINT32 kPreferredMaxWidth = 1920;
+    const UINT32 kPreferredMaxHeight = 1080;
+
     UINT32 best_mode = gop->Mode->Mode;
     UINT64 best_pixels = 0;
+    int found_in_preferred_range = 0;
 
     for (UINT32 mode = 0; mode < gop->Mode->MaxMode; ++mode) {
         UINTN info_size = 0;
@@ -167,9 +172,24 @@ static void SelectBestGraphicsMode(EFI_GRAPHICS_OUTPUT_PROTOCOL* gop, EFI_SYSTEM
 
         if (IsSupportedPixelFormat(info->PixelFormat)) {
             UINT64 pixels = (UINT64)info->HorizontalResolution * (UINT64)info->VerticalResolution;
-            if (pixels > best_pixels) {
-                best_pixels = pixels;
-                best_mode = mode;
+            int in_preferred_range =
+                (info->HorizontalResolution <= kPreferredMaxWidth &&
+                 info->VerticalResolution <= kPreferredMaxHeight);
+
+            if (!found_in_preferred_range) {
+                if (in_preferred_range && pixels > best_pixels) {
+                    best_pixels = pixels;
+                    best_mode = mode;
+                    found_in_preferred_range = 1;
+                } else if (!in_preferred_range && pixels > best_pixels) {
+                    best_pixels = pixels;
+                    best_mode = mode;
+                }
+            } else {
+                if (in_preferred_range && pixels > best_pixels) {
+                    best_pixels = pixels;
+                    best_mode = mode;
+                }
             }
         }
         SystemTable->BootServices->FreePool(info);
