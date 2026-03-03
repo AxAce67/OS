@@ -1956,6 +1956,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
         if (IsCtrlPressed(keyboard_mods)) {
+            if (key == 0x39) { // Ctrl + Space => IME toggle fallback
+                g_ime_enabled = !g_ime_enabled;
+                if (g_ime_enabled) {
+                    g_jp_layout = true;
+                }
+                RepaintPromptAndInput();
+                return true;
+            }
             if (key == 0x1E) { // Ctrl + A
                 EnsureLiveConsole();
                 ClearSelection();

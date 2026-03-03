@@ -88,6 +88,15 @@ bool ExecuteImeCommand(const char* rest) {
         console->PrintLine(g_ime_enabled ? "on" : "off");
         return true;
     }
+    if (StrEqual(rest, "toggle")) {
+        g_ime_enabled = !g_ime_enabled;
+        if (g_ime_enabled) {
+            g_jp_layout = true;
+        }
+        console->Print("ime=");
+        console->PrintLine(g_ime_enabled ? "on" : "off");
+        return true;
+    }
     if (StrEqual(rest, "on")) {
         g_ime_enabled = true;
         g_jp_layout = true;
