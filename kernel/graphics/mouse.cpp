@@ -88,6 +88,10 @@ void MouseCursor::SetPosition(int x, int y) {
     if (x > max_x) x = max_x;
     if (y > max_y) y = max_y;
 
+    if (x == old_x && y == old_y) {
+        return;
+    }
+
     layer_->Move(x, y);
 
     int final_x = layer_->GetX();

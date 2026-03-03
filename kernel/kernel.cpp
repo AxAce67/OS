@@ -143,7 +143,7 @@ uint32_t g_xhci_hid_auto_consecutive_failures = 0;
 uint64_t g_xhci_hid_auto_fail_count = 0;
 uint64_t g_xhci_hid_auto_recover_count = 0;
 uint64_t g_xhci_hid_next_recover_tick = 0;
-bool g_boot_mouse_auto_enabled = false;
+bool g_boot_mouse_auto_enabled = true;
 const uint32_t kAutoStartHIDLen = 8;
 const uint16_t kAutoStartHIDMps = 8;
 const uint8_t kAutoStartHIDInterval = 4;
@@ -164,6 +164,7 @@ uint8_t g_mouse_buttons_current = 0;
 uint64_t g_mouse_left_press_count = 0;
 uint64_t g_mouse_right_press_count = 0;
 uint64_t g_mouse_middle_press_count = 0;
+uint64_t g_last_absolute_mouse_tick = 0;
 
 int ClampInt(int v, int min_v, int max_v) {
     if (v < min_v) return min_v;
@@ -3346,6 +3347,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 g_mouse_buttons_current = now_buttons;
 
                 if (msg.pointer_mode == Message::PointerMode::kAbsolute) {
+                    g_last_absolute_mouse_tick = CurrentTick();
                     mouse_cursor->SetPosition(msg.x, msg.y);
                     const int click_col = (msg.x - Console::kMarginX) / Console::kCellWidth;
                     const int click_row = (msg.y - Console::kMarginY) / Console::kCellHeight;
@@ -3389,6 +3391,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         }
                     }
                 } else {
+                    if (g_xhci_hid_auto_enabled &&
+                        (CurrentTick() - g_last_absolute_mouse_tick) < 180) {
+                        break;  // USB absolute pointer is active; ignore noisy PS/2 relative moves.
+                    }
                     mouse_cursor->Move(msg.dx, msg.dy);
                 }
                 if (msg.wheel > 0) {
