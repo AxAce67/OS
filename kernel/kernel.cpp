@@ -1884,6 +1884,75 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
     };
 
+    auto HandleMouseMessage = [&](const Message& msg) {
+        const uint8_t prev_buttons = g_mouse_buttons_current;
+        const uint8_t now_buttons = msg.buttons;
+        const uint8_t pressed = static_cast<uint8_t>((~prev_buttons) & now_buttons);
+        if ((pressed & 0x01) != 0) { ++g_mouse_left_press_count; }
+        if ((pressed & 0x02) != 0) { ++g_mouse_right_press_count; }
+        if ((pressed & 0x04) != 0) { ++g_mouse_middle_press_count; }
+        g_mouse_buttons_current = now_buttons;
+
+        if (msg.pointer_mode == Message::PointerMode::kAbsolute) {
+            g_last_absolute_mouse_tick = CurrentTick();
+            mouse_cursor->SetPosition(msg.x, msg.y);
+            const int click_col = (msg.x - Console::kMarginX) / Console::kCellWidth;
+            const int click_row = (msg.y - Console::kMarginY) / Console::kCellHeight;
+            if ((pressed & 0x01) != 0) {
+                selecting_with_mouse = true;
+                if (click_row == input_row && click_col >= input_col) {
+                    int at = click_col - input_col;
+                    if (at < 0) at = 0;
+                    if (at > command_len) at = command_len;
+                    selection_anchor = at;
+                    selection_end = at;
+                } else {
+                    ClearSelection();
+                }
+            }
+            if ((now_buttons & 0x01) != 0 && selecting_with_mouse &&
+                click_row == input_row && click_col >= input_col) {
+                int next_cursor = click_col - input_col;
+                if (next_cursor < 0) next_cursor = 0;
+                if (next_cursor > command_len) next_cursor = command_len;
+                selection_end = next_cursor;
+                if (next_cursor != cursor_pos) {
+                    EnsureLiveConsole();
+                    cursor_pos = next_cursor;
+                    RenderInputLine();
+                    RefreshInputLine();
+                }
+            }
+            if (((prev_buttons & 0x01) != 0) && ((now_buttons & 0x01) == 0)) {
+                selecting_with_mouse = false;
+            }
+            if ((pressed & 0x01) != 0 && !HasSelection()) {  // Left click
+                EnsureLiveConsole();
+                if (click_row == input_row && click_col >= input_col) {
+                    int next_cursor = click_col - input_col;
+                    if (next_cursor < 0) next_cursor = 0;
+                    if (next_cursor > command_len) next_cursor = command_len;
+                    cursor_pos = next_cursor;
+                    RenderInputLine();
+                    RefreshInputLine();
+                }
+            }
+        } else {
+            if (g_xhci_hid_auto_enabled &&
+                (CurrentTick() - g_last_absolute_mouse_tick) < 1000) {
+                return;  // USB absolute pointer is active; ignore noisy PS/2 relative moves.
+            }
+            mouse_cursor->Move(msg.dx, msg.dy);
+        }
+        if (msg.wheel > 0) {
+            console->ScrollUp(msg.wheel * 3);
+            RefreshConsole();
+        } else if (msg.wheel < 0) {
+            console->ScrollDown((-msg.wheel) * 3);
+            RefreshConsole();
+        }
+    };
+
     while (1) {
         // 処理すべきイベントがあるか、割り込みを禁止(cli)した上で安全にチェックする（競合対策）
         __asm__ volatile("cli");
@@ -1907,74 +1976,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         // 取り出したメッセージの種類ごとに重い処理（状態の更新）を行う
         switch (msg.type) {
             case Message::Type::kInterruptMouse:
-                {
-                const uint8_t prev_buttons = g_mouse_buttons_current;
-                const uint8_t now_buttons = msg.buttons;
-                const uint8_t pressed = static_cast<uint8_t>((~prev_buttons) & now_buttons);
-                if ((pressed & 0x01) != 0) { ++g_mouse_left_press_count; }
-                if ((pressed & 0x02) != 0) { ++g_mouse_right_press_count; }
-                if ((pressed & 0x04) != 0) { ++g_mouse_middle_press_count; }
-                g_mouse_buttons_current = now_buttons;
-
-                if (msg.pointer_mode == Message::PointerMode::kAbsolute) {
-                    g_last_absolute_mouse_tick = CurrentTick();
-                    mouse_cursor->SetPosition(msg.x, msg.y);
-                    const int click_col = (msg.x - Console::kMarginX) / Console::kCellWidth;
-                    const int click_row = (msg.y - Console::kMarginY) / Console::kCellHeight;
-                    if ((pressed & 0x01) != 0) {
-                        selecting_with_mouse = true;
-                        if (click_row == input_row && click_col >= input_col) {
-                            int at = click_col - input_col;
-                            if (at < 0) at = 0;
-                            if (at > command_len) at = command_len;
-                            selection_anchor = at;
-                            selection_end = at;
-                        } else {
-                            ClearSelection();
-                        }
-                    }
-                    if ((now_buttons & 0x01) != 0 && selecting_with_mouse &&
-                        click_row == input_row && click_col >= input_col) {
-                        int next_cursor = click_col - input_col;
-                        if (next_cursor < 0) next_cursor = 0;
-                        if (next_cursor > command_len) next_cursor = command_len;
-                        selection_end = next_cursor;
-                        if (next_cursor != cursor_pos) {
-                            EnsureLiveConsole();
-                            cursor_pos = next_cursor;
-                            RenderInputLine();
-                            RefreshInputLine();
-                        }
-                    }
-                    if (((prev_buttons & 0x01) != 0) && ((now_buttons & 0x01) == 0)) {
-                        selecting_with_mouse = false;
-                    }
-                    if ((pressed & 0x01) != 0 && !HasSelection()) {  // Left click
-                        EnsureLiveConsole();
-                        if (click_row == input_row && click_col >= input_col) {
-                            int next_cursor = click_col - input_col;
-                            if (next_cursor < 0) next_cursor = 0;
-                            if (next_cursor > command_len) next_cursor = command_len;
-                            cursor_pos = next_cursor;
-                            RenderInputLine();
-                            RefreshInputLine();
-                        }
-                    }
-                } else {
-                    if (g_xhci_hid_auto_enabled &&
-                        (CurrentTick() - g_last_absolute_mouse_tick) < 1000) {
-                        break;  // USB absolute pointer is active; ignore noisy PS/2 relative moves.
-                    }
-                    mouse_cursor->Move(msg.dx, msg.dy);
-                }
-                if (msg.wheel > 0) {
-                    console->ScrollUp(msg.wheel * 3);
-                    RefreshConsole();
-                } else if (msg.wheel < 0) {
-                    console->ScrollDown((-msg.wheel) * 3);
-                    RefreshConsole();
-                }
-                }
+                HandleMouseMessage(msg);
                 break;
             case Message::Type::kInterruptKeyboard:
                 if (msg.keycode == 0xE0) {
