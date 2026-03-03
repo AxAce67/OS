@@ -126,7 +126,7 @@ ShellPair g_vars[16];
 ShellPair g_aliases[16];
 ShellDir g_dirs[32];
 ShellFile g_files[64];
-bool g_key_repeat_enabled = true;
+bool g_key_repeat_enabled = false;
 bool g_jp_layout = false;
 const BootInfo* g_boot_info = nullptr;
 bool g_dirs_initialized = false;
@@ -165,6 +165,9 @@ uint64_t g_mouse_left_press_count = 0;
 uint64_t g_mouse_right_press_count = 0;
 uint64_t g_mouse_middle_press_count = 0;
 uint64_t g_last_absolute_mouse_tick = 0;
+int g_last_abs_dispatched_x = -1;
+int g_last_abs_dispatched_y = -1;
+uint8_t g_last_abs_dispatched_buttons = 0;
 
 int ClampInt(int v, int min_v, int max_v) {
     if (v < min_v) return min_v;
@@ -341,6 +344,9 @@ void ResetHIDDecodeLearning() {
     g_hid_smooth_x = -1;
     g_hid_smooth_y = -1;
     g_hid_buttons_mask = 0;
+    g_last_abs_dispatched_x = -1;
+    g_last_abs_dispatched_y = -1;
+    g_last_abs_dispatched_buttons = 0;
 }
 
 bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t timeout_iters = 3000000) {
@@ -379,7 +385,23 @@ bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t time
     }
     g_hid_buttons_mask = buttons;
 
+    // Suppress tiny absolute-pointer jitter to avoid cursor flicker while typing.
+    if (g_last_abs_dispatched_x >= 0 && g_last_abs_dispatched_y >= 0) {
+        const int dx = x - g_last_abs_dispatched_x;
+        const int dy = y - g_last_abs_dispatched_y;
+        const int adx = (dx < 0) ? -dx : dx;
+        const int ady = (dy < 0) ? -dy : dy;
+        if (wheel == 0 &&
+            buttons == g_last_abs_dispatched_buttons &&
+            adx <= 1 && ady <= 1) {
+            return true;
+        }
+    }
+
     EnqueueAbsolutePointerEvent(x, y, wheel, buttons);
+    g_last_abs_dispatched_x = x;
+    g_last_abs_dispatched_y = y;
+    g_last_abs_dispatched_buttons = buttons;
     if (verbose) {
         console->Print("xhcihidpoll: x=");
         console->PrintDec(x);
