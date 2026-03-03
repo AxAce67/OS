@@ -3111,6 +3111,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     auto RefreshConsole = [&]() {
         layer_manager->Draw(0, 0, console->PixelWidth(), console->PixelHeight());
     };
+    auto RefreshInputLine = [&]() {
+        int x = Console::kMarginX + input_col * Console::kCellWidth;
+        int y = Console::kMarginY + input_row * Console::kCellHeight;
+        int w = (console->Columns() - input_col) * Console::kCellWidth;
+        int h = Console::kCellHeight;
+        if (w < 1) w = 1;
+        if (h < 1) h = 1;
+        layer_manager->Draw(x, y, w, h);
+    };
     auto EnsureLiveConsole = [&]() {
         if (console->IsScrolled()) {
             console->ResetScroll();
@@ -3181,7 +3190,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         cursor_pos = command_len;
         ClearSelection();
         RenderInputLine();
-        RefreshConsole();
+        RefreshInputLine();
     };
 
     auto DeleteSelection = [&]() -> bool {
@@ -3206,7 +3215,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         cursor_pos = sel_start;
         ClearSelection();
         RenderInputLine();
-        RefreshConsole();
+        RefreshInputLine();
         return true;
     };
 
@@ -3224,7 +3233,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         --cursor_pos;
         command_buffer[command_len] = '\0';
         RenderInputLine();
-        RefreshConsole();
+        RefreshInputLine();
     };
 
     auto DeleteAtCursor = [&]() {
@@ -3241,7 +3250,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             --command_len;
             command_buffer[command_len] = '\0';
             RenderInputLine();
-            RefreshConsole();
+            RefreshInputLine();
             return;
         }
         // ユーザー体験優先: 行末でDeleteが押されたらBackspace相当で1文字消す
@@ -3287,7 +3296,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         rendered_len = 0;
         cursor_pos = command_len;
         RenderInputLine();
-        RefreshConsole();
+        RefreshInputLine();
     };
 
     auto BrowseHistoryUp = [&]() {
@@ -3396,7 +3405,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             EnsureLiveConsole();
                             cursor_pos = next_cursor;
                             RenderInputLine();
-                            RefreshConsole();
+                            RefreshInputLine();
                         }
                     }
                     if (((prev_buttons & 0x01) != 0) && ((now_buttons & 0x01) == 0)) {
@@ -3410,7 +3419,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             if (next_cursor > command_len) next_cursor = command_len;
                             cursor_pos = next_cursor;
                             RenderInputLine();
-                            RefreshConsole();
+                            RefreshInputLine();
                         }
                     }
                 } else {
@@ -3460,7 +3469,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             ClearSelection();
                             --cursor_pos;
                             RenderInputLine();
-                            RefreshConsole();
+                            RefreshInputLine();
                         }
                     } else if ((ext & 0x7F) == 0x4D) { // Arrow Right
                         EnsureLiveConsole();
@@ -3468,20 +3477,20 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             ClearSelection();
                             ++cursor_pos;
                             RenderInputLine();
-                            RefreshConsole();
+                            RefreshInputLine();
                         }
                     } else if ((ext & 0x7F) == 0x47) { // Home
                         EnsureLiveConsole();
                         ClearSelection();
                         cursor_pos = 0;
                         RenderInputLine();
-                        RefreshConsole();
+                        RefreshInputLine();
                     } else if ((ext & 0x7F) == 0x4F) { // End
                         EnsureLiveConsole();
                         ClearSelection();
                         cursor_pos = command_len;
                         RenderInputLine();
-                        RefreshConsole();
+                        RefreshInputLine();
                     } else if ((ext & 0x7F) == 0x48) { // Arrow Up
                         EnsureLiveConsole();
                         BrowseHistoryUp();
@@ -3515,7 +3524,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             ClearSelection();
                             cursor_pos = 0;
                             RenderInputLine();
-                            RefreshConsole();
+                            RefreshInputLine();
                             break;
                         }
                         if (key == 0x12) { // Ctrl + E
@@ -3523,7 +3532,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             ClearSelection();
                             cursor_pos = command_len;
                             RenderInputLine();
-                            RefreshConsole();
+                            RefreshInputLine();
                             break;
                         }
                         if (key == 0x26) { // Ctrl + L
@@ -3539,7 +3548,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             history_nav = -1;
                             draft_buffer[0] = '\0';
                             RenderInputLine();
-                            RefreshConsole();
+                            RefreshInputLine();
                             break;
                         }
                     }
@@ -3548,7 +3557,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         ClearSelection();
                         cursor_pos = 0;
                         RenderInputLine();
-                        RefreshConsole();
+                        RefreshInputLine();
                         break;
                     }
                     if (key == 0x48) { // Arrow Up (non-E0 fallback)
@@ -3561,7 +3570,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         ClearSelection();
                         cursor_pos = command_len;
                         RenderInputLine();
-                        RefreshConsole();
+                        RefreshInputLine();
                         break;
                     }
                     if (key == 0x50) { // Arrow Down (non-E0 fallback)
@@ -3589,6 +3598,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                              keyboard_state.caps_lock);
                     if (ch != 0) {
                         EnsureLiveConsole();
+                        bool full_refresh = false;
                         if (ch == '\n') {
                             console->SetCursorPosition(input_row, input_col + command_len);
                             console->Print("\n");
@@ -3626,6 +3636,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             input_row = console->CursorRow();
                             input_col = console->CursorColumn();
                             console->SetCursorPosition(input_row, input_col);
+                            full_refresh = true;
                         } else if (IsPrintableAscii(ch)) {
                             DeleteSelection();
                             if (command_len < MaxInputLen()) {
@@ -3639,7 +3650,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                 RenderInputLine();
                             }
                         }
-                        RefreshConsole();
+                        if (full_refresh) {
+                            RefreshConsole();
+                        } else {
+                            RefreshInputLine();
+                        }
                     }
                 }
                 break;
