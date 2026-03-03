@@ -1006,6 +1006,8 @@ const char* const kBuiltInCommands[] = {
     "xhcistop",
     "xhcistart",
     "xhcireset",
+    "xhciinit",
+    "xhcienableslot",
     "mouseabs",
     "usbports",
 };
@@ -1063,7 +1065,7 @@ void ExecuteCommand(const char* command) {
         console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
         console->PrintLine("help: fs2   rm rmdir mv ls stat cat");
         console->PrintLine("help: misc  history clearhistory inputstat about");
-        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset mouseabs usbports");
+        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot mouseabs usbports");
         return;
     }
 
@@ -1186,6 +1188,39 @@ void ExecuteCommand(const char* command) {
         } else {
             console->PrintLine("xhcireset: timeout");
         }
+        return;
+    }
+
+    if (StrEqual(cmd, "xhciinit")) {
+        if (!g_xhci_caps.valid) {
+            console->PrintLine("xhciinit: xhci not ready");
+            return;
+        }
+        if (XHCIInitializeCommandAndEventRings(g_xhci_caps)) {
+            console->PrintLine("xhciinit: ok");
+        } else {
+            console->PrintLine("xhciinit: failed");
+        }
+        return;
+    }
+
+    if (StrEqual(cmd, "xhcienableslot")) {
+        if (!g_xhci_caps.valid) {
+            console->PrintLine("xhcienableslot: xhci not ready");
+            return;
+        }
+        XHCICommandResult r{};
+        if (!XHCIEnableSlot(g_xhci_caps, &r)) {
+            console->PrintLine("xhcienableslot: timeout/fail");
+            return;
+        }
+        console->Print("xhcienableslot: type=");
+        console->PrintDec(r.trb_type);
+        console->Print(" ccode=");
+        console->PrintDec(r.completion_code);
+        console->Print(" slot=");
+        console->PrintDec(r.slot_id);
+        console->Print("\n");
         return;
     }
 

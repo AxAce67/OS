@@ -1,6 +1,30 @@
 #include "xhci.hpp"
 
 namespace {
+struct alignas(16) TRB {
+    uint32_t dword0;
+    uint32_t dword1;
+    uint32_t dword2;
+    uint32_t dword3;
+};
+
+struct alignas(64) EventRingSegmentTableEntry {
+    uint64_t ring_segment_base;
+    uint16_t ring_segment_size;
+    uint16_t rsvd0;
+    uint32_t rsvd1;
+};
+
+alignas(64) uint64_t g_dcbaa[256];
+alignas(64) TRB g_command_ring[256];
+alignas(64) TRB g_event_ring[256];
+alignas(64) EventRingSegmentTableEntry g_erst[1];
+bool g_rings_initialized = false;
+uint32_t g_command_enqueue_index = 0;
+uint8_t g_command_cycle_bit = 1;
+uint32_t g_event_dequeue_index = 0;
+uint8_t g_event_cycle_bit = 1;
+
 uint8_t ReadMMIO8(uint64_t addr) {
     volatile const uint8_t* p = reinterpret_cast<volatile const uint8_t*>(addr);
     return *p;
@@ -21,10 +45,22 @@ void WriteMMIO32(uint64_t addr, uint32_t value) {
     *p = value;
 }
 
+void WriteMMIO64(uint64_t addr, uint64_t value) {
+    WriteMMIO32(addr, static_cast<uint32_t>(value & 0xFFFFFFFFu));
+    WriteMMIO32(addr + 4, static_cast<uint32_t>(value >> 32));
+}
+
 uint64_t ReadMMIO64(uint64_t addr) {
     const uint64_t lo = ReadMMIO32(addr);
     const uint64_t hi = ReadMMIO32(addr + 4);
     return lo | (hi << 32);
+}
+
+void MemorySet(void* p, uint8_t v, uint32_t n) {
+    uint8_t* b = reinterpret_cast<uint8_t*>(p);
+    for (uint32_t i = 0; i < n; ++i) {
+        b[i] = v;
+    }
 }
 }  // namespace
 
@@ -54,7 +90,7 @@ bool ProbeXHCIController(const XHCIControllerInfo& controller, XHCICapabilityInf
     out_info->rts_off = rts_off;
     out_info->operational_base = base + cap_length;
     out_info->max_slots = static_cast<uint8_t>(hcs_params1 & 0xFF);
-    out_info->max_interrupters = static_cast<uint8_t>((hcs_params1 >> 8) & 0x7FF);
+    out_info->max_interrupters = static_cast<uint16_t>((hcs_params1 >> 8) & 0x7FF);
     out_info->max_ports = static_cast<uint8_t>((hcs_params1 >> 24) & 0xFF);
     out_info->page_size_bitmap = static_cast<uint16_t>(ReadMMIO32(base + 0x08) & 0xFFFF);
     return true;
@@ -165,5 +201,133 @@ bool XHCIResetController(const XHCICapabilityInfo& info, uint32_t timeout_iters)
             return true;
         }
     }
+    return false;
+}
+
+bool XHCIInitializeCommandAndEventRings(const XHCICapabilityInfo& info) {
+    if (!info.valid) {
+        return false;
+    }
+
+    // Reset first so controller is in a known state.
+    if (!XHCIResetController(info)) {
+        return false;
+    }
+
+    MemorySet(g_dcbaa, 0, sizeof(g_dcbaa));
+    MemorySet(g_command_ring, 0, sizeof(g_command_ring));
+    MemorySet(g_event_ring, 0, sizeof(g_event_ring));
+    MemorySet(g_erst, 0, sizeof(g_erst));
+
+    // Command ring link TRB at last entry.
+    TRB& link = g_command_ring[255];
+    const uint64_t ring_base = reinterpret_cast<uint64_t>(&g_command_ring[0]);
+    link.dword0 = static_cast<uint32_t>(ring_base & 0xFFFFFFFFu);
+    link.dword1 = static_cast<uint32_t>(ring_base >> 32);
+    link.dword2 = 0;
+    // Type=Link(6), Toggle Cycle=1.
+    link.dword3 = (6u << 10) | (1u << 1);
+
+    g_erst[0].ring_segment_base = reinterpret_cast<uint64_t>(&g_event_ring[0]);
+    g_erst[0].ring_segment_size = 256;
+
+    const uint64_t op = info.operational_base;
+    const uint64_t runtime = (reinterpret_cast<uint64_t>(info.operational_base) - info.cap_length) + (info.rts_off & ~0x1Fu);
+    const uint64_t intr0 = runtime + 0x20;
+
+    // Program DCBAAP and command ring.
+    WriteMMIO64(op + 0x30, reinterpret_cast<uint64_t>(&g_dcbaa[0]));
+    WriteMMIO64(op + 0x18, ring_base | 1u);  // RCS=1
+
+    // Program event ring for interrupter 0.
+    WriteMMIO32(intr0 + 0x08, 1);  // ERSTSZ
+    WriteMMIO64(intr0 + 0x10, reinterpret_cast<uint64_t>(&g_erst[0]));  // ERSTBA
+    WriteMMIO64(intr0 + 0x18, reinterpret_cast<uint64_t>(&g_event_ring[0]));  // ERDP
+
+    // Set MaxSlotsEn (lower 8 bits in CONFIG)
+    uint32_t config = ReadMMIO32(op + 0x38);
+    config &= ~0xFFu;
+    config |= (info.max_slots == 0 ? 1 : info.max_slots);
+    WriteMMIO32(op + 0x38, config);
+
+    g_command_enqueue_index = 0;
+    g_command_cycle_bit = 1;
+    g_event_dequeue_index = 0;
+    g_event_cycle_bit = 1;
+    g_rings_initialized = true;
+
+    // Start controller so command/event path is active.
+    return XHCISetRunStop(info, true);
+}
+
+bool XHCIEnableSlot(const XHCICapabilityInfo& info, XHCICommandResult* out_result, uint32_t timeout_iters) {
+    if (out_result == nullptr) {
+        return false;
+    }
+    out_result->ok = false;
+    out_result->completion_code = 0;
+    out_result->slot_id = 0;
+    out_result->trb_type = 0;
+
+    if (!info.valid) {
+        return false;
+    }
+    if (!g_rings_initialized) {
+        if (!XHCIInitializeCommandAndEventRings(info)) {
+            return false;
+        }
+    }
+
+    if (g_command_enqueue_index >= 255) {
+        g_command_enqueue_index = 0;
+    }
+
+    TRB& cmd = g_command_ring[g_command_enqueue_index];
+    cmd.dword0 = 0;
+    cmd.dword1 = 0;
+    cmd.dword2 = 0;
+    // Type=Enable Slot(9), Cycle bit=current producer cycle.
+    cmd.dword3 = (9u << 10) | (g_command_cycle_bit ? 1u : 0u);
+    ++g_command_enqueue_index;
+    if (g_command_enqueue_index == 255) {
+        g_command_enqueue_index = 0;
+        g_command_cycle_bit ^= 1;
+    }
+
+    const uint64_t db = (reinterpret_cast<uint64_t>(info.operational_base) - info.cap_length) + (info.db_off & ~0x3u);
+    WriteMMIO32(db + 0x00, 0);  // Ring command doorbell
+
+    // Poll event ring for Command Completion Event.
+    for (uint32_t i = 0; i < timeout_iters; ++i) {
+        TRB& ev = g_event_ring[g_event_dequeue_index];
+        const uint8_t cycle = static_cast<uint8_t>(ev.dword3 & 1u);
+        if (cycle != g_event_cycle_bit) {
+            continue;
+        }
+
+        const uint8_t type = static_cast<uint8_t>((ev.dword3 >> 10) & 0x3Fu);
+        const uint8_t ccode = static_cast<uint8_t>((ev.dword2 >> 24) & 0xFFu);
+        const uint8_t slot_id = static_cast<uint8_t>((ev.dword3 >> 24) & 0xFFu);
+
+        out_result->trb_type = type;
+        out_result->completion_code = ccode;
+        out_result->slot_id = slot_id;
+        out_result->ok = (type == 33 && ccode == 1);
+
+        // Advance consumer pointer.
+        ++g_event_dequeue_index;
+        if (g_event_dequeue_index >= 256) {
+            g_event_dequeue_index = 0;
+            g_event_cycle_bit ^= 1;
+        }
+
+        const uint64_t runtime = (reinterpret_cast<uint64_t>(info.operational_base) - info.cap_length) + (info.rts_off & ~0x1Fu);
+        const uint64_t intr0 = runtime + 0x20;
+        const uint64_t erdp_addr = intr0 + 0x18;
+        const uint64_t new_erdp = reinterpret_cast<uint64_t>(&g_event_ring[g_event_dequeue_index]) | (1u << 3);
+        WriteMMIO64(erdp_addr, new_erdp);
+        return true;
+    }
+
     return false;
 }

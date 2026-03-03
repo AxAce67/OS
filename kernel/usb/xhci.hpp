@@ -43,9 +43,18 @@ struct XHCIOperationalStatus {
     bool port_change_detect;
 };
 
+struct XHCICommandResult {
+    bool ok;
+    uint8_t completion_code;
+    uint8_t slot_id;
+    uint8_t trb_type;
+};
+
 bool ProbeXHCIController(const XHCIControllerInfo& controller, XHCICapabilityInfo* out_info);
 int XHCIMaxPorts(const XHCICapabilityInfo& info);
 int ReadXHCIPortStatus(const XHCICapabilityInfo& info, XHCIPortStatus* ports, int max_ports);
 bool ReadXHCIOperationalStatus(const XHCICapabilityInfo& info, XHCIOperationalStatus* out_status);
 bool XHCISetRunStop(const XHCICapabilityInfo& info, bool run, uint32_t timeout_iters = 1000000);
 bool XHCIResetController(const XHCICapabilityInfo& info, uint32_t timeout_iters = 2000000);
+bool XHCIInitializeCommandAndEventRings(const XHCICapabilityInfo& info);
+bool XHCIEnableSlot(const XHCICapabilityInfo& info, XHCICommandResult* out_result, uint32_t timeout_iters = 3000000);
