@@ -137,6 +137,10 @@ bool g_xhci_hid_auto_enabled = false;
 uint8_t g_xhci_hid_auto_slot = 0;
 uint32_t g_xhci_hid_auto_len = 8;
 uint64_t g_xhci_hid_last_poll_tick = 0;
+const bool kAutoStartXHCIHID = true;
+const uint32_t kAutoStartHIDLen = 8;
+const uint16_t kAutoStartHIDMps = 8;
+const uint8_t kAutoStartHIDInterval = 4;
 uint8_t g_hid_format_mode = 0;  // 0=unknown,1=A,2=B
 uint32_t g_hid_observed_max_raw = 0;
 uint32_t g_hid_sample_count = 0;
@@ -2933,6 +2937,19 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             console->Print(" rts=0x");
             console->PrintHex(g_xhci_caps.rts_off, 8);
             console->Print("\n");
+
+            if (kAutoStartXHCIHID) {
+                ResetHIDDecodeLearning();
+                if (StartXHCIAutoMouse(kAutoStartHIDLen, kAutoStartHIDMps, kAutoStartHIDInterval)) {
+                    console->Print("xHCI HID auto-start: ok (slot=");
+                    console->PrintDec(g_xhci_hid_auto_slot);
+                    console->Print(", len=");
+                    console->PrintDec(g_xhci_hid_auto_len);
+                    console->Print(")\n");
+                } else {
+                    console->PrintLine("xHCI HID auto-start: failed");
+                }
+            }
         }
     } else {
         console->Print("xHCI not found.\n");
