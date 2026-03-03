@@ -140,6 +140,7 @@ bool MapHIDUsageToSet1(uint8_t usage, Set1Code* out) {
         case 0x61: out->code = 0x49; out->extended = false; return true; // Keypad 9
         case 0x62: out->code = 0x52; out->extended = false; return true; // Keypad 0
         case 0x63: out->code = 0x53; out->extended = false; return true; // Keypad .
+        case 0x64: out->code = 0x56; out->extended = false; return true; // Non-US key (ISO/JIS extra key)
         default:
             return false;
     }

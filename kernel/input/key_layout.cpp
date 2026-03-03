@@ -24,6 +24,7 @@ char KeycodeToAsciiByLayout(uint8_t keycode, bool shift, bool caps_lock, bool jp
             case 0x33: return shift ? '<' : ',';
             case 0x34: return shift ? '>' : '.';
             case 0x35: return shift ? '?' : '/';
+            case 0x56: return shift ? '_' : '\\';
             default: break;
         }
     }
@@ -75,9 +76,9 @@ char KeycodeToAsciiByLayout(uint8_t keycode, bool shift, bool caps_lock, bool jp
         case 0x33: return shift ? '<' : ',';
         case 0x34: return shift ? '>' : '.';
         case 0x35: return shift ? '?' : '/';
+        case 0x56: return shift ? '>' : '<';
         case 0x39: return ' ';
         case 0x1C: return '\n';
         default: return 0;
     }
 }
-
