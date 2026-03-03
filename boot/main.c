@@ -21,6 +21,113 @@ static int IsEfiError(EFI_STATUS status) {
     return status != EFI_SUCCESS;
 }
 
+static void Char16ToAscii(const CHAR16* src, char* dst, UINTN dst_len) {
+    if (dst_len == 0) {
+        return;
+    }
+    UINTN i = 0;
+    for (; i + 1 < dst_len && src[i] != 0; ++i) {
+        CHAR16 ch = src[i];
+        dst[i] = (ch <= 0x7F) ? (char)ch : '?';
+    }
+    dst[i] = '\0';
+}
+
+static void CopyAscii(char* dst, const char* src, UINTN dst_len) {
+    if (dst_len == 0) {
+        return;
+    }
+    UINTN i = 0;
+    for (; i + 1 < dst_len && src[i] != '\0'; ++i) {
+        dst[i] = src[i];
+    }
+    dst[i] = '\0';
+}
+
+static EFI_STATUS LoadBootFileSystem(
+    EFI_FILE_PROTOCOL* root,
+    EFI_SYSTEM_TABLE* SystemTable,
+    struct BootFileSystem** out_boot_fs) {
+
+    *out_boot_fs = NULL;
+    struct BootFileSystem* boot_fs = NULL;
+    EFI_STATUS status = SystemTable->BootServices->AllocatePool(
+        EfiLoaderData, sizeof(struct BootFileSystem), (void**)&boot_fs);
+    if (IsEfiError(status) || boot_fs == NULL) {
+        return status;
+    }
+    SystemTable->BootServices->SetMem(boot_fs, sizeof(struct BootFileSystem), 0);
+
+    if (root->SetPosition != NULL) {
+        root->SetPosition(root, 0);
+    }
+
+    while (boot_fs->file_count < kMaxBootFiles) {
+        uint8_t dir_info_buffer[512];
+        UINTN dir_info_size = sizeof(dir_info_buffer);
+        status = root->Read(root, &dir_info_size, dir_info_buffer);
+        if (IsEfiError(status)) {
+            break;
+        }
+        if (dir_info_size == 0) {
+            break;
+        }
+
+        EFI_FILE_INFO* dir_info = (EFI_FILE_INFO*)dir_info_buffer;
+        if (dir_info->FileName[0] == 0) {
+            continue;
+        }
+        if ((dir_info->Attribute & EFI_FILE_DIRECTORY) != 0) {
+            continue;
+        }
+
+        EFI_FILE_PROTOCOL* file = NULL;
+        status = root->Open(root, &file, dir_info->FileName, EFI_FILE_MODE_READ, 0);
+        if (IsEfiError(status) || file == NULL) {
+            continue;
+        }
+
+        uint8_t info_buffer[512];
+        UINTN info_size = sizeof(info_buffer);
+        status = file->GetInfo(file, (EFI_GUID*)&gEfiFileInfoGuid, &info_size, info_buffer);
+        if (IsEfiError(status)) {
+            file->Close(file);
+            continue;
+        }
+        EFI_FILE_INFO* info = (EFI_FILE_INFO*)info_buffer;
+        if (info->FileSize > kMaxBootFileDataSize) {
+            file->Close(file);
+            continue;
+        }
+
+        void* data = NULL;
+        status = SystemTable->BootServices->AllocatePool(EfiLoaderData, info->FileSize, &data);
+        if (IsEfiError(status) || data == NULL) {
+            file->Close(file);
+            continue;
+        }
+
+        UINTN read_size = info->FileSize;
+        status = file->Read(file, &read_size, data);
+        file->Close(file);
+        if (IsEfiError(status) || read_size != info->FileSize) {
+            SystemTable->BootServices->FreePool(data);
+            continue;
+        }
+
+        UINTN idx = boot_fs->file_count;
+        char ascii_name[kMaxBootFileNameLen];
+        Char16ToAscii(info->FileName, ascii_name, sizeof(ascii_name));
+        CopyAscii(boot_fs->files[idx].name, ascii_name, sizeof(boot_fs->files[idx].name));
+        boot_fs->files[idx].size = info->FileSize;
+        boot_fs->files[idx].data = (uint8_t*)data;
+        boot_fs->file_count++;
+    }
+
+    *out_boot_fs = boot_fs;
+    return EFI_SUCCESS;
+}
+
 EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *conOut = SystemTable->ConOut;
     conOut->ClearScreen(conOut);
@@ -116,6 +223,14 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
         while (1) {}
     }
     kernel_file->Close(kernel_file);
+
+    // 追加: ルートディレクトリのファイルをRAMへ読み込み、カーネル側の ls/cat 用に渡す
+    struct BootFileSystem* boot_fs = NULL;
+    status = LoadBootFileSystem(root, SystemTable, &boot_fs);
+    if (IsEfiError(status) || boot_fs == NULL) {
+        conOut->OutputString(conOut, L"Error: Failed to build boot file system.\r\n");
+        while (1) {}
+    }
 
     conOut->OutputString(conOut, L"Kernel loaded. Analyzing ELF header...\r\n");
 
@@ -235,6 +350,7 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     boot_info.memory_map          = (uint8_t*)memory_map;
     boot_info.memory_map_size     = memory_map_size;
     boot_info.descriptor_size     = descriptor_size;
+    boot_info.boot_fs             = boot_fs;
 
     kernel_main(&boot_info);
 
