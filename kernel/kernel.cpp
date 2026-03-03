@@ -160,6 +160,10 @@ int g_hid_smooth_y = -1;
 const int kHidSmoothAlphaNum = 1;  // 1/4 EMA
 const int kHidSmoothAlphaDen = 4;
 uint8_t g_hid_buttons_mask = 0;
+uint8_t g_mouse_buttons_current = 0;
+uint64_t g_mouse_left_press_count = 0;
+uint64_t g_mouse_right_press_count = 0;
+uint64_t g_mouse_middle_press_count = 0;
 
 int ClampInt(int v, int min_v, int max_v) {
     if (v < min_v) return min_v;
@@ -374,7 +378,7 @@ bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t time
     }
     g_hid_buttons_mask = buttons;
 
-    EnqueueAbsolutePointerEvent(x, y, wheel);
+    EnqueueAbsolutePointerEvent(x, y, wheel, buttons);
     if (verbose) {
         console->Print("xhcihidpoll: x=");
         console->PrintDec(x);
@@ -2440,6 +2444,14 @@ void ExecuteCommand(const char* command) {
         console->PrintDec(static_cast<int64_t>(g_keyboard_dropped_events));
         console->Print(" mouse_dropped=");
         console->PrintDec(static_cast<int64_t>(g_mouse_dropped_events));
+        console->Print(" btn=0x");
+        console->PrintHex(g_mouse_buttons_current, 2);
+        console->Print(" l=");
+        console->PrintDec(static_cast<int64_t>(g_mouse_left_press_count));
+        console->Print(" r=");
+        console->PrintDec(static_cast<int64_t>(g_mouse_right_press_count));
+        console->Print(" m=");
+        console->PrintDec(static_cast<int64_t>(g_mouse_middle_press_count));
         console->Print("\n");
         return;
     }
@@ -3235,6 +3247,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         // 取り出したメッセージの種類ごとに重い処理（状態の更新）を行う
         switch (msg.type) {
             case Message::Type::kInterruptMouse:
+                {
+                const uint8_t prev_buttons = g_mouse_buttons_current;
+                const uint8_t now_buttons = msg.buttons;
+                const uint8_t pressed = static_cast<uint8_t>((~prev_buttons) & now_buttons);
+                if ((pressed & 0x01) != 0) { ++g_mouse_left_press_count; }
+                if ((pressed & 0x02) != 0) { ++g_mouse_right_press_count; }
+                if ((pressed & 0x04) != 0) { ++g_mouse_middle_press_count; }
+                g_mouse_buttons_current = now_buttons;
+
                 if (msg.pointer_mode == Message::PointerMode::kAbsolute) {
                     mouse_cursor->SetPosition(msg.x, msg.y);
                 } else {
@@ -3246,6 +3267,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 } else if (msg.wheel < 0) {
                     console->ScrollDown((-msg.wheel) * 3);
                     RefreshConsole();
+                }
                 }
                 break;
             case Message::Type::kInterruptKeyboard:

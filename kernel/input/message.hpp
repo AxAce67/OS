@@ -17,5 +17,6 @@ struct Message {
     int32_t dx, dy;   // relative move
     int32_t x, y;     // absolute position
     int32_t wheel;
+    uint8_t buttons;
     uint8_t keycode;
 };

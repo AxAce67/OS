@@ -96,6 +96,7 @@ void IntHandlerMouse(InterruptFrame* frame) {
             msg.x = 0;
             msg.y = 0;
             msg.wheel = wheel;
+            msg.buttons = static_cast<uint8_t>(mouse_buf[0] & 0x07);
             msg.keycode = 0;
             if (!main_queue->Push(msg)) {
                 ++g_mouse_dropped_events;
@@ -119,6 +120,7 @@ void IntHandlerKeyboard(InterruptFrame* frame) {
         msg.x = 0;
         msg.y = 0;
         msg.wheel = 0;
+        msg.buttons = 0;
         msg.keycode = data;
         if (!main_queue->Push(msg)) {
             ++g_keyboard_dropped_events;
@@ -157,7 +159,7 @@ void InitializeInterruptHandlers() {
                            0);
 }
 
-void EnqueueAbsolutePointerEvent(int32_t x, int32_t y, int32_t wheel) {
+void EnqueueAbsolutePointerEvent(int32_t x, int32_t y, int32_t wheel, uint8_t buttons) {
     if (main_queue == nullptr) {
         return;
     }
@@ -169,6 +171,7 @@ void EnqueueAbsolutePointerEvent(int32_t x, int32_t y, int32_t wheel) {
     msg.x = x;
     msg.y = y;
     msg.wheel = wheel;
+    msg.buttons = buttons;
     msg.keycode = 0;
     if (!main_queue->Push(msg)) {
         ++g_mouse_dropped_events;
