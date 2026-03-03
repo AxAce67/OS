@@ -1929,6 +1929,307 @@ bool ExecuteWriteAppendCommand(const char* cmd, const char* command, int* pos_pt
     return true;
 }
 
+bool ExecuteCpCommand(const char* command, int* pos_ptr) {
+    int& pos = *pos_ptr;
+    char src_name[64];
+    char dst_name[64];
+    if (!NextToken(command, &pos, src_name, sizeof(src_name)) ||
+        !NextToken(command, &pos, dst_name, sizeof(dst_name))) {
+        console->PrintLine("cp: src and dst required");
+        return true;
+    }
+    char extra[8];
+    if (NextToken(command, &pos, extra, sizeof(extra))) {
+        console->PrintLine("cp: too many arguments");
+        return true;
+    }
+
+    char dst_path[96];
+    if (!ResolveFilePath(g_cwd, dst_name, dst_path, sizeof(dst_path))) {
+        console->PrintLine("cp: invalid destination");
+        return true;
+    }
+    if (DirectoryExists(dst_path)) {
+        console->PrintLine("cp: destination is directory");
+        return true;
+    }
+    if (FindBootFileByPath("/", dst_path) != nullptr && FindShellFileByAbsPath(dst_path) == nullptr) {
+        console->PrintLine("cp: destination conflicts with boot file");
+        return true;
+    }
+
+    const ShellFile* src_user_file = FindShellFileByPath(g_cwd, src_name);
+    const BootFileEntry* src_boot_file = nullptr;
+    if (src_user_file == nullptr) {
+        src_boot_file = FindBootFileByPath(g_cwd, src_name);
+    }
+    if (src_user_file == nullptr && src_boot_file == nullptr) {
+        console->Print("cp: not found: ");
+        console->PrintLine(src_name);
+        return true;
+    }
+
+    uint64_t src_size = 0;
+    const uint8_t* src_data = nullptr;
+    if (src_user_file != nullptr) {
+        src_size = src_user_file->size;
+        src_data = src_user_file->data;
+    } else {
+        src_size = src_boot_file->size;
+        src_data = src_boot_file->data;
+    }
+
+    ShellFile* dst_file = FindShellFileByAbsPathMutable(dst_path);
+    if (dst_file == nullptr) {
+        dst_file = CreateShellFile(dst_path);
+        if (dst_file == nullptr) {
+            console->PrintLine("cp: file table full");
+            return true;
+        }
+    }
+
+    const uint64_t max_size = sizeof(dst_file->data);
+    uint64_t copy_len = (src_size < max_size) ? src_size : max_size;
+    for (uint64_t i = 0; i < copy_len; ++i) {
+        dst_file->data[i] = src_data[i];
+    }
+    dst_file->size = copy_len;
+    if (copy_len < src_size) {
+        console->PrintLine("cp: truncated");
+    }
+    return true;
+}
+
+bool ExecuteRmCommand(const char* command, int* pos_ptr) {
+    int& pos = *pos_ptr;
+    char target[64];
+    if (!NextToken(command, &pos, target, sizeof(target))) {
+        console->PrintLine("rm: path required");
+        return true;
+    }
+    char extra[8];
+    if (NextToken(command, &pos, extra, sizeof(extra))) {
+        console->PrintLine("rm: too many arguments");
+        return true;
+    }
+    char resolved_path[96];
+    if (!ResolvePath(g_cwd, target, resolved_path, sizeof(resolved_path))) {
+        console->PrintLine("rm: invalid path");
+        return true;
+    }
+    if (StrEqual(resolved_path, "/")) {
+        console->PrintLine("rm: cannot remove /");
+        return true;
+    }
+    if (IsPathSameOrChild(g_cwd, resolved_path)) {
+        console->PrintLine("rm: path is in use");
+        return true;
+    }
+
+    ShellFile* file = FindShellFileByAbsPathMutable(resolved_path);
+    if (file != nullptr) {
+        file->used = false;
+        file->path[0] = '\0';
+        file->size = 0;
+        return true;
+    }
+
+    if (FindBootFileByPath(g_cwd, target) != nullptr) {
+        console->PrintLine("rm: boot file is read-only");
+        return true;
+    }
+
+    ShellDir* dir = FindDirectoryMutable(resolved_path);
+    if (dir != nullptr) {
+        if (!IsDirectoryEmpty(resolved_path)) {
+            console->PrintLine("rm: directory not empty");
+            return true;
+        }
+        dir->used = false;
+        dir->path[0] = '\0';
+        return true;
+    }
+
+    console->Print("rm: not found: ");
+    console->PrintLine(target);
+    return true;
+}
+
+bool ExecuteRmdirCommand(const char* command, int* pos_ptr) {
+    int& pos = *pos_ptr;
+    char target[64];
+    if (!NextToken(command, &pos, target, sizeof(target))) {
+        console->PrintLine("rmdir: path required");
+        return true;
+    }
+    char extra[8];
+    if (NextToken(command, &pos, extra, sizeof(extra))) {
+        console->PrintLine("rmdir: too many arguments");
+        return true;
+    }
+    char resolved_path[96];
+    if (!ResolvePath(g_cwd, target, resolved_path, sizeof(resolved_path))) {
+        console->PrintLine("rmdir: invalid path");
+        return true;
+    }
+    if (StrEqual(resolved_path, "/")) {
+        console->PrintLine("rmdir: cannot remove /");
+        return true;
+    }
+    if (IsPathSameOrChild(g_cwd, resolved_path)) {
+        console->PrintLine("rmdir: path is in use");
+        return true;
+    }
+    ShellDir* dir = FindDirectoryMutable(resolved_path);
+    if (dir == nullptr) {
+        if (FindBootFileByPath(g_cwd, target) != nullptr || FindShellFileByPath(g_cwd, target) != nullptr) {
+            console->PrintLine("rmdir: not a directory");
+        } else {
+            console->Print("rmdir: not found: ");
+            console->PrintLine(target);
+        }
+        return true;
+    }
+    if (!IsDirectoryEmpty(resolved_path)) {
+        console->PrintLine("rmdir: directory not empty");
+        return true;
+    }
+    dir->used = false;
+    dir->path[0] = '\0';
+    return true;
+}
+
+bool ExecuteMvCommand(const char* command, int* pos_ptr) {
+    int& pos = *pos_ptr;
+    char src_name[64];
+    char dst_name[64];
+    if (!NextToken(command, &pos, src_name, sizeof(src_name)) ||
+        !NextToken(command, &pos, dst_name, sizeof(dst_name))) {
+        console->PrintLine("mv: src and dst required");
+        return true;
+    }
+    char extra[8];
+    if (NextToken(command, &pos, extra, sizeof(extra))) {
+        console->PrintLine("mv: too many arguments");
+        return true;
+    }
+
+    char src_path[96];
+    char dst_path[96];
+    if (!ResolvePath(g_cwd, src_name, src_path, sizeof(src_path)) ||
+        !ResolvePath(g_cwd, dst_name, dst_path, sizeof(dst_path))) {
+        console->PrintLine("mv: invalid path");
+        return true;
+    }
+    if (StrEqual(src_path, "/")) {
+        console->PrintLine("mv: cannot move /");
+        return true;
+    }
+
+    char dst_parent[96];
+    if (!GetParentPath(dst_path, dst_parent, sizeof(dst_parent)) || !DirectoryExists(dst_parent)) {
+        console->PrintLine("mv: destination parent missing");
+        return true;
+    }
+    if (DirectoryExists(dst_path) || FindShellFileByAbsPath(dst_path) != nullptr) {
+        console->PrintLine("mv: destination exists");
+        return true;
+    }
+    if (FindBootFileByPath("/", dst_path) != nullptr) {
+        console->PrintLine("mv: destination conflicts with boot file");
+        return true;
+    }
+
+    ShellFile* src_file = FindShellFileByAbsPathMutable(src_path);
+    if (src_file != nullptr) {
+        src_file->path[0] = '\0';
+        CopyString(src_file->path, dst_path, sizeof(src_file->path));
+        return true;
+    }
+
+    if (FindBootFileByPath("/", src_path) != nullptr) {
+        console->PrintLine("mv: boot file is read-only");
+        return true;
+    }
+
+    ShellDir* src_dir = FindDirectoryMutable(src_path);
+    if (src_dir == nullptr) {
+        console->Print("mv: not found: ");
+        console->PrintLine(src_name);
+        return true;
+    }
+    if (IsPathSameOrChild(dst_path, src_path)) {
+        console->PrintLine("mv: invalid destination");
+        return true;
+    }
+
+    char new_path[96];
+    for (int i = 0; i < static_cast<int>(sizeof(g_dirs) / sizeof(g_dirs[0])); ++i) {
+        if (!g_dirs[i].used || !IsPathSameOrChild(g_dirs[i].path, src_path)) {
+            continue;
+        }
+        if (!BuildMovedPath(g_dirs[i].path, src_path, dst_path, new_path, sizeof(new_path))) {
+            console->PrintLine("mv: path too long");
+            return true;
+        }
+        if (DirectoryExistsOutsideMove(new_path, src_path) ||
+            ShellFileExistsOutsideMove(new_path, src_path)) {
+            console->PrintLine("mv: destination exists");
+            return true;
+        }
+    }
+    for (int i = 0; i < static_cast<int>(sizeof(g_files) / sizeof(g_files[0])); ++i) {
+        if (!g_files[i].used || !IsPathSameOrChild(g_files[i].path, src_path)) {
+            continue;
+        }
+        if (!BuildMovedPath(g_files[i].path, src_path, dst_path, new_path, sizeof(new_path))) {
+            console->PrintLine("mv: path too long");
+            return true;
+        }
+        if (DirectoryExistsOutsideMove(new_path, src_path) ||
+            ShellFileExistsOutsideMove(new_path, src_path)) {
+            console->PrintLine("mv: destination exists");
+            return true;
+        }
+        if (FindBootFileByPath("/", new_path) != nullptr) {
+            console->PrintLine("mv: destination conflicts with boot file");
+            return true;
+        }
+    }
+
+    for (int i = 0; i < static_cast<int>(sizeof(g_dirs) / sizeof(g_dirs[0])); ++i) {
+        if (!g_dirs[i].used) {
+            continue;
+        }
+        if (!IsPathSameOrChild(g_dirs[i].path, src_path)) {
+            continue;
+        }
+        if (!BuildMovedPath(g_dirs[i].path, src_path, dst_path, new_path, sizeof(new_path))) {
+            console->PrintLine("mv: path too long");
+            return true;
+        }
+        CopyString(g_dirs[i].path, new_path, sizeof(g_dirs[i].path));
+    }
+    for (int i = 0; i < static_cast<int>(sizeof(g_files) / sizeof(g_files[0])); ++i) {
+        if (!g_files[i].used) {
+            continue;
+        }
+        if (!IsPathSameOrChild(g_files[i].path, src_path)) {
+            continue;
+        }
+        if (!BuildMovedPath(g_files[i].path, src_path, dst_path, new_path, sizeof(new_path))) {
+            console->PrintLine("mv: path too long");
+            return true;
+        }
+        CopyString(g_files[i].path, new_path, sizeof(g_files[i].path));
+    }
+    if (IsPathSameOrChild(g_cwd, src_path) &&
+        BuildMovedPath(g_cwd, src_path, dst_path, new_path, sizeof(new_path))) {
+        CopyString(g_cwd, new_path, sizeof(g_cwd));
+    }
+    return true;
+}
+
 void ExecuteCommand(const char* command) {
     if (command[0] == '\0') {
         return;
@@ -2531,299 +2832,22 @@ void ExecuteCommand(const char* command) {
     }
 
     if (StrEqual(cmd, "cp")) {
-        char src_name[64];
-        char dst_name[64];
-        if (!NextToken(command, &pos, src_name, sizeof(src_name)) ||
-            !NextToken(command, &pos, dst_name, sizeof(dst_name))) {
-            console->PrintLine("cp: src and dst required");
-            return;
-        }
-        char extra[8];
-        if (NextToken(command, &pos, extra, sizeof(extra))) {
-            console->PrintLine("cp: too many arguments");
-            return;
-        }
-
-        char dst_path[96];
-        if (!ResolveFilePath(g_cwd, dst_name, dst_path, sizeof(dst_path))) {
-            console->PrintLine("cp: invalid destination");
-            return;
-        }
-        if (DirectoryExists(dst_path)) {
-            console->PrintLine("cp: destination is directory");
-            return;
-        }
-        if (FindBootFileByPath("/", dst_path) != nullptr && FindShellFileByAbsPath(dst_path) == nullptr) {
-            console->PrintLine("cp: destination conflicts with boot file");
-            return;
-        }
-
-        const ShellFile* src_user_file = FindShellFileByPath(g_cwd, src_name);
-        const BootFileEntry* src_boot_file = nullptr;
-        if (src_user_file == nullptr) {
-            src_boot_file = FindBootFileByPath(g_cwd, src_name);
-        }
-        if (src_user_file == nullptr && src_boot_file == nullptr) {
-            console->Print("cp: not found: ");
-            console->PrintLine(src_name);
-            return;
-        }
-
-        uint64_t src_size = 0;
-        const uint8_t* src_data = nullptr;
-        if (src_user_file != nullptr) {
-            src_size = src_user_file->size;
-            src_data = src_user_file->data;
-        } else {
-            src_size = src_boot_file->size;
-            src_data = src_boot_file->data;
-        }
-
-        ShellFile* dst_file = FindShellFileByAbsPathMutable(dst_path);
-        if (dst_file == nullptr) {
-            dst_file = CreateShellFile(dst_path);
-            if (dst_file == nullptr) {
-                console->PrintLine("cp: file table full");
-                return;
-            }
-        }
-
-        const uint64_t max_size = sizeof(dst_file->data);
-        uint64_t copy_len = (src_size < max_size) ? src_size : max_size;
-        for (uint64_t i = 0; i < copy_len; ++i) {
-            dst_file->data[i] = src_data[i];
-        }
-        dst_file->size = copy_len;
-        if (copy_len < src_size) {
-            console->PrintLine("cp: truncated");
-        }
+        ExecuteCpCommand(command, &pos);
         return;
     }
 
     if (StrEqual(cmd, "rm")) {
-        char target[64];
-        if (!NextToken(command, &pos, target, sizeof(target))) {
-            console->PrintLine("rm: path required");
-            return;
-        }
-        char extra[8];
-        if (NextToken(command, &pos, extra, sizeof(extra))) {
-            console->PrintLine("rm: too many arguments");
-            return;
-        }
-        char resolved_path[96];
-        if (!ResolvePath(g_cwd, target, resolved_path, sizeof(resolved_path))) {
-            console->PrintLine("rm: invalid path");
-            return;
-        }
-        if (StrEqual(resolved_path, "/")) {
-            console->PrintLine("rm: cannot remove /");
-            return;
-        }
-        if (IsPathSameOrChild(g_cwd, resolved_path)) {
-            console->PrintLine("rm: path is in use");
-            return;
-        }
-
-        ShellFile* file = FindShellFileByAbsPathMutable(resolved_path);
-        if (file != nullptr) {
-            file->used = false;
-            file->path[0] = '\0';
-            file->size = 0;
-            return;
-        }
-
-        if (FindBootFileByPath(g_cwd, target) != nullptr) {
-            console->PrintLine("rm: boot file is read-only");
-            return;
-        }
-
-        ShellDir* dir = FindDirectoryMutable(resolved_path);
-        if (dir != nullptr) {
-            if (!IsDirectoryEmpty(resolved_path)) {
-                console->PrintLine("rm: directory not empty");
-                return;
-            }
-            dir->used = false;
-            dir->path[0] = '\0';
-            return;
-        }
-
-        console->Print("rm: not found: ");
-        console->PrintLine(target);
+        ExecuteRmCommand(command, &pos);
         return;
     }
 
     if (StrEqual(cmd, "rmdir")) {
-        char target[64];
-        if (!NextToken(command, &pos, target, sizeof(target))) {
-            console->PrintLine("rmdir: path required");
-            return;
-        }
-        char extra[8];
-        if (NextToken(command, &pos, extra, sizeof(extra))) {
-            console->PrintLine("rmdir: too many arguments");
-            return;
-        }
-        char resolved_path[96];
-        if (!ResolvePath(g_cwd, target, resolved_path, sizeof(resolved_path))) {
-            console->PrintLine("rmdir: invalid path");
-            return;
-        }
-        if (StrEqual(resolved_path, "/")) {
-            console->PrintLine("rmdir: cannot remove /");
-            return;
-        }
-        if (IsPathSameOrChild(g_cwd, resolved_path)) {
-            console->PrintLine("rmdir: path is in use");
-            return;
-        }
-        ShellDir* dir = FindDirectoryMutable(resolved_path);
-        if (dir == nullptr) {
-            if (FindBootFileByPath(g_cwd, target) != nullptr || FindShellFileByPath(g_cwd, target) != nullptr) {
-                console->PrintLine("rmdir: not a directory");
-            } else {
-                console->Print("rmdir: not found: ");
-                console->PrintLine(target);
-            }
-            return;
-        }
-        if (!IsDirectoryEmpty(resolved_path)) {
-            console->PrintLine("rmdir: directory not empty");
-            return;
-        }
-        dir->used = false;
-        dir->path[0] = '\0';
+        ExecuteRmdirCommand(command, &pos);
         return;
     }
 
     if (StrEqual(cmd, "mv")) {
-        char src_name[64];
-        char dst_name[64];
-        if (!NextToken(command, &pos, src_name, sizeof(src_name)) ||
-            !NextToken(command, &pos, dst_name, sizeof(dst_name))) {
-            console->PrintLine("mv: src and dst required");
-            return;
-        }
-        char extra[8];
-        if (NextToken(command, &pos, extra, sizeof(extra))) {
-            console->PrintLine("mv: too many arguments");
-            return;
-        }
-
-        char src_path[96];
-        char dst_path[96];
-        if (!ResolvePath(g_cwd, src_name, src_path, sizeof(src_path)) ||
-            !ResolvePath(g_cwd, dst_name, dst_path, sizeof(dst_path))) {
-            console->PrintLine("mv: invalid path");
-            return;
-        }
-        if (StrEqual(src_path, "/")) {
-            console->PrintLine("mv: cannot move /");
-            return;
-        }
-
-        char dst_parent[96];
-        if (!GetParentPath(dst_path, dst_parent, sizeof(dst_parent)) || !DirectoryExists(dst_parent)) {
-            console->PrintLine("mv: destination parent missing");
-            return;
-        }
-        if (DirectoryExists(dst_path) || FindShellFileByAbsPath(dst_path) != nullptr) {
-            console->PrintLine("mv: destination exists");
-            return;
-        }
-        if (FindBootFileByPath("/", dst_path) != nullptr) {
-            console->PrintLine("mv: destination conflicts with boot file");
-            return;
-        }
-
-        ShellFile* src_file = FindShellFileByAbsPathMutable(src_path);
-        if (src_file != nullptr) {
-            src_file->path[0] = '\0';
-            CopyString(src_file->path, dst_path, sizeof(src_file->path));
-            return;
-        }
-
-        if (FindBootFileByPath("/", src_path) != nullptr) {
-            console->PrintLine("mv: boot file is read-only");
-            return;
-        }
-
-        ShellDir* src_dir = FindDirectoryMutable(src_path);
-        if (src_dir == nullptr) {
-            console->Print("mv: not found: ");
-            console->PrintLine(src_name);
-            return;
-        }
-        if (IsPathSameOrChild(dst_path, src_path)) {
-            console->PrintLine("mv: invalid destination");
-            return;
-        }
-
-        char new_path[96];
-        for (int i = 0; i < static_cast<int>(sizeof(g_dirs) / sizeof(g_dirs[0])); ++i) {
-            if (!g_dirs[i].used || !IsPathSameOrChild(g_dirs[i].path, src_path)) {
-                continue;
-            }
-            if (!BuildMovedPath(g_dirs[i].path, src_path, dst_path, new_path, sizeof(new_path))) {
-                console->PrintLine("mv: path too long");
-                return;
-            }
-            if (DirectoryExistsOutsideMove(new_path, src_path) ||
-                ShellFileExistsOutsideMove(new_path, src_path)) {
-                console->PrintLine("mv: destination exists");
-                return;
-            }
-        }
-        for (int i = 0; i < static_cast<int>(sizeof(g_files) / sizeof(g_files[0])); ++i) {
-            if (!g_files[i].used || !IsPathSameOrChild(g_files[i].path, src_path)) {
-                continue;
-            }
-            if (!BuildMovedPath(g_files[i].path, src_path, dst_path, new_path, sizeof(new_path))) {
-                console->PrintLine("mv: path too long");
-                return;
-            }
-            if (DirectoryExistsOutsideMove(new_path, src_path) ||
-                ShellFileExistsOutsideMove(new_path, src_path)) {
-                console->PrintLine("mv: destination exists");
-                return;
-            }
-            if (FindBootFileByPath("/", new_path) != nullptr) {
-                console->PrintLine("mv: destination conflicts with boot file");
-                return;
-            }
-        }
-
-        for (int i = 0; i < static_cast<int>(sizeof(g_dirs) / sizeof(g_dirs[0])); ++i) {
-            if (!g_dirs[i].used) {
-                continue;
-            }
-            if (!IsPathSameOrChild(g_dirs[i].path, src_path)) {
-                continue;
-            }
-            if (!BuildMovedPath(g_dirs[i].path, src_path, dst_path, new_path, sizeof(new_path))) {
-                console->PrintLine("mv: path too long");
-                return;
-            }
-            CopyString(g_dirs[i].path, new_path, sizeof(g_dirs[i].path));
-        }
-        for (int i = 0; i < static_cast<int>(sizeof(g_files) / sizeof(g_files[0])); ++i) {
-            if (!g_files[i].used) {
-                continue;
-            }
-            if (!IsPathSameOrChild(g_files[i].path, src_path)) {
-                continue;
-            }
-            if (!BuildMovedPath(g_files[i].path, src_path, dst_path, new_path, sizeof(new_path))) {
-                console->PrintLine("mv: path too long");
-                return;
-            }
-            CopyString(g_files[i].path, new_path, sizeof(g_files[i].path));
-        }
-        if (IsPathSameOrChild(g_cwd, src_path) &&
-            BuildMovedPath(g_cwd, src_path, dst_path, new_path, sizeof(new_path))) {
-            CopyString(g_cwd, new_path, sizeof(g_cwd));
-        }
+        ExecuteMvCommand(command, &pos);
         return;
     }
 
