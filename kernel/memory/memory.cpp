@@ -60,10 +60,12 @@ void MemoryManager::Initialize(const BootInfo* boot_info) {
     // したがって、0番地は強制的に「使用済み」にマークし、newやmallocで返さないよう保護します。
     MarkAllocated(0, 1);
 
-    console->Print("MemoryManager Initialized.\n");
-    console->Print("Available RAM: ");
-    console->PrintDec((available_pages * kPageSize) / kMiB);
-    console->PrintLine(" MB");
+    if (console != nullptr) {
+        console->Print("MemoryManager Initialized.\n");
+        console->Print("Available RAM: ");
+        console->PrintDec((available_pages * kPageSize) / kMiB);
+        console->PrintLine(" MB");
+    }
 }
 
 uint64_t MemoryManager::Allocate(size_t num_pages) {
@@ -102,4 +104,16 @@ uint64_t MemoryManager::Allocate() {
 
 void MemoryManager::Free(uint64_t physical_address, size_t num_pages) {
     MarkFree(physical_address, num_pages);
+}
+
+uint64_t MemoryManager::CountFreePages() const {
+    uint64_t count = 0;
+    for (size_t page = 0; page < kMaxPages; ++page) {
+        const size_t idx = page / 64;
+        const int bit = page % 64;
+        if ((bitmap_[idx] & (1ULL << bit)) == 0) {
+            ++count;
+        }
+    }
+    return count;
 }
