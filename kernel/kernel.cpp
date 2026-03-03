@@ -645,6 +645,36 @@ bool ContainsChar(const char* s, char ch) {
     return false;
 }
 
+bool StrContains(const char* haystack, const char* needle) {
+    if (needle[0] == '\0') {
+        return true;
+    }
+    int hlen = 0;
+    while (haystack[hlen] != '\0') {
+        ++hlen;
+    }
+    int nlen = 0;
+    while (needle[nlen] != '\0') {
+        ++nlen;
+    }
+    if (nlen > hlen) {
+        return false;
+    }
+    for (int i = 0; i <= hlen - nlen; ++i) {
+        bool ok = true;
+        for (int j = 0; j < nlen; ++j) {
+            if (haystack[i + j] != needle[j]) {
+                ok = false;
+                break;
+            }
+        }
+        if (ok) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int StrLength(const char* s) {
     int len = 0;
     while (s[len] != '\0') {
@@ -1350,6 +1380,8 @@ const char* const kBuiltInCommands[] = {
     "rm",
     "rmdir",
     "mv",
+    "find",
+    "grep",
     "ls",
     "stat",
     "cat",
@@ -1426,7 +1458,7 @@ void ExecuteCommand(const char* command) {
     if (StrEqual(cmd, "help")) {
         console->PrintLine("help: core  help clear tick time mem uptime echo reboot");
         console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
-        console->PrintLine("help: fs2   rm rmdir mv ls stat cat");
+        console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
         console->PrintLine("help: misc  history clearhistory inputstat about");
         console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll xhcihidstat xhciauto xhciautostart mouseabs usbports");
         return;
@@ -2431,6 +2463,216 @@ void ExecuteCommand(const char* command) {
         if (IsPathSameOrChild(g_cwd, src_path) &&
             BuildMovedPath(g_cwd, src_path, dst_path, new_path, sizeof(new_path))) {
             CopyString(g_cwd, new_path, sizeof(g_cwd));
+        }
+        return;
+    }
+
+    if (StrEqual(cmd, "find")) {
+        char arg1[64];
+        if (!NextToken(command, &pos, arg1, sizeof(arg1))) {
+            console->PrintLine("find: path or pattern required");
+            return;
+        }
+        char arg2[64];
+        bool has_arg2 = NextToken(command, &pos, arg2, sizeof(arg2));
+        char extra[8];
+        if (NextToken(command, &pos, extra, sizeof(extra))) {
+            console->PrintLine("find: too many arguments");
+            return;
+        }
+
+        char base_path[96];
+        char pattern[64];
+        pattern[0] = '\0';
+        char resolved1[96];
+        bool arg1_is_dir = ResolvePath(g_cwd, arg1, resolved1, sizeof(resolved1)) && DirectoryExists(resolved1);
+
+        if (has_arg2) {
+            if (!arg1_is_dir) {
+                console->Print("find: no such directory: ");
+                console->PrintLine(arg1);
+                return;
+            }
+            CopyString(base_path, resolved1, sizeof(base_path));
+            CopyString(pattern, arg2, sizeof(pattern));
+        } else {
+            if (arg1_is_dir) {
+                CopyString(base_path, resolved1, sizeof(base_path));
+            } else {
+                CopyString(base_path, g_cwd, sizeof(base_path));
+                CopyString(pattern, arg1, sizeof(pattern));
+            }
+        }
+
+        int match_count = 0;
+        auto PathMatches = [&](const char* p) {
+            return pattern[0] == '\0' || StrContains(p, pattern);
+        };
+
+        for (int i = 0; i < static_cast<int>(sizeof(g_dirs) / sizeof(g_dirs[0])); ++i) {
+            if (!g_dirs[i].used) {
+                continue;
+            }
+            if (!IsPathSameOrChild(g_dirs[i].path, base_path)) {
+                continue;
+            }
+            if (!PathMatches(g_dirs[i].path)) {
+                continue;
+            }
+            console->Print(g_dirs[i].path);
+            console->PrintLine("/");
+            ++match_count;
+        }
+
+        for (int i = 0; i < static_cast<int>(sizeof(g_files) / sizeof(g_files[0])); ++i) {
+            if (!g_files[i].used) {
+                continue;
+            }
+            if (!IsPathSameOrChild(g_files[i].path, base_path)) {
+                continue;
+            }
+            if (!PathMatches(g_files[i].path)) {
+                continue;
+            }
+            console->PrintLine(g_files[i].path);
+            ++match_count;
+        }
+
+        if (g_boot_info != nullptr && g_boot_info->boot_fs != nullptr) {
+            const BootFileSystem* fs = g_boot_info->boot_fs;
+            for (uint32_t i = 0; i < fs->file_count; ++i) {
+                char abs_file_path[96];
+                BuildBootFileAbsolutePath(fs->files[i].name, abs_file_path, sizeof(abs_file_path));
+                if (FindShellFileByAbsPath(abs_file_path) != nullptr) {
+                    continue;
+                }
+                if (!IsPathSameOrChild(abs_file_path, base_path)) {
+                    continue;
+                }
+                if (!PathMatches(abs_file_path)) {
+                    continue;
+                }
+                console->PrintLine(abs_file_path);
+                ++match_count;
+            }
+        }
+
+        if (match_count == 0) {
+            console->PrintLine("find: no match");
+        }
+        return;
+    }
+
+    if (StrEqual(cmd, "grep")) {
+        bool show_line_number = false;
+        char tok[64];
+        if (!NextToken(command, &pos, tok, sizeof(tok))) {
+            console->PrintLine("grep: pattern and file required");
+            return;
+        }
+        while (tok[0] == '-') {
+            if (StrEqual(tok, "-n")) {
+                show_line_number = true;
+            } else {
+                console->Print("grep: unknown option: ");
+                console->PrintLine(tok);
+                return;
+            }
+            if (!NextToken(command, &pos, tok, sizeof(tok))) {
+                console->PrintLine("grep: pattern and file required");
+                return;
+            }
+        }
+        char pattern[64];
+        CopyString(pattern, tok, sizeof(pattern));
+        char name[64];
+        if (!NextToken(command, &pos, name, sizeof(name))) {
+            console->PrintLine("grep: file required");
+            return;
+        }
+        char extra[8];
+        if (NextToken(command, &pos, extra, sizeof(extra))) {
+            console->PrintLine("grep: too many arguments");
+            return;
+        }
+
+        const uint8_t* data = nullptr;
+        uint64_t size = 0;
+        const ShellFile* user_file = FindShellFileByPath(g_cwd, name);
+        if (user_file != nullptr) {
+            data = user_file->data;
+            size = user_file->size;
+        } else {
+            const BootFileEntry* boot_file = FindBootFileByPath(g_cwd, name);
+            if (boot_file == nullptr) {
+                console->Print("grep: not found: ");
+                console->PrintLine(name);
+                return;
+            }
+            data = boot_file->data;
+            size = boot_file->size;
+        }
+
+        const int pat_len = StrLength(pattern);
+        auto LineContains = [&](uint64_t begin, uint64_t end) {
+            if (pat_len == 0) {
+                return true;
+            }
+            if (end < begin) {
+                return false;
+            }
+            uint64_t len = end - begin;
+            if (len < static_cast<uint64_t>(pat_len)) {
+                return false;
+            }
+            for (uint64_t i = begin; i + static_cast<uint64_t>(pat_len) <= end; ++i) {
+                bool ok = true;
+                for (int j = 0; j < pat_len; ++j) {
+                    if (static_cast<char>(data[i + static_cast<uint64_t>(j)]) != pattern[j]) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (ok) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        bool matched = false;
+        uint64_t line_begin = 0;
+        int line_no = 1;
+        for (uint64_t i = 0; i <= size; ++i) {
+            if (i < size && data[i] != '\n') {
+                continue;
+            }
+            uint64_t line_end = i;
+            if (LineContains(line_begin, line_end)) {
+                matched = true;
+                if (show_line_number) {
+                    console->PrintDec(line_no);
+                    console->Print(": ");
+                }
+                for (uint64_t k = line_begin; k < line_end; ++k) {
+                    char c = static_cast<char>(data[k]);
+                    if (c == '\r') {
+                        continue;
+                    }
+                    if (c == '\t' || IsPrintableAscii(c)) {
+                        char s[2] = {c, '\0'};
+                        console->Print(s);
+                    } else {
+                        console->Print(".");
+                    }
+                }
+                console->Print("\n");
+            }
+            line_begin = i + 1;
+            ++line_no;
+        }
+        if (!matched) {
+            console->PrintLine("grep: no match");
         }
         return;
     }
