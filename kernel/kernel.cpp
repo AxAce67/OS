@@ -1010,6 +1010,7 @@ const char* const kBuiltInCommands[] = {
     "xhciinit",
     "xhcienableslot",
     "xhciaddress",
+    "xhciconfigep",
     "mouseabs",
     "usbports",
 };
@@ -1067,7 +1068,7 @@ void ExecuteCommand(const char* command) {
         console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
         console->PrintLine("help: fs2   rm rmdir mv ls stat cat");
         console->PrintLine("help: misc  history clearhistory inputstat about");
-        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress mouseabs usbports");
+        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep mouseabs usbports");
         return;
     }
 
@@ -1291,6 +1292,62 @@ void ExecuteCommand(const char* command) {
         console->PrintDec(port);
         console->Print(" speed=");
         console->PrintDec(speed);
+        console->Print("\n");
+        if (ar.ok && ar.slot_id > 0) {
+            g_last_xhci_slot_id = ar.slot_id;
+        }
+        return;
+    }
+
+    if (StrEqual(cmd, "xhciconfigep")) {
+        if (!g_xhci_caps.valid) {
+            console->PrintLine("xhciconfigep: xhci not ready");
+            return;
+        }
+        int slot = g_last_xhci_slot_id;
+        int mps = 8;
+        int interval = 4;
+        char t0[16];
+        char t1[16];
+        char t2[16];
+        if (NextToken(command, &pos, t0, sizeof(t0))) {
+            slot = ParseInt(t0);
+        }
+        if (NextToken(command, &pos, t1, sizeof(t1))) {
+            mps = ParseInt(t1);
+        }
+        if (NextToken(command, &pos, t2, sizeof(t2))) {
+            interval = ParseInt(t2);
+        }
+        if (slot <= 0 || slot > 255) {
+            console->PrintLine("xhciconfigep: invalid slot");
+            return;
+        }
+        if (mps <= 0 || mps > 1024) {
+            console->PrintLine("xhciconfigep: invalid mps");
+            return;
+        }
+        if (interval <= 0 || interval > 255) {
+            console->PrintLine("xhciconfigep: invalid interval");
+            return;
+        }
+        XHCIConfigureEndpointResult cr{};
+        if (!XHCIConfigureInterruptInEndpoint(g_xhci_caps,
+                                              static_cast<uint8_t>(slot),
+                                              static_cast<uint16_t>(mps),
+                                              static_cast<uint8_t>(interval),
+                                              &cr)) {
+            console->PrintLine("xhciconfigep: timeout/fail");
+            return;
+        }
+        console->Print("xhciconfigep: ccode=");
+        console->PrintDec(cr.completion_code);
+        console->Print(" slot=");
+        console->PrintDec(cr.slot_id);
+        console->Print(" mps=");
+        console->PrintDec(mps);
+        console->Print(" interval=");
+        console->PrintDec(interval);
         console->Print("\n");
         return;
     }

@@ -15,6 +15,13 @@ struct alignas(64) EventRingSegmentTableEntry {
     uint32_t rsvd1;
 };
 
+struct XHCISlotState {
+    bool used;
+    bool addressed;
+    uint8_t root_port;
+    uint8_t port_speed;
+};
+
 alignas(64) uint64_t g_dcbaa[256];
 alignas(64) TRB g_command_ring[256];
 alignas(64) TRB g_event_ring[256];
@@ -23,6 +30,8 @@ const int kXHCIMaxManagedSlots = 16;
 alignas(64) uint8_t g_input_contexts[kXHCIMaxManagedSlots][1024];
 alignas(64) uint8_t g_device_contexts[kXHCIMaxManagedSlots][1024];
 alignas(64) TRB g_ep0_rings[kXHCIMaxManagedSlots][256];
+alignas(64) TRB g_ep1in_rings[kXHCIMaxManagedSlots][256];
+XHCISlotState g_slot_states[kXHCIMaxManagedSlots];
 bool g_rings_initialized = false;
 uint32_t g_command_enqueue_index = 0;
 uint8_t g_command_cycle_bit = 1;
@@ -153,6 +162,13 @@ uint16_t DefaultControlMaxPacketSize(uint8_t speed) {
         case 4: return 512;  // SuperSpeed
         default: return 8;   // Low/Full or unknown
     }
+}
+
+int SlotIndexFromId(uint8_t slot_id) {
+    if (slot_id == 0 || slot_id > kXHCIMaxManagedSlots) {
+        return -1;
+    }
+    return static_cast<int>(slot_id - 1);
 }
 }  // namespace
 
@@ -313,6 +329,8 @@ bool XHCIInitializeCommandAndEventRings(const XHCICapabilityInfo& info) {
     MemorySet(g_input_contexts, 0, sizeof(g_input_contexts));
     MemorySet(g_device_contexts, 0, sizeof(g_device_contexts));
     MemorySet(g_ep0_rings, 0, sizeof(g_ep0_rings));
+    MemorySet(g_ep1in_rings, 0, sizeof(g_ep1in_rings));
+    MemorySet(g_slot_states, 0, sizeof(g_slot_states));
 
     // Command ring link TRB at last entry.
     TRB& link = g_command_ring[255];
@@ -352,6 +370,13 @@ bool XHCIInitializeCommandAndEventRings(const XHCICapabilityInfo& info) {
         ep_link.dword1 = static_cast<uint32_t>(ep_ring_base >> 32);
         ep_link.dword2 = 0;
         ep_link.dword3 = (6u << 10) | (1u << 1);
+
+        TRB& ep1_link = g_ep1in_rings[i][255];
+        const uint64_t ep1_ring_base = reinterpret_cast<uint64_t>(&g_ep1in_rings[i][0]);
+        ep1_link.dword0 = static_cast<uint32_t>(ep1_ring_base & 0xFFFFFFFFu);
+        ep1_link.dword1 = static_cast<uint32_t>(ep1_ring_base >> 32);
+        ep1_link.dword2 = 0;
+        ep1_link.dword3 = (6u << 10) | (1u << 1);
     }
 
     g_command_enqueue_index = 0;
@@ -397,7 +422,8 @@ bool XHCIAddressDevice(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t 
     out_result->completion_code = 0;
     out_result->slot_id = slot_id;
 
-    if (!info.valid || slot_id == 0 || slot_id > kXHCIMaxManagedSlots) {
+    const int idx = SlotIndexFromId(slot_id);
+    if (!info.valid || idx < 0) {
         return false;
     }
     if (!g_rings_initialized) {
@@ -406,7 +432,6 @@ bool XHCIAddressDevice(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t 
         }
     }
 
-    const int idx = static_cast<int>(slot_id - 1);
     const int ctx_size = ((info.hcc_params1 & (1u << 2)) != 0) ? 64 : 32;
 
     uint8_t* input_ctx = &g_input_contexts[idx][0];
@@ -444,6 +469,84 @@ bool XHCIAddressDevice(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t 
     cmd.dword2 = 0;
     // Type=Address Device(11), BSR=0, Slot ID in bits 31:24.
     cmd.dword3 = (11u << 10) | (static_cast<uint32_t>(slot_id) << 24);
+
+    XHCICommandResult r{};
+    if (!SubmitCommandAndWait(info, cmd, &r, timeout_iters)) {
+        return false;
+    }
+    out_result->completion_code = r.completion_code;
+    out_result->slot_id = r.slot_id;
+    out_result->ok = r.ok;
+    if (r.ok) {
+        g_slot_states[idx].used = true;
+        g_slot_states[idx].addressed = true;
+        g_slot_states[idx].root_port = root_port;
+        g_slot_states[idx].port_speed = port_speed;
+    }
+    return true;
+}
+
+bool XHCIConfigureInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t slot_id, uint16_t max_packet_size, uint8_t interval, XHCIConfigureEndpointResult* out_result, uint32_t timeout_iters) {
+    if (out_result == nullptr) {
+        return false;
+    }
+    out_result->ok = false;
+    out_result->completion_code = 0;
+    out_result->slot_id = slot_id;
+
+    const int idx = SlotIndexFromId(slot_id);
+    if (!info.valid || idx < 0 || !g_slot_states[idx].used || !g_slot_states[idx].addressed) {
+        return false;
+    }
+    if (!g_rings_initialized) {
+        return false;
+    }
+    if (max_packet_size == 0) {
+        max_packet_size = 8;
+    }
+    if (interval == 0) {
+        interval = 4;
+    }
+
+    const int ctx_size = ((info.hcc_params1 & (1u << 2)) != 0) ? 64 : 32;
+    uint8_t* input_ctx = &g_input_contexts[idx][0];
+    uint8_t* device_ctx = &g_device_contexts[idx][0];
+    MemorySet(input_ctx, 0, 1024);
+
+    // Copy current slot and EP0 contexts from output device context to input context.
+    uint8_t* in_slot = ContextPtr(input_ctx, 1, ctx_size);
+    uint8_t* in_ep0 = ContextPtr(input_ctx, 2, ctx_size);
+    uint8_t* out_slot = ContextPtr(device_ctx, 1, ctx_size);
+    uint8_t* out_ep0 = ContextPtr(device_ctx, 2, ctx_size);
+    for (int i = 0; i < ctx_size; ++i) {
+        in_slot[i] = out_slot[i];
+        in_ep0[i] = out_ep0[i];
+    }
+
+    uint32_t* icc = reinterpret_cast<uint32_t*>(ContextPtr(input_ctx, 0, ctx_size));
+    icc[0] = 0;                      // Drop flags
+    icc[1] = (1u << 0) | (1u << 1) | (1u << 3);  // Add Slot + EP0 + EP1IN(DCI=3)
+
+    // Update slot context entries to include DCI=3.
+    uint32_t* slot_ctx = reinterpret_cast<uint32_t*>(in_slot);
+    slot_ctx[0] &= ~(0x1Fu << 27);
+    slot_ctx[0] |= (3u << 27);
+
+    // EP1 IN context is context index 4 (DCI=3 -> idx=dci+1).
+    uint32_t* ep1in_ctx = reinterpret_cast<uint32_t*>(ContextPtr(input_ctx, 4, ctx_size));
+    const uint64_t ep1_ring = reinterpret_cast<uint64_t>(&g_ep1in_rings[idx][0]) | 1u;
+    ep1in_ctx[0] = (static_cast<uint32_t>(interval) << 16); // Interval
+    ep1in_ctx[1] = (3u << 1) | (7u << 3) | (static_cast<uint32_t>(max_packet_size) << 16); // CErr=3, Interrupt IN
+    ep1in_ctx[2] = static_cast<uint32_t>(ep1_ring & 0xFFFFFFFFu);
+    ep1in_ctx[3] = static_cast<uint32_t>(ep1_ring >> 32);
+    ep1in_ctx[4] = max_packet_size;
+
+    TRB cmd{};
+    const uint64_t input_ctx_ptr = reinterpret_cast<uint64_t>(input_ctx);
+    cmd.dword0 = static_cast<uint32_t>(input_ctx_ptr & 0xFFFFFFFFu);
+    cmd.dword1 = static_cast<uint32_t>(input_ctx_ptr >> 32);
+    cmd.dword2 = 0;
+    cmd.dword3 = (12u << 10) | (static_cast<uint32_t>(slot_id) << 24); // Configure Endpoint
 
     XHCICommandResult r{};
     if (!SubmitCommandAndWait(info, cmd, &r, timeout_iters)) {
