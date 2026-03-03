@@ -3,8 +3,9 @@
 #include <stdint.h>
 #include <stddef.h>
 
-// ページディレクトリ等のエントリ数 (x86_64では各階層512個)
-const size_t kPageDirectoryCount = 128; // 128 * 1GB = 128GB分を恒等マッピング
+// 1つの PML4 エントリは 512GB を担当する。
+// 2エントリ分を恒等マッピングして 1TB をカバーする。
+const size_t kMappedPML4EntryCount = 2;
 
 // CR3レジスタに設定するための関数 (アセンブリ命令を用いたインライン関数)
 inline void SetCR3(uint64_t cr3) {

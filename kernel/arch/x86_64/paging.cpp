@@ -2,36 +2,38 @@
 #include "paging.hpp"
 
 // x86_64のページテーブルの各テーブルは必ず4KB (4096バイト) 境界に配置しなければならない。
-// .bssセクション（初期値0）に配置されるためゼロクリアされている前提
+// .bssセクション（初期値0）に配置されるためゼロクリアされている前提。
 __attribute__((aligned(4096))) uint64_t pml4_table[512];
-__attribute__((aligned(4096))) uint64_t pdp_table[512];
-
+// kMappedPML4EntryCount 個の PML4 エントリを使い、各エントリ配下の PDP(512エントリ)を持つ。
+__attribute__((aligned(4096))) uint64_t pdp_tables[kMappedPML4EntryCount][512];
 // 1つのPDPエントリが1GBをマッピングする。(2MBページ × 512個)
-// kPageDirectoryCount GB分の仮想メモリを物理メモリとそのまま（恒等）マッピングする
-__attribute__((aligned(4096))) uint64_t page_directory[kPageDirectoryCount][512];
+// 合計で kMappedPML4EntryCount * 512GB を恒等マッピングする。
+__attribute__((aligned(4096))) uint64_t page_directory[kMappedPML4EntryCount][512][512];
 
 void InitializePaging() {
-    // 1. PML4(第4層)の先頭の1エントリを、PDP(第3層)へ向ける
-    // [設定値の意味] bit0: Present(有効), bit1: Read/Write(読み書き可)
-    pml4_table[0] = reinterpret_cast<uint64_t>(&pdp_table[0]) | 0x003;
+    // 1. 複数のPML4エントリを恒等マッピング用に構築する。
+    for (size_t pml4_i = 0; pml4_i < kMappedPML4EntryCount; ++pml4_i) {
+        // [設定値の意味] bit0: Present(有効), bit1: Read/Write(読み書き可)
+        pml4_table[pml4_i] = reinterpret_cast<uint64_t>(&pdp_tables[pml4_i][0]) | 0x003;
 
-    // 2. PDPテーブルの先頭kPageDirectoryCount個をそれぞれのページディレクトリ(第2層)へ向ける
-    for (size_t i = 0; i < kPageDirectoryCount; ++i) {
-        // [設定値の意味] bit0: Present, bit1: Read/Write
-        pdp_table[i] = reinterpret_cast<uint64_t>(&page_directory[i][0]) | 0x003;
+        // 2. 各PDPエントリをページディレクトリ(第2層)へ向ける。
+        for (size_t pdp_i = 0; pdp_i < 512; ++pdp_i) {
+            pdp_tables[pml4_i][pdp_i] = reinterpret_cast<uint64_t>(&page_directory[pml4_i][pdp_i][0]) | 0x003;
 
-        // 3. 各ページディレクトリに、2MBごとのブロック範囲を書き込む
-        for (size_t j = 0; j < 512; ++j) {
-            // 対象となる物理アドレス計算
-            // i=0, j=0 なら 0MB
-            // i=0, j=1 なら 2MB ...
-            // i=1, j=0 なら 1024MB(1GB) ...
-            uint64_t physical_addr = i * 1024ULL * 1024ULL * 1024ULL + j * 2ULL * 1024ULL * 1024ULL;
+            // 3. 各ページディレクトリに、2MBごとのブロック範囲を書き込む。
+            for (size_t pd_i = 0; pd_i < 512; ++pd_i) {
+                // 対象となる物理アドレス計算:
+                //  (PML4 index * 512GB) + (PDP index * 1GB) + (PD index * 2MB)
+                const uint64_t physical_addr =
+                    (static_cast<uint64_t>(pml4_i) * 512ULL * 1024ULL * 1024ULL * 1024ULL) +
+                    (static_cast<uint64_t>(pdp_i) * 1024ULL * 1024ULL * 1024ULL) +
+                    (static_cast<uint64_t>(pd_i) * 2ULL * 1024ULL * 1024ULL);
 
-            // [設定値の意味]
-            // bit0: Present, bit1: Read/Write
-            // bit7: Page Size (1にして Huge Page = 2MB単位 でマッピングする)
-            page_directory[i][j] = physical_addr | 0x083;
+                // [設定値の意味]
+                // bit0: Present, bit1: Read/Write
+                // bit7: Page Size (1にして Huge Page = 2MB単位 でマッピングする)
+                page_directory[pml4_i][pdp_i][pd_i] = physical_addr | 0x083;
+            }
         }
     }
 
