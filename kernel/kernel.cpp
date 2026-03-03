@@ -2007,6 +2007,84 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
     };
 
+    auto HandleRegularKeyShortcut = [&](uint8_t key) {
+        if (IsCtrlPressed(keyboard_state)) {
+            if (key == 0x1E) { // Ctrl + A
+                EnsureLiveConsole();
+                ClearSelection();
+                cursor_pos = 0;
+                RenderInputLine();
+                RefreshInputLine();
+                return true;
+            }
+            if (key == 0x12) { // Ctrl + E
+                EnsureLiveConsole();
+                ClearSelection();
+                cursor_pos = command_len;
+                RenderInputLine();
+                RefreshInputLine();
+                return true;
+            }
+            if (key == 0x26) { // Ctrl + L
+                console->Clear();
+                PrintPrompt();
+                input_row = console->CursorRow();
+                input_col = console->CursorColumn();
+                rendered_len = 0;
+                command_len = 0;
+                cursor_pos = 0;
+                command_buffer[0] = '\0';
+                ClearSelection();
+                history_nav = -1;
+                draft_buffer[0] = '\0';
+                RenderInputLine();
+                RefreshInputLine();
+                return true;
+            }
+        }
+        if (key == 0x47) { // Home (non-E0 fallback)
+            EnsureLiveConsole();
+            ClearSelection();
+            cursor_pos = 0;
+            RenderInputLine();
+            RefreshInputLine();
+            return true;
+        }
+        if (key == 0x48) { // Arrow Up (non-E0 fallback)
+            EnsureLiveConsole();
+            BrowseHistoryUp();
+            return true;
+        }
+        if (key == 0x4F) { // End (non-E0 fallback)
+            EnsureLiveConsole();
+            ClearSelection();
+            cursor_pos = command_len;
+            RenderInputLine();
+            RefreshInputLine();
+            return true;
+        }
+        if (key == 0x50) { // Arrow Down (non-E0 fallback)
+            EnsureLiveConsole();
+            BrowseHistoryDown();
+            return true;
+        }
+        if (key == 0x0E || key == 0x53 || key == 0x71) { // Backspace/Delete
+            EnsureLiveConsole();
+            if (key == 0x0E) {
+                BackspaceAtCursor();
+            } else {
+                DeleteAtCursor();
+            }
+            return true;
+        }
+        if (key == 0x0F) { // Tab
+            EnsureLiveConsole();
+            HandleTabCompletion();
+            return true;
+        }
+        return false;
+    };
+
     while (1) {
         // 処理すべきイベントがあるか、割り込みを禁止(cli)した上で安全にチェックする（競合対策）
         __asm__ volatile("cli");
@@ -2063,78 +2141,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     if (key < 128) {
                         key_down[key] = true;
                     }
-                    if (IsCtrlPressed(keyboard_state)) {
-                        if (key == 0x1E) { // Ctrl + A
-                            EnsureLiveConsole();
-                            ClearSelection();
-                            cursor_pos = 0;
-                            RenderInputLine();
-                            RefreshInputLine();
-                            break;
-                        }
-                        if (key == 0x12) { // Ctrl + E
-                            EnsureLiveConsole();
-                            ClearSelection();
-                            cursor_pos = command_len;
-                            RenderInputLine();
-                            RefreshInputLine();
-                            break;
-                        }
-                        if (key == 0x26) { // Ctrl + L
-                            console->Clear();
-                            PrintPrompt();
-                            input_row = console->CursorRow();
-                            input_col = console->CursorColumn();
-                            rendered_len = 0;
-                            command_len = 0;
-                            cursor_pos = 0;
-                            command_buffer[0] = '\0';
-                            ClearSelection();
-                            history_nav = -1;
-                            draft_buffer[0] = '\0';
-                            RenderInputLine();
-                            RefreshInputLine();
-                            break;
-                        }
-                    }
-                    if (key == 0x47) { // Home (non-E0 fallback)
-                        EnsureLiveConsole();
-                        ClearSelection();
-                        cursor_pos = 0;
-                        RenderInputLine();
-                        RefreshInputLine();
-                        break;
-                    }
-                    if (key == 0x48) { // Arrow Up (non-E0 fallback)
-                        EnsureLiveConsole();
-                        BrowseHistoryUp();
-                        break;
-                    }
-                    if (key == 0x4F) { // End (non-E0 fallback)
-                        EnsureLiveConsole();
-                        ClearSelection();
-                        cursor_pos = command_len;
-                        RenderInputLine();
-                        RefreshInputLine();
-                        break;
-                    }
-                    if (key == 0x50) { // Arrow Down (non-E0 fallback)
-                        EnsureLiveConsole();
-                        BrowseHistoryDown();
-                        break;
-                    }
-                    if (key == 0x0E || key == 0x53 || key == 0x71) { // Backspace/Delete
-                        EnsureLiveConsole();
-                        if (key == 0x0E) {
-                            BackspaceAtCursor();
-                        } else {
-                            DeleteAtCursor();
-                        }
-                        break;
-                    }
-                    if (key == 0x0F) { // Tab
-                        EnsureLiveConsole();
-                        HandleTabCompletion();
+                    if (HandleRegularKeyShortcut(key)) {
                         break;
                     }
 
