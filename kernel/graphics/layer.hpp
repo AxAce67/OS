@@ -53,6 +53,7 @@ private:
 class LayerManager {
 public:
     LayerManager(const FrameBufferConfig& config);
+    ~LayerManager();
 
     // 新しいレイヤーを作成してIDを返す
     Layer* NewLayer();
@@ -72,6 +73,9 @@ public:
 
 private:
     const FrameBufferConfig& config_;
+    PixelColor* back_buffer_{nullptr};
+    int back_buffer_width_{0};
+    int back_buffer_height_{0};
     
     // 動的確保されたレイヤーのリスト (単純化のため生ポインタ配列と現在数で管理)
     // std::vectorがまだ無いため、固定長配列(最大256個)で管理する
