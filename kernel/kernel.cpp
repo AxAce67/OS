@@ -255,6 +255,69 @@ bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose) {
     return true;
 }
 
+bool FindFirstConnectedPort(int* out_port, int* out_speed) {
+    if (out_port == nullptr || out_speed == nullptr || !g_xhci_caps.valid) {
+        return false;
+    }
+    XHCIPortStatus ports[32];
+    const int n = ReadXHCIPortStatus(g_xhci_caps, ports, 32);
+    for (int i = 0; i < n; ++i) {
+        if (ports[i].connected) {
+            *out_port = static_cast<int>(ports[i].port_id);
+            *out_speed = static_cast<int>(ports[i].speed);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
+    if (!g_xhci_caps.valid) {
+        return false;
+    }
+    if (!XHCIInitializeCommandAndEventRings(g_xhci_caps)) {
+        return false;
+    }
+
+    XHCICommandResult slot_result{};
+    if (!XHCIEnableSlot(g_xhci_caps, &slot_result) || !slot_result.ok || slot_result.slot_id == 0) {
+        return false;
+    }
+    g_last_xhci_slot_id = slot_result.slot_id;
+
+    int port = 0;
+    int speed = 0;
+    if (!FindFirstConnectedPort(&port, &speed)) {
+        return false;
+    }
+
+    XHCIAddressDeviceResult addr_result{};
+    if (!XHCIAddressDevice(g_xhci_caps,
+                           slot_result.slot_id,
+                           static_cast<uint8_t>(port),
+                           static_cast<uint8_t>(speed),
+                           &addr_result) ||
+        !addr_result.ok) {
+        return false;
+    }
+
+    XHCIConfigureEndpointResult cfg_result{};
+    if (!XHCIConfigureInterruptInEndpoint(g_xhci_caps,
+                                          slot_result.slot_id,
+                                          mps,
+                                          interval,
+                                          &cfg_result) ||
+        !cfg_result.ok) {
+        return false;
+    }
+
+    g_xhci_hid_auto_slot = slot_result.slot_id;
+    g_xhci_hid_auto_len = req_len;
+    g_xhci_hid_auto_enabled = true;
+    g_xhci_hid_last_poll_tick = CurrentTick();
+    return true;
+}
+
 char KeycodeToAscii(uint8_t keycode, bool shift, bool caps_lock) {
     if (g_jp_layout) {
         switch (keycode) {
@@ -1135,6 +1198,7 @@ const char* const kBuiltInCommands[] = {
     "xhciintrin",
     "xhcihidpoll",
     "xhciauto",
+    "xhciautostart",
     "mouseabs",
     "usbports",
 };
@@ -1192,7 +1256,7 @@ void ExecuteCommand(const char* command) {
         console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
         console->PrintLine("help: fs2   rm rmdir mv ls stat cat");
         console->PrintLine("help: misc  history clearhistory inputstat about");
-        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll xhciauto mouseabs usbports");
+        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll xhciauto xhciautostart mouseabs usbports");
         return;
     }
 
@@ -1603,6 +1667,52 @@ void ExecuteCommand(const char* command) {
         console->PrintDec(slot);
         console->Print(" len=");
         console->PrintDec(req_len);
+        console->Print("\n");
+        return;
+    }
+
+    if (StrEqual(cmd, "xhciautostart")) {
+        if (!g_xhci_caps.valid) {
+            console->PrintLine("xhciautostart: xhci not ready");
+            return;
+        }
+        int req_len = 8;
+        int mps = 8;
+        int interval = 4;
+        char t0[16];
+        char t1[16];
+        char t2[16];
+        if (NextToken(command, &pos, t0, sizeof(t0))) {
+            req_len = ParseInt(t0);
+        }
+        if (NextToken(command, &pos, t1, sizeof(t1))) {
+            mps = ParseInt(t1);
+        }
+        if (NextToken(command, &pos, t2, sizeof(t2))) {
+            interval = ParseInt(t2);
+        }
+        if (req_len <= 0 || req_len > 64) {
+            console->PrintLine("xhciautostart: len must be 1..64");
+            return;
+        }
+        if (mps <= 0 || mps > 1024) {
+            console->PrintLine("xhciautostart: mps must be 1..1024");
+            return;
+        }
+        if (interval <= 0 || interval > 255) {
+            console->PrintLine("xhciautostart: interval must be 1..255");
+            return;
+        }
+        if (!StartXHCIAutoMouse(static_cast<uint32_t>(req_len),
+                                static_cast<uint16_t>(mps),
+                                static_cast<uint8_t>(interval))) {
+            console->PrintLine("xhciautostart: failed");
+            return;
+        }
+        console->Print("xhciautostart: ok slot=");
+        console->PrintDec(g_xhci_hid_auto_slot);
+        console->Print(" len=");
+        console->PrintDec(g_xhci_hid_auto_len);
         console->Print("\n");
         return;
     }
