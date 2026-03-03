@@ -1,0 +1,15 @@
+# Build artifacts
+*.o
+*.obj
+*.elf
+*.efi
+*.bin
+*.fd
+
+# VM/runtime artifacts
+disk/NvVars
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+

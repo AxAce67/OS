@@ -1,0 +1,19 @@
+#pragma once
+#include <stdint.h>
+#include "frame_buffer_config.h"
+
+#include "layer.hpp"
+
+// マウスカーソルのドット絵のサイズ
+const int kMouseCursorWidth = 15;
+const int kMouseCursorHeight = 24;
+
+class MouseCursor {
+public:
+    MouseCursor(unsigned int initial_x, unsigned int initial_y, LayerManager* layer_manager);
+    void Move(int dx, int dy);
+
+private:
+    LayerManager* layer_manager_;
+    Layer* layer_;
+};
