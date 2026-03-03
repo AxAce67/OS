@@ -87,10 +87,12 @@ void MouseCursor::Move(int dx, int dy) {
     int res_x = static_cast<int>(config.horizontal_resolution);
     int res_y = static_cast<int>(config.vertical_resolution);
 
+    const int max_x = (res_x > w) ? (res_x - w) : 0;
+    const int max_y = (res_y > h) ? (res_y - h) : 0;
     if (new_x < 0) new_x = 0;
     if (new_y < 0) new_y = 0;
-    if (new_x >= res_x) new_x = res_x - 1; 
-    if (new_y >= res_y) new_y = res_y - 1;
+    if (new_x > max_x) new_x = max_x;
+    if (new_y > max_y) new_y = max_y;
 
     // 押し戻した結果を再設定
     layer_->Move(new_x, new_y);
