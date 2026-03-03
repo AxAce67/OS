@@ -3258,6 +3258,19 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
 
                 if (msg.pointer_mode == Message::PointerMode::kAbsolute) {
                     mouse_cursor->SetPosition(msg.x, msg.y);
+                    if ((pressed & 0x01) != 0) {  // Left click
+                        EnsureLiveConsole();
+                        const int click_col = (msg.x - Console::kMarginX) / Console::kCellWidth;
+                        const int click_row = (msg.y - Console::kMarginY) / Console::kCellHeight;
+                        if (click_row == input_row && click_col >= input_col) {
+                            int next_cursor = click_col - input_col;
+                            if (next_cursor < 0) next_cursor = 0;
+                            if (next_cursor > command_len) next_cursor = command_len;
+                            cursor_pos = next_cursor;
+                            RenderInputLine();
+                            RefreshConsole();
+                        }
+                    }
                 } else {
                     mouse_cursor->Move(msg.dx, msg.dy);
                 }
