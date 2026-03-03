@@ -8,6 +8,7 @@ class Console {
 public:
     static const int kRows = 25;
     static const int kColumns = 80;
+    static const int kScrollbackLines = 512;
 
     Console(Window* window,
             uint8_t fg_r, uint8_t fg_g, uint8_t fg_b,
@@ -18,16 +19,30 @@ public:
     void PrintHex(uint64_t value, int num_digits);
     void PrintDec(int64_t value);
     void PrintLine(const char* s);
+    void Clear();
+    bool Backspace();
+    int CursorRow() const;
+    int CursorColumn() const;
+    void SetCursorPosition(int row, int column);
+    void ScrollUp(int lines = 1);
+    void ScrollDown(int lines = 1);
+    void ResetScroll();
+    bool IsScrolled() const;
 
 private:
     void Newline();
     void Scroll();
+    void RenderVisible();
 
     Window* window_;
     uint8_t fg_r_, fg_g_, fg_b_;
     uint8_t bg_r_, bg_g_, bg_b_;
     int cursor_row_, cursor_column_;
-    char buffer_[kRows][kColumns + 1]; // 画面の内容を記憶しておくためのバッファ
+    char buffer_[kRows][kColumns + 1];
+    char scrollback_[kScrollbackLines][kColumns + 1];
+    int scrollback_head_;
+    int scrollback_count_;
+    int view_offset_;
 };
 
 // kernel.cpp等で定義されている文字描画関数を呼び出せるようにする

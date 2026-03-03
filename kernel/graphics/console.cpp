@@ -20,8 +20,10 @@ Console::Console(Window* window,
     : window_{window},
       fg_r_{fg_r}, fg_g_{fg_g}, fg_b_{fg_b},
       bg_r_{bg_r}, bg_g_{bg_g}, bg_b_{bg_b},
-      cursor_row_{0}, cursor_column_{0} {
+      cursor_row_{0}, cursor_column_{0},
+      scrollback_head_{0}, scrollback_count_{0}, view_offset_{0} {
     memset(buffer_, 0, sizeof(buffer_));
+    memset(scrollback_, 0, sizeof(scrollback_));
 }
 
 void Console::Print(const char* s) {
@@ -32,11 +34,13 @@ void Console::Print(const char* s) {
             if (cursor_column_ >= kColumns) {
                 Newline();
             }
-            // 文字セルを背景色で消してから文字を描く。
-            // これをしないと space 描画時に既存ピクセルが残って重なって見える。
-            window_->FillRectangle(8 * cursor_column_, 16 * cursor_row_, 8, 16, {bg_r_, bg_g_, bg_b_});
-            window_->DrawChar(8 * cursor_column_, 16 * cursor_row_, *s, {fg_r_, fg_g_, fg_b_});
             buffer_[cursor_row_][cursor_column_] = *s;
+            if (view_offset_ == 0) {
+                // 文字セルを背景色で消してから文字を描く。
+                // これをしないと space 描画時に既存ピクセルが残って重なって見える。
+                window_->FillRectangle(8 * cursor_column_, 16 * cursor_row_, 8, 16, {bg_r_, bg_g_, bg_b_});
+                window_->DrawChar(8 * cursor_column_, 16 * cursor_row_, *s, {fg_r_, fg_g_, fg_b_});
+            }
             ++cursor_column_;
         }
         ++s;
@@ -98,8 +102,12 @@ void Console::PrintDec(int64_t value) {
 void Console::Clear() {
     window_->FillRectangle(0, 0, window_->Width(), window_->Height(), {bg_r_, bg_g_, bg_b_});
     memset(buffer_, 0, sizeof(buffer_));
+    memset(scrollback_, 0, sizeof(scrollback_));
     cursor_row_ = 0;
     cursor_column_ = 0;
+    scrollback_head_ = 0;
+    scrollback_count_ = 0;
+    view_offset_ = 0;
 }
 
 bool Console::Backspace() {
@@ -108,7 +116,9 @@ bool Console::Backspace() {
     }
     --cursor_column_;
     buffer_[cursor_row_][cursor_column_] = '\0';
-    window_->FillRectangle(8 * cursor_column_, 16 * cursor_row_, 8, 16, {bg_r_, bg_g_, bg_b_});
+    if (view_offset_ == 0) {
+        window_->FillRectangle(8 * cursor_column_, 16 * cursor_row_, 8, 16, {bg_r_, bg_g_, bg_b_});
+    }
     return true;
 }
 
@@ -129,6 +139,41 @@ void Console::SetCursorPosition(int row, int column) {
     cursor_column_ = column;
 }
 
+void Console::ScrollUp(int lines) {
+    if (lines <= 0 || scrollback_count_ <= 0) {
+        return;
+    }
+    int max_offset = scrollback_count_;
+    view_offset_ += lines;
+    if (view_offset_ > max_offset) {
+        view_offset_ = max_offset;
+    }
+    RenderVisible();
+}
+
+void Console::ScrollDown(int lines) {
+    if (lines <= 0 || view_offset_ <= 0) {
+        return;
+    }
+    view_offset_ -= lines;
+    if (view_offset_ < 0) {
+        view_offset_ = 0;
+    }
+    RenderVisible();
+}
+
+void Console::ResetScroll() {
+    if (view_offset_ == 0) {
+        return;
+    }
+    view_offset_ = 0;
+    RenderVisible();
+}
+
+bool Console::IsScrolled() const {
+    return view_offset_ > 0;
+}
+
 void Console::Newline() {
     cursor_column_ = 0;
     if (cursor_row_ < kRows - 1) {
@@ -139,20 +184,56 @@ void Console::Newline() {
 }
 
 void Console::Scroll() {
-    // 画面全体を背景色で塗りつぶす
-    window_->FillRectangle(0, 0, window_->Width(), window_->Height(), {bg_r_, bg_g_, bg_b_});
+    int slot = 0;
+    if (scrollback_count_ < kScrollbackLines) {
+        slot = (scrollback_head_ + scrollback_count_) % kScrollbackLines;
+        ++scrollback_count_;
+    } else {
+        slot = scrollback_head_;
+        scrollback_head_ = (scrollback_head_ + 1) % kScrollbackLines;
+    }
+    memcpy(scrollback_[slot], buffer_[0], kColumns + 1);
+    if (view_offset_ > 0 && view_offset_ < scrollback_count_) {
+        ++view_offset_;
+    }
 
     // バッファを1行ずつ上にずらす
     for (int row = 0; row < kRows - 1; ++row) {
         memcpy(buffer_[row], buffer_[row + 1], kColumns + 1);
-        // ずらした内容を描画し直す
-        for (int col = 0; col < kColumns; ++col) {
-            if (buffer_[row][col] != '\0') {
-                window_->DrawChar(8 * col, 16 * row, buffer_[row][col], {fg_r_, fg_g_, fg_b_});
-            }
-        }
     }
 
     // 最後の行（kRows - 1）をクリアする
     memset(buffer_[kRows - 1], 0, kColumns + 1);
+    RenderVisible();
+}
+
+void Console::RenderVisible() {
+    window_->FillRectangle(0, 0, window_->Width(), window_->Height(), {bg_r_, bg_g_, bg_b_});
+
+    const int total_lines = scrollback_count_ + kRows;
+    int top_line = total_lines - kRows - view_offset_;
+    if (top_line < 0) {
+        top_line = 0;
+    }
+
+    for (int row = 0; row < kRows; ++row) {
+        const int virtual_line = top_line + row;
+        const char* src = nullptr;
+        if (virtual_line < scrollback_count_) {
+            const int idx = (scrollback_head_ + virtual_line) % kScrollbackLines;
+            src = scrollback_[idx];
+        } else {
+            const int buf_row = virtual_line - scrollback_count_;
+            if (buf_row < 0 || buf_row >= kRows) {
+                continue;
+            }
+            src = buffer_[buf_row];
+        }
+
+        for (int col = 0; col < kColumns; ++col) {
+            if (src[col] != '\0') {
+                window_->DrawChar(8 * col, 16 * row, src[col], {fg_r_, fg_g_, fg_b_});
+            }
+        }
+    }
 }

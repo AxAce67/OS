@@ -2094,6 +2094,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     auto RefreshConsole = [&]() {
         layer_manager->Draw(0, 0, 8 * Console::kColumns, 16 * Console::kRows);
     };
+    auto EnsureLiveConsole = [&]() {
+        if (console->IsScrolled()) {
+            console->ResetScroll();
+            RefreshConsole();
+        }
+    };
 
     auto RenderInputLine = [&]() {
         const int clear_len = Console::kColumns - input_col - 1;
@@ -2266,31 +2272,44 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     if ((ext & 0x80) != 0) {
                         break;
                     }
-                    if ((ext & 0x7F) == 0x53) { // Delete
+                    if ((ext & 0x7F) == 0x49) { // Page Up
+                        console->ScrollUp(3);
+                        RefreshConsole();
+                    } else if ((ext & 0x7F) == 0x51) { // Page Down
+                        console->ScrollDown(3);
+                        RefreshConsole();
+                    } else if ((ext & 0x7F) == 0x53) { // Delete
+                        EnsureLiveConsole();
                         DeleteAtCursor();
                     } else if ((ext & 0x7F) == 0x4B) { // Arrow Left
+                        EnsureLiveConsole();
                         if (cursor_pos > 0) {
                             --cursor_pos;
                             RenderInputLine();
                             RefreshConsole();
                         }
                     } else if ((ext & 0x7F) == 0x4D) { // Arrow Right
+                        EnsureLiveConsole();
                         if (cursor_pos < command_len) {
                             ++cursor_pos;
                             RenderInputLine();
                             RefreshConsole();
                         }
                     } else if ((ext & 0x7F) == 0x47) { // Home
+                        EnsureLiveConsole();
                         cursor_pos = 0;
                         RenderInputLine();
                         RefreshConsole();
                     } else if ((ext & 0x7F) == 0x4F) { // End
+                        EnsureLiveConsole();
                         cursor_pos = command_len;
                         RenderInputLine();
                         RefreshConsole();
                     } else if ((ext & 0x7F) == 0x48) { // Arrow Up
+                        EnsureLiveConsole();
                         BrowseHistoryUp();
                     } else if ((ext & 0x7F) == 0x50) { // Arrow Down
+                        EnsureLiveConsole();
                         BrowseHistoryDown();
                     }
                     break;
@@ -2315,12 +2334,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     last_make_valid = true;
                     if (IsCtrlPressed(keyboard_state)) {
                         if (key == 0x1E) { // Ctrl + A
+                            EnsureLiveConsole();
                             cursor_pos = 0;
                             RenderInputLine();
                             RefreshConsole();
                             break;
                         }
                         if (key == 0x12) { // Ctrl + E
+                            EnsureLiveConsole();
                             cursor_pos = command_len;
                             RenderInputLine();
                             RefreshConsole();
@@ -2343,26 +2364,31 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         }
                     }
                     if (key == 0x47) { // Home (non-E0 fallback)
+                        EnsureLiveConsole();
                         cursor_pos = 0;
                         RenderInputLine();
                         RefreshConsole();
                         break;
                     }
                     if (key == 0x48) { // Arrow Up (non-E0 fallback)
+                        EnsureLiveConsole();
                         BrowseHistoryUp();
                         break;
                     }
                     if (key == 0x4F) { // End (non-E0 fallback)
+                        EnsureLiveConsole();
                         cursor_pos = command_len;
                         RenderInputLine();
                         RefreshConsole();
                         break;
                     }
                     if (key == 0x50) { // Arrow Down (non-E0 fallback)
+                        EnsureLiveConsole();
                         BrowseHistoryDown();
                         break;
                     }
                     if (key == 0x0E || key == 0x53 || key == 0x71) { // Backspace/Delete
+                        EnsureLiveConsole();
                         if (key == 0x0E) {
                             BackspaceAtCursor();
                         } else {
@@ -2371,6 +2397,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         break;
                     }
                     if (key == 0x0F) { // Tab
+                        EnsureLiveConsole();
                         HandleTabCompletion();
                         break;
                     }
@@ -2379,6 +2406,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                              IsShiftPressed(keyboard_state),
                                              keyboard_state.caps_lock);
                     if (ch != 0) {
+                        EnsureLiveConsole();
                         if (ch == '\n') {
                             console->SetCursorPosition(input_row, input_col + command_len);
                             console->Print("\n");
