@@ -137,6 +137,9 @@ bool g_xhci_hid_auto_enabled = false;
 uint8_t g_xhci_hid_auto_slot = 0;
 uint32_t g_xhci_hid_auto_len = 8;
 uint64_t g_xhci_hid_last_poll_tick = 0;
+uint8_t g_hid_format_mode = 0;  // 0=unknown,1=A,2=B
+uint32_t g_hid_observed_max_raw = 0;
+uint32_t g_hid_sample_count = 0;
 
 int ClampInt(int v, int min_v, int max_v) {
     if (v < min_v) return min_v;
@@ -180,17 +183,48 @@ bool DecodeHIDAbsoluteXY(const uint8_t* data, uint32_t len, int* out_x, int* out
 
     uint16_t raw_x = ax;
     uint16_t raw_y = ay;
+    uint8_t chosen_mode = 1;
     if (has_b) {
         const bool a_reasonable = (ax <= 0x7FFFu && ay <= 0x7FFFu);
         const bool b_reasonable = (bx <= 0x7FFFu && by <= 0x7FFFu);
-        if (!a_reasonable && b_reasonable) {
+        if (g_hid_format_mode == 2) {
             raw_x = bx;
             raw_y = by;
+            chosen_mode = 2;
+        } else if (g_hid_format_mode == 1) {
+            raw_x = ax;
+            raw_y = ay;
+            chosen_mode = 1;
+        } else if (!a_reasonable && b_reasonable) {
+            raw_x = bx;
+            raw_y = by;
+            chosen_mode = 2;
+            g_hid_format_mode = 2;
+        } else {
+            raw_x = ax;
+            raw_y = ay;
+            chosen_mode = 1;
+            if (!b_reasonable || a_reasonable) {
+                g_hid_format_mode = 1;
+            }
         }
+    } else if (g_hid_format_mode == 0) {
+        g_hid_format_mode = 1;
     }
 
+    if (raw_x > g_hid_observed_max_raw) g_hid_observed_max_raw = raw_x;
+    if (raw_y > g_hid_observed_max_raw) g_hid_observed_max_raw = raw_y;
+    ++g_hid_sample_count;
+
     uint32_t max_raw = 0xFFFFu;
-    if (raw_x <= 0x7FFFu && raw_y <= 0x7FFFu) {
+    if (g_hid_observed_max_raw <= 0x7FFFu && g_hid_sample_count >= 8) {
+        max_raw = 0x7FFFu;
+    }
+    if (g_hid_observed_max_raw > 0x7FFFu) {
+        max_raw = 0xFFFFu;
+    }
+    if (chosen_mode == 2 && max_raw == 0xFFFFu && raw_x <= 0x7FFFu && raw_y <= 0x7FFFu) {
+        // ReportID付き形式で16bit full rangeが使われないケースが多いので補正
         max_raw = 0x7FFFu;
     }
 
@@ -206,6 +240,12 @@ bool DecodeHIDAbsoluteXY(const uint8_t* data, uint32_t len, int* out_x, int* out
         *out_wheel = static_cast<int>(wh);
     }
     return true;
+}
+
+void ResetHIDDecodeLearning() {
+    g_hid_format_mode = 0;
+    g_hid_observed_max_raw = 0;
+    g_hid_sample_count = 0;
 }
 
 bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose) {
@@ -1197,6 +1237,7 @@ const char* const kBuiltInCommands[] = {
     "xhciconfigep",
     "xhciintrin",
     "xhcihidpoll",
+    "xhcihidstat",
     "xhciauto",
     "xhciautostart",
     "mouseabs",
@@ -1256,7 +1297,7 @@ void ExecuteCommand(const char* command) {
         console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
         console->PrintLine("help: fs2   rm rmdir mv ls stat cat");
         console->PrintLine("help: misc  history clearhistory inputstat about");
-        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll xhciauto xhciautostart mouseabs usbports");
+        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll xhcihidstat xhciauto xhciautostart mouseabs usbports");
         return;
     }
 
@@ -1616,6 +1657,29 @@ void ExecuteCommand(const char* command) {
         return;
     }
 
+    if (StrEqual(cmd, "xhcihidstat")) {
+        char arg[16];
+        if (NextToken(command, &pos, arg, sizeof(arg)) && StrEqual(arg, "reset")) {
+            ResetHIDDecodeLearning();
+            console->PrintLine("xhcihidstat: reset");
+            return;
+        }
+        console->Print("xhcihidstat: mode=");
+        if (g_hid_format_mode == 2) {
+            console->Print("B");
+        } else if (g_hid_format_mode == 1) {
+            console->Print("A");
+        } else {
+            console->Print("unknown");
+        }
+        console->Print(" max_raw=");
+        console->PrintDec(g_hid_observed_max_raw);
+        console->Print(" samples=");
+        console->PrintDec(g_hid_sample_count);
+        console->Print("\n");
+        return;
+    }
+
     if (StrEqual(cmd, "xhciauto")) {
         char mode[16];
         if (!NextToken(command, &pos, mode, sizeof(mode))) {
@@ -1663,6 +1727,7 @@ void ExecuteCommand(const char* command) {
         g_xhci_hid_auto_len = static_cast<uint32_t>(req_len);
         g_xhci_hid_auto_enabled = true;
         g_xhci_hid_last_poll_tick = CurrentTick();
+        ResetHIDDecodeLearning();
         console->Print("xhciauto: on slot=");
         console->PrintDec(slot);
         console->Print(" len=");
@@ -1703,6 +1768,7 @@ void ExecuteCommand(const char* command) {
             console->PrintLine("xhciautostart: interval must be 1..255");
             return;
         }
+        ResetHIDDecodeLearning();
         if (!StartXHCIAutoMouse(static_cast<uint32_t>(req_len),
                                 static_cast<uint16_t>(mps),
                                 static_cast<uint8_t>(interval))) {
