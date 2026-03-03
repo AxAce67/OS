@@ -19,6 +19,11 @@ extern uint8_t g_mouse_buttons_current;
 extern uint64_t g_mouse_left_press_count;
 extern uint64_t g_mouse_right_press_count;
 extern uint64_t g_mouse_middle_press_count;
+extern uint64_t g_keyboard_irq_count;
+extern uint8_t g_keyboard_last_raw;
+extern uint8_t g_keyboard_last_key;
+extern bool g_keyboard_last_extended;
+extern bool g_keyboard_last_released;
 
 ShellPair* EnsurePair(ShellPair* pairs, int count, const char* key);
 void PrintPairs(const char* label, ShellPair* pairs, int count);
@@ -226,6 +231,17 @@ bool ExecuteMemCommand() {
 }
 
 bool ExecuteInputStatCommand() {
+    console->Print("kbd_irq=");
+    console->PrintDec(static_cast<int64_t>(g_keyboard_irq_count));
+    console->Print(" raw=0x");
+    console->PrintHex(g_keyboard_last_raw, 2);
+    console->Print(" key=0x");
+    console->PrintHex(g_keyboard_last_key, 2);
+    console->Print(" ext=");
+    console->Print(g_keyboard_last_extended ? "1" : "0");
+    console->Print(" up=");
+    console->Print(g_keyboard_last_released ? "1" : "0");
+    console->Print(" ");
     console->Print("kbd_dropped=");
     console->PrintDec(static_cast<int64_t>(g_keyboard_dropped_events));
     console->Print(" mouse_dropped=");

@@ -110,6 +110,11 @@ ShellFile g_files[64];
 bool g_key_repeat_enabled = true;
 bool g_jp_layout = false;
 bool g_ime_enabled = false;
+uint64_t g_keyboard_irq_count = 0;
+uint8_t g_keyboard_last_raw = 0;
+uint8_t g_keyboard_last_key = 0;
+bool g_keyboard_last_extended = false;
+bool g_keyboard_last_released = false;
 const BootInfo* g_boot_info = nullptr;
 bool g_dirs_initialized = false;
 char g_cwd[96] = "/";
@@ -2052,10 +2057,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 HandleMouseMessage(msg);
                 break;
             case Message::Type::kInterruptKeyboard: {
+                ++g_keyboard_irq_count;
+                g_keyboard_last_raw = msg.keycode;
                 KeyEvent key_event{};
                 if (!DecodePS2Set1KeyEvent(msg.keycode, &e0_prefix, &keyboard_mods, &key_event)) {
                     break;
                 }
+                g_keyboard_last_key = key_event.keycode;
+                g_keyboard_last_extended = key_event.extended;
+                g_keyboard_last_released = key_event.released;
                 if (key_event.kind == KeyEventKind::kModifier) {
                     break;
                 }
