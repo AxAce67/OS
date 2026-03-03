@@ -2139,6 +2139,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleExtendedKey = [&](uint8_t key) -> bool {
+        if (g_ime_enabled && ime_romaji_len > 0) {
+            FlushImeRomaji(true);
+        }
         if (key == 0x49) { // Page Up
             console->ScrollUp(3);
             RefreshConsole();
@@ -2207,6 +2210,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 return true;
             }
             if (key == 0x1E) { // Ctrl + A
+                if (g_ime_enabled && ime_romaji_len > 0) {
+                    FlushImeRomaji(true);
+                }
                 EnsureLiveConsole();
                 ClearSelection();
                 cursor_pos = 0;
@@ -2215,6 +2221,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 return true;
             }
             if (key == 0x12) { // Ctrl + E
+                if (g_ime_enabled && ime_romaji_len > 0) {
+                    FlushImeRomaji(true);
+                }
                 EnsureLiveConsole();
                 ClearSelection();
                 cursor_pos = command_len;
@@ -2223,6 +2232,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 return true;
             }
             if (key == 0x26) { // Ctrl + L
+                if (g_ime_enabled && ime_romaji_len > 0) {
+                    FlushImeRomaji(true);
+                }
                 console->Clear();
                 PrintPrompt();
                 input_row = console->CursorRow();
@@ -2242,6 +2254,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             }
         }
         if (!keyboard_mods.num_lock && key == 0x47) { // Home (non-E0 fallback)
+            if (g_ime_enabled && ime_romaji_len > 0) {
+                FlushImeRomaji(true);
+            }
             EnsureLiveConsole();
             ClearSelection();
             cursor_pos = 0;
@@ -2250,11 +2265,17 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return true;
         }
         if (!keyboard_mods.num_lock && key == 0x48) { // Arrow Up (non-E0 fallback)
+            if (g_ime_enabled && ime_romaji_len > 0) {
+                FlushImeRomaji(true);
+            }
             EnsureLiveConsole();
             BrowseHistoryUp();
             return true;
         }
         if (!keyboard_mods.num_lock && key == 0x4F) { // End (non-E0 fallback)
+            if (g_ime_enabled && ime_romaji_len > 0) {
+                FlushImeRomaji(true);
+            }
             EnsureLiveConsole();
             ClearSelection();
             cursor_pos = command_len;
@@ -2263,11 +2284,17 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return true;
         }
         if (!keyboard_mods.num_lock && key == 0x50) { // Arrow Down (non-E0 fallback)
+            if (g_ime_enabled && ime_romaji_len > 0) {
+                FlushImeRomaji(true);
+            }
             EnsureLiveConsole();
             BrowseHistoryDown();
             return true;
         }
         if (key == 0x0E || ((!keyboard_mods.num_lock) && (key == 0x53 || key == 0x71))) { // Backspace/Delete
+            if (key != 0x0E && g_ime_enabled && ime_romaji_len > 0) {
+                FlushImeRomaji(true);
+            }
             EnsureLiveConsole();
             if (key == 0x0E) {
                 BackspaceAtCursor();
@@ -2277,6 +2304,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return true;
         }
         if (key == 0x0F) { // Tab
+            if (g_ime_enabled && ime_romaji_len > 0) {
+                FlushImeRomaji(true);
+            }
             EnsureLiveConsole();
             HandleTabCompletion();
             return true;
