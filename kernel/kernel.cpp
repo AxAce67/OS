@@ -314,9 +314,9 @@ void ResetHIDDecodeLearning() {
     g_hid_smooth_y = -1;
 }
 
-bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose) {
+bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t timeout_iters = 3000000) {
     XHCIInterruptInResult rr{};
-    if (!XHCIPollInterruptIn(g_xhci_caps, slot, req_len, &rr)) {
+    if (!XHCIPollInterruptIn(g_xhci_caps, slot, req_len, &rr, timeout_iters)) {
         if (verbose) {
             console->PrintLine("xhcihidpoll: timeout/fail");
         }
@@ -421,6 +421,11 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
     g_xhci_hid_auto_len = req_len;
     g_xhci_hid_auto_enabled = true;
     g_xhci_hid_last_poll_tick = CurrentTick();
+
+    // 起動直後の追従精度を上げるため、短いタイムアウトで数サンプルを先に学習する。
+    for (int i = 0; i < 8; ++i) {
+        PollHIDAndApply(g_xhci_hid_auto_slot, g_xhci_hid_auto_len, false, 200000);
+    }
     return true;
 }
 
