@@ -109,6 +109,7 @@ ShellDir g_dirs[32];
 ShellFile g_files[64];
 bool g_key_repeat_enabled = true;
 bool g_jp_layout = false;
+bool g_ime_enabled = false;
 const BootInfo* g_boot_info = nullptr;
 bool g_dirs_initialized = false;
 char g_cwd[96] = "/";
@@ -1145,6 +1146,11 @@ void PrintShellFileStat(const ShellFile* file) {
 void PrintPrompt() {
     console->Print("os:");
     console->Print(g_cwd);
+    if (g_jp_layout) {
+        console->Print(g_ime_enabled ? "[jp-ime]" : "[jp]");
+    } else {
+        console->Print(g_ime_enabled ? "[us-ime]" : "[us]");
+    }
     console->Print("> ");
 }
 
@@ -1970,11 +1976,17 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return true;
         }
         if (key == 0x70) { // Kana
-            g_jp_layout = !g_jp_layout;
+            g_ime_enabled = !g_ime_enabled;
+            if (g_ime_enabled) {
+                g_jp_layout = true;
+            }
             return true;
         }
         if (key == 0x79 || key == 0x7B) { // Henkan / Muhenkan
-            g_jp_layout = (key == 0x79);
+            g_ime_enabled = (key == 0x79);
+            if (g_ime_enabled) {
+                g_jp_layout = true;
+            }
             return true;
         }
         return false;

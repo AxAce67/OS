@@ -30,6 +30,7 @@ const char* const kBuiltInCommands[] = {
     "cat",
     "repeat",
     "layout",
+    "ime",
     "set",
     "alias",
     "xhciinfo",

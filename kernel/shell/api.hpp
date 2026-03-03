@@ -20,6 +20,7 @@ bool ExecuteMemCommand();
 bool ExecuteInputStatCommand();
 bool ExecuteRepeatCommand(const char* rest);
 bool ExecuteLayoutCommand(const char* rest);
+bool ExecuteImeCommand(const char* rest);
 bool ExecuteSetCommand(const char* command, int* pos_ptr);
 bool ExecuteAliasCommand(const char* command, int* pos_ptr);
 bool ExecuteLsCommand(const char* rest);
@@ -27,4 +28,3 @@ bool ExecuteStatCommand(const char* command, int* pos_ptr);
 bool ExecuteCatCommand(const char* command, int* pos_ptr);
 bool ExecuteEchoCommand(const char* rest);
 bool ExecuteRebootCommand();
-

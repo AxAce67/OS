@@ -29,6 +29,7 @@ bool HandleMem(const char*, const char*, const char*, int*) { return ExecuteMemC
 bool HandleInputStat(const char*, const char*, const char*, int*) { return ExecuteInputStatCommand(); }
 bool HandleRepeat(const char*, const char*, const char* rest, int*) { return ExecuteRepeatCommand(rest); }
 bool HandleLayout(const char*, const char*, const char* rest, int*) { return ExecuteLayoutCommand(rest); }
+bool HandleIme(const char*, const char*, const char* rest, int*) { return ExecuteImeCommand(rest); }
 bool HandleSet(const char*, const char* command, const char*, int* pos_ptr) { return ExecuteSetCommand(command, pos_ptr); }
 bool HandleAlias(const char*, const char* command, const char*, int* pos_ptr) { return ExecuteAliasCommand(command, pos_ptr); }
 bool HandleLs(const char*, const char*, const char* rest, int*) { return ExecuteLsCommand(rest); }
@@ -60,6 +61,7 @@ const ShellCommandEntry kShellCommandTable[] = {
     {"inputstat", HandleInputStat},
     {"repeat", HandleRepeat},
     {"layout", HandleLayout},
+    {"ime", HandleIme},
     {"set", HandleSet},
     {"alias", HandleAlias},
     {"ls", HandleLs},

@@ -9,6 +9,7 @@
 extern Console* console;
 extern bool g_key_repeat_enabled;
 extern bool g_jp_layout;
+extern bool g_ime_enabled;
 extern bool g_boot_mouse_auto_enabled;
 extern ShellPair g_vars[16];
 extern ShellPair g_aliases[16];
@@ -27,7 +28,7 @@ bool ExecuteHelpCommand() {
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
     console->PrintLine("help: misc  history clearhistory inputstat about");
-    console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll xhcihidstat xhciauto xhciautostart mouseabs usbports");
+    console->PrintLine("help: cfg   repeat layout ime set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll xhcihidstat xhciauto xhciautostart mouseabs usbports");
     return true;
 }
 
@@ -70,6 +71,26 @@ bool ExecuteLayoutCommand(const char* rest) {
     if (StrEqual(rest, "jp")) {
         g_jp_layout = true;
         console->PrintLine("layout=jp");
+        return true;
+    }
+    return false;
+}
+
+bool ExecuteImeCommand(const char* rest) {
+    if (rest[0] == '\0') {
+        console->Print("ime=");
+        console->PrintLine(g_ime_enabled ? "on" : "off");
+        return true;
+    }
+    if (StrEqual(rest, "on")) {
+        g_ime_enabled = true;
+        g_jp_layout = true;
+        console->PrintLine("ime=on");
+        return true;
+    }
+    if (StrEqual(rest, "off")) {
+        g_ime_enabled = false;
+        console->PrintLine("ime=off");
         return true;
     }
     return false;
@@ -194,6 +215,10 @@ bool ExecuteInputStatCommand() {
     console->PrintDec(static_cast<int64_t>(g_mouse_right_press_count));
     console->Print(" m=");
     console->PrintDec(static_cast<int64_t>(g_mouse_middle_press_count));
+    console->Print(" layout=");
+    console->Print(g_jp_layout ? "jp" : "us");
+    console->Print(" ime=");
+    console->Print(g_ime_enabled ? "on" : "off");
     console->Print("\n");
     return true;
 }
