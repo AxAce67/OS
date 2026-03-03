@@ -140,8 +140,23 @@ uint64_t g_xhci_hid_last_poll_tick = 0;
 uint8_t g_hid_format_mode = 0;  // 0=unknown,1=A,2=B
 uint32_t g_hid_observed_max_raw = 0;
 uint32_t g_hid_sample_count = 0;
+bool g_hid_calibrated = false;
+uint16_t g_hid_min_x = 0xFFFF;
+uint16_t g_hid_min_y = 0xFFFF;
+uint16_t g_hid_max_x = 0;
+uint16_t g_hid_max_y = 0;
+int g_hid_smooth_x = -1;
+int g_hid_smooth_y = -1;
+const int kHidSmoothAlphaNum = 1;  // 1/4 EMA
+const int kHidSmoothAlphaDen = 4;
 
 int ClampInt(int v, int min_v, int max_v) {
+    if (v < min_v) return min_v;
+    if (v > max_v) return max_v;
+    return v;
+}
+
+uint16_t ClampU16(uint16_t v, uint16_t min_v, uint16_t max_v) {
     if (v < min_v) return min_v;
     if (v > max_v) return max_v;
     return v;
@@ -228,12 +243,56 @@ bool DecodeHIDAbsoluteXY(const uint8_t* data, uint32_t len, int* out_x, int* out
         max_raw = 0x7FFFu;
     }
 
+    if (raw_x < g_hid_min_x) g_hid_min_x = raw_x;
+    if (raw_y < g_hid_min_y) g_hid_min_y = raw_y;
+    if (raw_x > g_hid_max_x) g_hid_max_x = raw_x;
+    if (raw_y > g_hid_max_y) g_hid_max_y = raw_y;
+    if (g_hid_sample_count >= 12) {
+        g_hid_calibrated = true;
+    }
+
+    uint16_t use_min_x = 0;
+    uint16_t use_min_y = 0;
+    uint16_t use_max_x = static_cast<uint16_t>(max_raw);
+    uint16_t use_max_y = static_cast<uint16_t>(max_raw);
+    if (g_hid_calibrated) {
+        // 少しだけ余白を持たせて端への到達性を上げる
+        const uint16_t pad_x = (g_hid_max_x > g_hid_min_x) ? static_cast<uint16_t>((g_hid_max_x - g_hid_min_x) / 20) : 0;
+        const uint16_t pad_y = (g_hid_max_y > g_hid_min_y) ? static_cast<uint16_t>((g_hid_max_y - g_hid_min_y) / 20) : 0;
+        use_min_x = (g_hid_min_x > pad_x) ? static_cast<uint16_t>(g_hid_min_x - pad_x) : 0;
+        use_min_y = (g_hid_min_y > pad_y) ? static_cast<uint16_t>(g_hid_min_y - pad_y) : 0;
+        use_max_x = ClampU16(static_cast<uint16_t>(g_hid_max_x + pad_x), use_min_x + 1, static_cast<uint16_t>(max_raw));
+        use_max_y = ClampU16(static_cast<uint16_t>(g_hid_max_y + pad_y), use_min_y + 1, static_cast<uint16_t>(max_raw));
+    }
+
+    uint16_t cx = ClampU16(raw_x, use_min_x, use_max_x);
+    uint16_t cy = ClampU16(raw_y, use_min_y, use_max_y);
+
     const int w = ScreenWidth();
     const int h = ScreenHeight();
-    const int px = static_cast<int>((static_cast<uint64_t>(raw_x) * (w - 1)) / max_raw);
-    const int py = static_cast<int>((static_cast<uint64_t>(raw_y) * (h - 1)) / max_raw);
-    *out_x = ClampInt(px, 0, w - 1);
-    *out_y = ClampInt(py, 0, h - 1);
+    const uint32_t range_x = static_cast<uint32_t>(use_max_x - use_min_x);
+    const uint32_t range_y = static_cast<uint32_t>(use_max_y - use_min_y);
+    int px = 0;
+    int py = 0;
+    if (range_x > 0) {
+        px = static_cast<int>((static_cast<uint64_t>(cx - use_min_x) * (w - 1)) / range_x);
+    }
+    if (range_y > 0) {
+        py = static_cast<int>((static_cast<uint64_t>(cy - use_min_y) * (h - 1)) / range_y);
+    }
+    px = ClampInt(px, 0, w - 1);
+    py = ClampInt(py, 0, h - 1);
+
+    if (g_hid_smooth_x < 0 || g_hid_smooth_y < 0) {
+        g_hid_smooth_x = px;
+        g_hid_smooth_y = py;
+    } else {
+        g_hid_smooth_x = (g_hid_smooth_x * (kHidSmoothAlphaDen - kHidSmoothAlphaNum) + px * kHidSmoothAlphaNum) / kHidSmoothAlphaDen;
+        g_hid_smooth_y = (g_hid_smooth_y * (kHidSmoothAlphaDen - kHidSmoothAlphaNum) + py * kHidSmoothAlphaNum) / kHidSmoothAlphaDen;
+    }
+
+    *out_x = g_hid_smooth_x;
+    *out_y = g_hid_smooth_y;
 
     if (len >= 6) {
         int8_t wh = static_cast<int8_t>(data[len - 1]);
@@ -246,6 +305,13 @@ void ResetHIDDecodeLearning() {
     g_hid_format_mode = 0;
     g_hid_observed_max_raw = 0;
     g_hid_sample_count = 0;
+    g_hid_calibrated = false;
+    g_hid_min_x = 0xFFFF;
+    g_hid_min_y = 0xFFFF;
+    g_hid_max_x = 0;
+    g_hid_max_y = 0;
+    g_hid_smooth_x = -1;
+    g_hid_smooth_y = -1;
 }
 
 bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose) {
@@ -1676,6 +1742,17 @@ void ExecuteCommand(const char* command) {
         console->PrintDec(g_hid_observed_max_raw);
         console->Print(" samples=");
         console->PrintDec(g_hid_sample_count);
+        console->Print(" calib=");
+        console->Print(g_hid_calibrated ? "1" : "0");
+        console->Print(" min=(");
+        console->PrintDec(g_hid_min_x);
+        console->Print(",");
+        console->PrintDec(g_hid_min_y);
+        console->Print(") max=(");
+        console->PrintDec(g_hid_max_x);
+        console->Print(",");
+        console->PrintDec(g_hid_max_y);
+        console->Print(")");
         console->Print("\n");
         return;
     }
