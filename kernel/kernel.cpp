@@ -2356,6 +2356,56 @@ bool ExecuteRebootCommand() {
     return true;
 }
 
+bool ExecutePwdCommand() {
+    console->PrintLine(g_cwd);
+    return true;
+}
+
+bool ExecuteClearCommand() {
+    console->Clear();
+    return true;
+}
+
+bool ExecuteTickTimeCommand() {
+    console->Print("ticks=");
+    console->PrintDec(static_cast<int64_t>(CurrentTick()));
+    console->Print("\n");
+    return true;
+}
+
+bool ExecuteUptimeCommand() {
+    console->Print("uptime_ticks=");
+    console->PrintDec(static_cast<int64_t>(CurrentTick()));
+    console->Print("\n");
+    return true;
+}
+
+bool ExecuteMemCommand() {
+    uint64_t free_pages = memory_manager->CountFreePages();
+    uint64_t free_mib = (free_pages * kPageSize) / kMiB;
+    console->Print("free_ram=");
+    console->PrintDec(static_cast<int64_t>(free_mib));
+    console->PrintLine(" MiB");
+    return true;
+}
+
+bool ExecuteInputStatCommand() {
+    console->Print("kbd_dropped=");
+    console->PrintDec(static_cast<int64_t>(g_keyboard_dropped_events));
+    console->Print(" mouse_dropped=");
+    console->PrintDec(static_cast<int64_t>(g_mouse_dropped_events));
+    console->Print(" btn=0x");
+    console->PrintHex(g_mouse_buttons_current, 2);
+    console->Print(" l=");
+    console->PrintDec(static_cast<int64_t>(g_mouse_left_press_count));
+    console->Print(" r=");
+    console->PrintDec(static_cast<int64_t>(g_mouse_right_press_count));
+    console->Print(" m=");
+    console->PrintDec(static_cast<int64_t>(g_mouse_middle_press_count));
+    console->Print("\n");
+    return true;
+}
+
 void ExecuteCommand(const char* command) {
     if (command[0] == '\0') {
         return;
@@ -2928,7 +2978,7 @@ void ExecuteCommand(const char* command) {
     }
 
     if (StrEqual(cmd, "pwd")) {
-        console->PrintLine(g_cwd);
+        ExecutePwdCommand();
         return;
     }
 
@@ -2983,47 +3033,27 @@ void ExecuteCommand(const char* command) {
     }
 
     if (StrEqual(cmd, "clear")) {
-        console->Clear();
+        ExecuteClearCommand();
         return;
     }
 
     if (StrEqual(cmd, "tick") || StrEqual(cmd, "time")) {
-        console->Print("ticks=");
-        console->PrintDec(static_cast<int64_t>(CurrentTick()));
-        console->Print("\n");
+        ExecuteTickTimeCommand();
         return;
     }
 
     if (StrEqual(cmd, "uptime")) {
-        console->Print("uptime_ticks=");
-        console->PrintDec(static_cast<int64_t>(CurrentTick()));
-        console->Print("\n");
+        ExecuteUptimeCommand();
         return;
     }
 
     if (StrEqual(cmd, "mem")) {
-        uint64_t free_pages = memory_manager->CountFreePages();
-        uint64_t free_mib = (free_pages * kPageSize) / kMiB;
-        console->Print("free_ram=");
-        console->PrintDec(static_cast<int64_t>(free_mib));
-        console->PrintLine(" MiB");
+        ExecuteMemCommand();
         return;
     }
 
     if (StrEqual(cmd, "inputstat")) {
-        console->Print("kbd_dropped=");
-        console->PrintDec(static_cast<int64_t>(g_keyboard_dropped_events));
-        console->Print(" mouse_dropped=");
-        console->PrintDec(static_cast<int64_t>(g_mouse_dropped_events));
-        console->Print(" btn=0x");
-        console->PrintHex(g_mouse_buttons_current, 2);
-        console->Print(" l=");
-        console->PrintDec(static_cast<int64_t>(g_mouse_left_press_count));
-        console->Print(" r=");
-        console->PrintDec(static_cast<int64_t>(g_mouse_right_press_count));
-        console->Print(" m=");
-        console->PrintDec(static_cast<int64_t>(g_mouse_middle_press_count));
-        console->Print("\n");
+        ExecuteInputStatCommand();
         return;
     }
 
