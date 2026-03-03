@@ -33,6 +33,8 @@ static int mouse_packet_bytes = 3;
 static bool mouse_packet_initialized = false;
 static uint8_t mouse_buf[4];
 
+void EnqueueKeyboardScancode(uint8_t scancode);
+
 // PS/2マウスからの割り込みハンドラ
 __attribute__((interrupt))
 void IntHandlerMouse(InterruptFrame* frame) {
@@ -111,6 +113,10 @@ void IntHandlerKeyboard(InterruptFrame* frame) {
     uint8_t data = In8(0x60);
     SendEndOfInterrupt(1);
 
+    EnqueueKeyboardScancode(data);
+}
+
+void EnqueueKeyboardScancode(uint8_t scancode) {
     if (main_queue != nullptr) {
         Message msg;
         msg.type = Message::Type::kInterruptKeyboard;
@@ -121,7 +127,7 @@ void IntHandlerKeyboard(InterruptFrame* frame) {
         msg.y = 0;
         msg.wheel = 0;
         msg.buttons = 0;
-        msg.keycode = data;
+        msg.keycode = scancode;
         if (!main_queue->Push(msg)) {
             ++g_keyboard_dropped_events;
         }

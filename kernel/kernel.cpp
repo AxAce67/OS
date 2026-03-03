@@ -74,6 +74,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "input/message.hpp"
 #include "input/key_event.hpp"
 #include "input/key_layout.hpp"
+#include "input/hid_keyboard.hpp"
 #include "boot_info.h"
 #include "memory.hpp"
 #include "paging.hpp"
@@ -344,6 +345,21 @@ bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t time
             console->Print("\n");
         }
         return false;
+    }
+
+    uint8_t key_scancodes[32];
+    uint8_t key_count = 0;
+    if (DecodeHIDBootKeyboardToSet1(rr.data, rr.data_length, key_scancodes, &key_count,
+                                    static_cast<uint8_t>(sizeof(key_scancodes)))) {
+        for (uint8_t i = 0; i < key_count; ++i) {
+            EnqueueKeyboardScancode(key_scancodes[i]);
+        }
+        if (verbose) {
+            console->Print("xhcihidpoll: keyboard bytes=");
+            console->PrintDec(key_count);
+            console->Print("\n");
+        }
+        return true;
     }
 
     int x = 0;
