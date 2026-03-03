@@ -19,6 +19,10 @@ alignas(64) uint64_t g_dcbaa[256];
 alignas(64) TRB g_command_ring[256];
 alignas(64) TRB g_event_ring[256];
 alignas(64) EventRingSegmentTableEntry g_erst[1];
+const int kXHCIMaxManagedSlots = 16;
+alignas(64) uint8_t g_input_contexts[kXHCIMaxManagedSlots][1024];
+alignas(64) uint8_t g_device_contexts[kXHCIMaxManagedSlots][1024];
+alignas(64) TRB g_ep0_rings[kXHCIMaxManagedSlots][256];
 bool g_rings_initialized = false;
 uint32_t g_command_enqueue_index = 0;
 uint8_t g_command_cycle_bit = 1;
@@ -60,6 +64,94 @@ void MemorySet(void* p, uint8_t v, uint32_t n) {
     uint8_t* b = reinterpret_cast<uint8_t*>(p);
     for (uint32_t i = 0; i < n; ++i) {
         b[i] = v;
+    }
+}
+
+uint64_t ControllerBase(const XHCICapabilityInfo& info) {
+    return info.operational_base - info.cap_length;
+}
+
+uint64_t RuntimeBase(const XHCICapabilityInfo& info) {
+    return ControllerBase(info) + (info.rts_off & ~0x1Fu);
+}
+
+uint64_t DoorbellBase(const XHCICapabilityInfo& info) {
+    return ControllerBase(info) + (info.db_off & ~0x3u);
+}
+
+void RingCommandDoorbell(const XHCICapabilityInfo& info) {
+    WriteMMIO32(DoorbellBase(info) + 0x00, 0);
+}
+
+void AdvanceEventDequeue(const XHCICapabilityInfo& info) {
+    ++g_event_dequeue_index;
+    if (g_event_dequeue_index >= 256) {
+        g_event_dequeue_index = 0;
+        g_event_cycle_bit ^= 1;
+    }
+    const uint64_t intr0 = RuntimeBase(info) + 0x20;
+    const uint64_t erdp_addr = intr0 + 0x18;
+    const uint64_t new_erdp = reinterpret_cast<uint64_t>(&g_event_ring[g_event_dequeue_index]) | (1u << 3);
+    WriteMMIO64(erdp_addr, new_erdp);
+}
+
+bool SubmitCommandAndWait(const XHCICapabilityInfo& info, const TRB& command, XHCICommandResult* out_result, uint32_t timeout_iters) {
+    if (out_result == nullptr) {
+        return false;
+    }
+    out_result->ok = false;
+    out_result->completion_code = 0;
+    out_result->slot_id = 0;
+    out_result->trb_type = 0;
+
+    if (g_command_enqueue_index >= 255) {
+        g_command_enqueue_index = 0;
+    }
+
+    TRB cmd = command;
+    cmd.dword3 = (cmd.dword3 & ~1u) | (g_command_cycle_bit ? 1u : 0u);
+    g_command_ring[g_command_enqueue_index] = cmd;
+    ++g_command_enqueue_index;
+    if (g_command_enqueue_index == 255) {
+        g_command_enqueue_index = 0;
+        g_command_cycle_bit ^= 1;
+    }
+
+    RingCommandDoorbell(info);
+
+    for (uint32_t i = 0; i < timeout_iters; ++i) {
+        TRB& ev = g_event_ring[g_event_dequeue_index];
+        const uint8_t cycle = static_cast<uint8_t>(ev.dword3 & 1u);
+        if (cycle != g_event_cycle_bit) {
+            continue;
+        }
+
+        const uint8_t type = static_cast<uint8_t>((ev.dword3 >> 10) & 0x3Fu);
+        const uint8_t ccode = static_cast<uint8_t>((ev.dword2 >> 24) & 0xFFu);
+        const uint8_t slot_id = static_cast<uint8_t>((ev.dword3 >> 24) & 0xFFu);
+        AdvanceEventDequeue(info);
+
+        if (type != 33) {
+            continue;
+        }
+        out_result->trb_type = type;
+        out_result->completion_code = ccode;
+        out_result->slot_id = slot_id;
+        out_result->ok = (ccode == 1);
+        return true;
+    }
+    return false;
+}
+
+uint8_t* ContextPtr(uint8_t* input_ctx, int index, int ctx_size) {
+    return input_ctx + static_cast<uint32_t>(index * ctx_size);
+}
+
+uint16_t DefaultControlMaxPacketSize(uint8_t speed) {
+    switch (speed) {
+        case 3: return 64;   // High-speed
+        case 4: return 512;  // SuperSpeed
+        default: return 8;   // Low/Full or unknown
     }
 }
 }  // namespace
@@ -218,6 +310,9 @@ bool XHCIInitializeCommandAndEventRings(const XHCICapabilityInfo& info) {
     MemorySet(g_command_ring, 0, sizeof(g_command_ring));
     MemorySet(g_event_ring, 0, sizeof(g_event_ring));
     MemorySet(g_erst, 0, sizeof(g_erst));
+    MemorySet(g_input_contexts, 0, sizeof(g_input_contexts));
+    MemorySet(g_device_contexts, 0, sizeof(g_device_contexts));
+    MemorySet(g_ep0_rings, 0, sizeof(g_ep0_rings));
 
     // Command ring link TRB at last entry.
     TRB& link = g_command_ring[255];
@@ -232,7 +327,7 @@ bool XHCIInitializeCommandAndEventRings(const XHCICapabilityInfo& info) {
     g_erst[0].ring_segment_size = 256;
 
     const uint64_t op = info.operational_base;
-    const uint64_t runtime = (reinterpret_cast<uint64_t>(info.operational_base) - info.cap_length) + (info.rts_off & ~0x1Fu);
+    const uint64_t runtime = RuntimeBase(info);
     const uint64_t intr0 = runtime + 0x20;
 
     // Program DCBAAP and command ring.
@@ -249,6 +344,15 @@ bool XHCIInitializeCommandAndEventRings(const XHCICapabilityInfo& info) {
     config &= ~0xFFu;
     config |= (info.max_slots == 0 ? 1 : info.max_slots);
     WriteMMIO32(op + 0x38, config);
+
+    for (int i = 0; i < kXHCIMaxManagedSlots; ++i) {
+        TRB& ep_link = g_ep0_rings[i][255];
+        const uint64_t ep_ring_base = reinterpret_cast<uint64_t>(&g_ep0_rings[i][0]);
+        ep_link.dword0 = static_cast<uint32_t>(ep_ring_base & 0xFFFFFFFFu);
+        ep_link.dword1 = static_cast<uint32_t>(ep_ring_base >> 32);
+        ep_link.dword2 = 0;
+        ep_link.dword3 = (6u << 10) | (1u << 1);
+    }
 
     g_command_enqueue_index = 0;
     g_command_cycle_bit = 1;
@@ -277,57 +381,76 @@ bool XHCIEnableSlot(const XHCICapabilityInfo& info, XHCICommandResult* out_resul
             return false;
         }
     }
-
-    if (g_command_enqueue_index >= 255) {
-        g_command_enqueue_index = 0;
-    }
-
-    TRB& cmd = g_command_ring[g_command_enqueue_index];
+    TRB cmd{};
     cmd.dword0 = 0;
     cmd.dword1 = 0;
     cmd.dword2 = 0;
-    // Type=Enable Slot(9), Cycle bit=current producer cycle.
-    cmd.dword3 = (9u << 10) | (g_command_cycle_bit ? 1u : 0u);
-    ++g_command_enqueue_index;
-    if (g_command_enqueue_index == 255) {
-        g_command_enqueue_index = 0;
-        g_command_cycle_bit ^= 1;
+    cmd.dword3 = (9u << 10);  // Enable Slot
+    return SubmitCommandAndWait(info, cmd, out_result, timeout_iters);
+}
+
+bool XHCIAddressDevice(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t root_port, uint8_t port_speed, XHCIAddressDeviceResult* out_result, uint32_t timeout_iters) {
+    if (out_result == nullptr) {
+        return false;
+    }
+    out_result->ok = false;
+    out_result->completion_code = 0;
+    out_result->slot_id = slot_id;
+
+    if (!info.valid || slot_id == 0 || slot_id > kXHCIMaxManagedSlots) {
+        return false;
+    }
+    if (!g_rings_initialized) {
+        if (!XHCIInitializeCommandAndEventRings(info)) {
+            return false;
+        }
     }
 
-    const uint64_t db = (reinterpret_cast<uint64_t>(info.operational_base) - info.cap_length) + (info.db_off & ~0x3u);
-    WriteMMIO32(db + 0x00, 0);  // Ring command doorbell
+    const int idx = static_cast<int>(slot_id - 1);
+    const int ctx_size = ((info.hcc_params1 & (1u << 2)) != 0) ? 64 : 32;
 
-    // Poll event ring for Command Completion Event.
-    for (uint32_t i = 0; i < timeout_iters; ++i) {
-        TRB& ev = g_event_ring[g_event_dequeue_index];
-        const uint8_t cycle = static_cast<uint8_t>(ev.dword3 & 1u);
-        if (cycle != g_event_cycle_bit) {
-            continue;
-        }
+    uint8_t* input_ctx = &g_input_contexts[idx][0];
+    uint8_t* device_ctx = &g_device_contexts[idx][0];
+    MemorySet(input_ctx, 0, 1024);
+    MemorySet(device_ctx, 0, 1024);
 
-        const uint8_t type = static_cast<uint8_t>((ev.dword3 >> 10) & 0x3Fu);
-        const uint8_t ccode = static_cast<uint8_t>((ev.dword2 >> 24) & 0xFFu);
-        const uint8_t slot_id = static_cast<uint8_t>((ev.dword3 >> 24) & 0xFFu);
+    // DCBAA[slot_id] points to output device context.
+    g_dcbaa[slot_id] = reinterpret_cast<uint64_t>(device_ctx);
 
-        out_result->trb_type = type;
-        out_result->completion_code = ccode;
-        out_result->slot_id = slot_id;
-        out_result->ok = (type == 33 && ccode == 1);
+    // Input Control Context (index 0): add slot and ep0 contexts.
+    uint32_t* icc = reinterpret_cast<uint32_t*>(ContextPtr(input_ctx, 0, ctx_size));
+    icc[0] = 0;                               // Drop Context Flags
+    icc[1] = (1u << 0) | (1u << 1);          // Add Slot + EP0
 
-        // Advance consumer pointer.
-        ++g_event_dequeue_index;
-        if (g_event_dequeue_index >= 256) {
-            g_event_dequeue_index = 0;
-            g_event_cycle_bit ^= 1;
-        }
+    // Slot Context (index 1 in input context layout)
+    uint32_t* slot_ctx = reinterpret_cast<uint32_t*>(ContextPtr(input_ctx, 1, ctx_size));
+    slot_ctx[0] = (1u << 27) | (static_cast<uint32_t>(port_speed & 0x0F) << 20);  // ContextEntries=1, Speed
+    slot_ctx[1] = (static_cast<uint32_t>(root_port) << 16);                        // Root Hub Port Number
 
-        const uint64_t runtime = (reinterpret_cast<uint64_t>(info.operational_base) - info.cap_length) + (info.rts_off & ~0x1Fu);
-        const uint64_t intr0 = runtime + 0x20;
-        const uint64_t erdp_addr = intr0 + 0x18;
-        const uint64_t new_erdp = reinterpret_cast<uint64_t>(&g_event_ring[g_event_dequeue_index]) | (1u << 3);
-        WriteMMIO64(erdp_addr, new_erdp);
-        return true;
+    // EP0 Context (index 2 in input context layout)
+    uint32_t* ep0_ctx = reinterpret_cast<uint32_t*>(ContextPtr(input_ctx, 2, ctx_size));
+    const uint16_t mps = DefaultControlMaxPacketSize(port_speed);
+    const uint64_t ep_ring = reinterpret_cast<uint64_t>(&g_ep0_rings[idx][0]) | 1u;  // DCS=1
+    ep0_ctx[0] = 0;
+    ep0_ctx[1] = (3u << 1) | (4u << 3) | (static_cast<uint32_t>(mps) << 16);  // CErr=3, EPType=Control
+    ep0_ctx[2] = static_cast<uint32_t>(ep_ring & 0xFFFFFFFFu);
+    ep0_ctx[3] = static_cast<uint32_t>(ep_ring >> 32);
+    ep0_ctx[4] = 8;  // Avg TRB Length (small default)
+
+    TRB cmd{};
+    const uint64_t input_ctx_ptr = reinterpret_cast<uint64_t>(input_ctx);
+    cmd.dword0 = static_cast<uint32_t>(input_ctx_ptr & 0xFFFFFFFFu);
+    cmd.dword1 = static_cast<uint32_t>(input_ctx_ptr >> 32);
+    cmd.dword2 = 0;
+    // Type=Address Device(11), BSR=0, Slot ID in bits 31:24.
+    cmd.dword3 = (11u << 10) | (static_cast<uint32_t>(slot_id) << 24);
+
+    XHCICommandResult r{};
+    if (!SubmitCommandAndWait(info, cmd, &r, timeout_iters)) {
+        return false;
     }
-
-    return false;
+    out_result->completion_code = r.completion_code;
+    out_result->slot_id = r.slot_id;
+    out_result->ok = r.ok;
+    return true;
 }

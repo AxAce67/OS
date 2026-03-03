@@ -132,6 +132,7 @@ const BootInfo* g_boot_info = nullptr;
 bool g_dirs_initialized = false;
 char g_cwd[96] = "/";
 XHCICapabilityInfo g_xhci_caps = {};
+uint8_t g_last_xhci_slot_id = 0;
 
 char KeycodeToAscii(uint8_t keycode, bool shift, bool caps_lock) {
     if (g_jp_layout) {
@@ -1008,6 +1009,7 @@ const char* const kBuiltInCommands[] = {
     "xhcireset",
     "xhciinit",
     "xhcienableslot",
+    "xhciaddress",
     "mouseabs",
     "usbports",
 };
@@ -1065,7 +1067,7 @@ void ExecuteCommand(const char* command) {
         console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
         console->PrintLine("help: fs2   rm rmdir mv ls stat cat");
         console->PrintLine("help: misc  history clearhistory inputstat about");
-        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot mouseabs usbports");
+        console->PrintLine("help: cfg   repeat layout set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress mouseabs usbports");
         return;
     }
 
@@ -1220,6 +1222,75 @@ void ExecuteCommand(const char* command) {
         console->PrintDec(r.completion_code);
         console->Print(" slot=");
         console->PrintDec(r.slot_id);
+        console->Print("\n");
+        if (r.ok && r.slot_id > 0) {
+            g_last_xhci_slot_id = r.slot_id;
+        }
+        return;
+    }
+
+    if (StrEqual(cmd, "xhciaddress")) {
+        if (!g_xhci_caps.valid) {
+            console->PrintLine("xhciaddress: xhci not ready");
+            return;
+        }
+
+        int slot = g_last_xhci_slot_id;
+        int port = 0;
+        int speed = 0;
+        char t0[16];
+        char t1[16];
+        char t2[16];
+        if (NextToken(command, &pos, t0, sizeof(t0))) {
+            slot = ParseInt(t0);
+        }
+        if (NextToken(command, &pos, t1, sizeof(t1))) {
+            port = ParseInt(t1);
+        }
+        if (NextToken(command, &pos, t2, sizeof(t2))) {
+            speed = ParseInt(t2);
+        }
+        if (slot <= 0 || slot > 255) {
+            console->PrintLine("xhciaddress: invalid slot");
+            return;
+        }
+        if (port <= 0 || speed <= 0) {
+            XHCIPortStatus ports[32];
+            int n = ReadXHCIPortStatus(g_xhci_caps, ports, 32);
+            for (int i = 0; i < n; ++i) {
+                if (ports[i].connected) {
+                    if (port <= 0) {
+                        port = static_cast<int>(ports[i].port_id);
+                    }
+                    if (speed <= 0) {
+                        speed = ports[i].speed;
+                    }
+                    break;
+                }
+            }
+        }
+        if (port <= 0 || speed <= 0) {
+            console->PrintLine("xhciaddress: port/speed unknown");
+            return;
+        }
+
+        XHCIAddressDeviceResult ar{};
+        if (!XHCIAddressDevice(g_xhci_caps,
+                               static_cast<uint8_t>(slot),
+                               static_cast<uint8_t>(port),
+                               static_cast<uint8_t>(speed),
+                               &ar)) {
+            console->PrintLine("xhciaddress: timeout/fail");
+            return;
+        }
+        console->Print("xhciaddress: ccode=");
+        console->PrintDec(ar.completion_code);
+        console->Print(" slot=");
+        console->PrintDec(ar.slot_id);
+        console->Print(" port=");
+        console->PrintDec(port);
+        console->Print(" speed=");
+        console->PrintDec(speed);
         console->Print("\n");
         return;
     }

@@ -50,6 +50,12 @@ struct XHCICommandResult {
     uint8_t trb_type;
 };
 
+struct XHCIAddressDeviceResult {
+    bool ok;
+    uint8_t completion_code;
+    uint8_t slot_id;
+};
+
 bool ProbeXHCIController(const XHCIControllerInfo& controller, XHCICapabilityInfo* out_info);
 int XHCIMaxPorts(const XHCICapabilityInfo& info);
 int ReadXHCIPortStatus(const XHCICapabilityInfo& info, XHCIPortStatus* ports, int max_ports);
@@ -58,3 +64,4 @@ bool XHCISetRunStop(const XHCICapabilityInfo& info, bool run, uint32_t timeout_i
 bool XHCIResetController(const XHCICapabilityInfo& info, uint32_t timeout_iters = 2000000);
 bool XHCIInitializeCommandAndEventRings(const XHCICapabilityInfo& info);
 bool XHCIEnableSlot(const XHCICapabilityInfo& info, XHCICommandResult* out_result, uint32_t timeout_iters = 3000000);
+bool XHCIAddressDevice(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t root_port, uint8_t port_speed, XHCIAddressDeviceResult* out_result, uint32_t timeout_iters = 3000000);
