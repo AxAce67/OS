@@ -1520,6 +1520,262 @@ bool ExecuteGrepCommand(const char* command, int* pos_ptr) {
     return true;
 }
 
+bool ExecuteLsCommand(const char* rest) {
+    struct LsEntry {
+        char name[64];
+        bool is_dir;
+        uint64_t size;
+        int kind; // 0=dir, 1=user file, 2=boot file
+    };
+    LsEntry entries[128];
+    int entry_count = 0;
+    auto CopyLsEntry = [&](LsEntry* dst, const LsEntry* src) {
+        CopyString(dst->name, src->name, sizeof(dst->name));
+        dst->is_dir = src->is_dir;
+        dst->size = src->size;
+        dst->kind = src->kind;
+    };
+    auto AddLsEntry = [&](const char* name, bool is_dir, uint64_t size, int kind) {
+        if (entry_count >= static_cast<int>(sizeof(entries) / sizeof(entries[0]))) {
+            return;
+        }
+        CopyString(entries[entry_count].name, name, sizeof(entries[entry_count].name));
+        entries[entry_count].is_dir = is_dir;
+        entries[entry_count].size = size;
+        entries[entry_count].kind = kind;
+        ++entry_count;
+    };
+
+    bool long_format = false;
+    char target_arg[64];
+    target_arg[0] = '\0';
+    int arg_pos = 0;
+    char arg[64];
+    while (NextToken(rest, &arg_pos, arg, sizeof(arg))) {
+        if (arg[0] == '-') {
+            if (StrEqual(arg, "-l")) {
+                long_format = true;
+            } else {
+                console->Print("ls: unknown option: ");
+                console->PrintLine(arg);
+                return true;
+            }
+            continue;
+        }
+        if (target_arg[0] != '\0') {
+            console->PrintLine("ls: too many paths");
+            return true;
+        }
+        CopyString(target_arg, arg, sizeof(target_arg));
+    }
+
+    char target_dir[96];
+    if (target_arg[0] == '\0') {
+        CopyString(target_dir, g_cwd, sizeof(target_dir));
+    } else if (!ResolvePath(g_cwd, target_arg, target_dir, sizeof(target_dir))) {
+        console->PrintLine("ls: invalid path");
+        return true;
+    }
+    if (!DirectoryExists(target_dir)) {
+        console->Print("ls: no such directory: ");
+        console->PrintLine(target_arg[0] == '\0' ? target_dir : target_arg);
+        return true;
+    }
+
+    for (int i = 0; i < static_cast<int>(sizeof(g_dirs) / sizeof(g_dirs[0])); ++i) {
+        if (!g_dirs[i].used || StrEqual(g_dirs[i].path, "/")) {
+            continue;
+        }
+        char parent[96];
+        if (!GetParentPath(g_dirs[i].path, parent, sizeof(parent))) {
+            continue;
+        }
+        if (!StrEqual(parent, target_dir)) {
+            continue;
+        }
+        char base[64];
+        GetBaseName(g_dirs[i].path, base, sizeof(base));
+        AddLsEntry(base, true, 0, 0);
+    }
+
+    for (int i = 0; i < static_cast<int>(sizeof(g_files) / sizeof(g_files[0])); ++i) {
+        if (!g_files[i].used) {
+            continue;
+        }
+        char parent[96];
+        if (!GetParentPath(g_files[i].path, parent, sizeof(parent))) {
+            continue;
+        }
+        if (!StrEqual(parent, target_dir)) {
+            continue;
+        }
+        char base[64];
+        GetBaseName(g_files[i].path, base, sizeof(base));
+        AddLsEntry(base, false, g_files[i].size, 1);
+    }
+
+    if (g_boot_info != nullptr && g_boot_info->boot_fs != nullptr) {
+        const BootFileSystem* fs = g_boot_info->boot_fs;
+        for (uint32_t i = 0; i < fs->file_count; ++i) {
+            char abs_file_path[96];
+            BuildBootFileAbsolutePath(fs->files[i].name, abs_file_path, sizeof(abs_file_path));
+            if (FindShellFileByAbsPath(abs_file_path) != nullptr) {
+                continue;
+            }
+
+            char parent[96];
+            if (!GetParentPath(abs_file_path, parent, sizeof(parent))) {
+                continue;
+            }
+            if (!StrEqual(parent, target_dir)) {
+                continue;
+            }
+
+            char base[64];
+            GetBaseName(abs_file_path, base, sizeof(base));
+            AddLsEntry(base, false, fs->files[i].size, 2);
+        }
+    }
+
+    for (int i = 1; i < entry_count; ++i) {
+        LsEntry key;
+        CopyLsEntry(&key, &entries[i]);
+        int j = i - 1;
+        while (j >= 0) {
+            int cmp = StrCompare(entries[j].name, key.name);
+            if (cmp < 0) {
+                break;
+            }
+            if (cmp == 0) {
+                if (entries[j].is_dir && !key.is_dir) {
+                    break;
+                }
+                if (entries[j].is_dir == key.is_dir && entries[j].kind <= key.kind) {
+                    break;
+                }
+            }
+            CopyLsEntry(&entries[j + 1], &entries[j]);
+            --j;
+        }
+        CopyLsEntry(&entries[j + 1], &key);
+    }
+
+    for (int i = 0; i < entry_count; ++i) {
+        if (long_format) {
+            if (entries[i].is_dir) {
+                console->Print("drwxr-xr-x ");
+                console->PrintDec(0);
+                console->Print(" B ");
+                console->Print(entries[i].name);
+                console->PrintLine("/");
+            } else if (entries[i].kind == 1) {
+                console->Print("-rw-rw-r-- ");
+                console->PrintDec(static_cast<int64_t>(entries[i].size));
+                console->Print(" B ");
+                console->PrintLine(entries[i].name);
+            } else {
+                console->Print("-rw-r--r-- ");
+                console->PrintDec(static_cast<int64_t>(entries[i].size));
+                console->Print(" B ");
+                console->PrintLine(entries[i].name);
+            }
+        } else {
+            console->Print(entries[i].name);
+            if (entries[i].is_dir) {
+                console->Print("/");
+            }
+            console->Print("\n");
+        }
+    }
+    return true;
+}
+
+bool ExecuteStatCommand(const char* command, int* pos_ptr) {
+    int& pos = *pos_ptr;
+    char name[64];
+    if (!NextToken(command, &pos, name, sizeof(name))) {
+        console->PrintLine("stat: filename required");
+        return true;
+    }
+    char extra[8];
+    if (NextToken(command, &pos, extra, sizeof(extra))) {
+        console->PrintLine("stat: too many arguments");
+        return true;
+    }
+    const ShellFile* user_file = FindShellFileByPath(g_cwd, name);
+    if (user_file != nullptr) {
+        PrintShellFileStat(user_file);
+        return true;
+    }
+    const BootFileEntry* boot_file = FindBootFileByPath(g_cwd, name);
+    if (boot_file == nullptr) {
+        console->Print("stat: not found: ");
+        console->PrintLine(name);
+        return true;
+    }
+    PrintBootFileStat(boot_file);
+    return true;
+}
+
+bool ExecuteCatCommand(const char* command, int* pos_ptr) {
+    int& pos = *pos_ptr;
+    bool show_line_number = false;
+    bool paged = false;
+    char name[64];
+    if (!NextToken(command, &pos, name, sizeof(name))) {
+        console->PrintLine("cat: filename required");
+        return true;
+    }
+    while (name[0] == '-') {
+        if (StrEqual(name, "-n")) {
+            show_line_number = true;
+        } else if (StrEqual(name, "-p")) {
+            paged = true;
+        } else {
+            console->Print("cat: unknown option: ");
+            console->PrintLine(name);
+            return true;
+        }
+        if (!NextToken(command, &pos, name, sizeof(name))) {
+            console->PrintLine("cat: filename required");
+            return true;
+        }
+    }
+    char extra[8];
+    if (NextToken(command, &pos, extra, sizeof(extra))) {
+        console->PrintLine("cat: too many arguments");
+        return true;
+    }
+    const ShellFile* user_file = FindShellFileByPath(g_cwd, name);
+    if (user_file != nullptr) {
+        BootFileEntry temp;
+        temp.size = user_file->size;
+        temp.data = const_cast<uint8_t*>(user_file->data);
+        if (paged) {
+            PrintBootFilePaged(&temp, show_line_number);
+        } else if (show_line_number) {
+            PrintBootFileNumbered(&temp);
+        } else {
+            PrintBootFile(&temp);
+        }
+        return true;
+    }
+    const BootFileEntry* boot_file = FindBootFileByPath(g_cwd, name);
+    if (boot_file == nullptr) {
+        console->Print("cat: not found: ");
+        console->PrintLine(name);
+        return true;
+    }
+    if (paged) {
+        PrintBootFilePaged(boot_file, show_line_number);
+    } else if (show_line_number) {
+        PrintBootFileNumbered(boot_file);
+    } else {
+        PrintBootFile(boot_file);
+    }
+    return true;
+}
+
 void ExecuteCommand(const char* command) {
     if (command[0] == '\0') {
         return;
@@ -2700,256 +2956,17 @@ void ExecuteCommand(const char* command) {
     }
 
     if (StrEqual(cmd, "ls")) {
-        struct LsEntry {
-            char name[64];
-            bool is_dir;
-            uint64_t size;
-            int kind; // 0=dir, 1=user file, 2=boot file
-        };
-        LsEntry entries[128];
-        int entry_count = 0;
-        auto CopyLsEntry = [&](LsEntry* dst, const LsEntry* src) {
-            CopyString(dst->name, src->name, sizeof(dst->name));
-            dst->is_dir = src->is_dir;
-            dst->size = src->size;
-            dst->kind = src->kind;
-        };
-        auto AddLsEntry = [&](const char* name, bool is_dir, uint64_t size, int kind) {
-            if (entry_count >= static_cast<int>(sizeof(entries) / sizeof(entries[0]))) {
-                return;
-            }
-            CopyString(entries[entry_count].name, name, sizeof(entries[entry_count].name));
-            entries[entry_count].is_dir = is_dir;
-            entries[entry_count].size = size;
-            entries[entry_count].kind = kind;
-            ++entry_count;
-        };
-
-        bool long_format = false;
-        char target_arg[64];
-        target_arg[0] = '\0';
-        int arg_pos = 0;
-        char arg[64];
-        while (NextToken(rest, &arg_pos, arg, sizeof(arg))) {
-            if (arg[0] == '-') {
-                if (StrEqual(arg, "-l")) {
-                    long_format = true;
-                } else {
-                    console->Print("ls: unknown option: ");
-                    console->PrintLine(arg);
-                    return;
-                }
-                continue;
-            }
-            if (target_arg[0] != '\0') {
-                console->PrintLine("ls: too many paths");
-                return;
-            }
-            CopyString(target_arg, arg, sizeof(target_arg));
-        }
-
-        char target_dir[96];
-        if (target_arg[0] == '\0') {
-            CopyString(target_dir, g_cwd, sizeof(target_dir));
-        } else if (!ResolvePath(g_cwd, target_arg, target_dir, sizeof(target_dir))) {
-            console->PrintLine("ls: invalid path");
-            return;
-        }
-        if (!DirectoryExists(target_dir)) {
-            console->Print("ls: no such directory: ");
-            console->PrintLine(target_arg[0] == '\0' ? target_dir : target_arg);
-            return;
-        }
-
-        for (int i = 0; i < static_cast<int>(sizeof(g_dirs) / sizeof(g_dirs[0])); ++i) {
-            if (!g_dirs[i].used || StrEqual(g_dirs[i].path, "/")) {
-                continue;
-            }
-            char parent[96];
-            if (!GetParentPath(g_dirs[i].path, parent, sizeof(parent))) {
-                continue;
-            }
-            if (!StrEqual(parent, target_dir)) {
-                continue;
-            }
-            char base[64];
-            GetBaseName(g_dirs[i].path, base, sizeof(base));
-            AddLsEntry(base, true, 0, 0);
-        }
-
-        for (int i = 0; i < static_cast<int>(sizeof(g_files) / sizeof(g_files[0])); ++i) {
-            if (!g_files[i].used) {
-                continue;
-            }
-            char parent[96];
-            if (!GetParentPath(g_files[i].path, parent, sizeof(parent))) {
-                continue;
-            }
-            if (!StrEqual(parent, target_dir)) {
-                continue;
-            }
-            char base[64];
-            GetBaseName(g_files[i].path, base, sizeof(base));
-            AddLsEntry(base, false, g_files[i].size, 1);
-        }
-
-        if (g_boot_info != nullptr && g_boot_info->boot_fs != nullptr) {
-            const BootFileSystem* fs = g_boot_info->boot_fs;
-            for (uint32_t i = 0; i < fs->file_count; ++i) {
-                char abs_file_path[96];
-                BuildBootFileAbsolutePath(fs->files[i].name, abs_file_path, sizeof(abs_file_path));
-                if (FindShellFileByAbsPath(abs_file_path) != nullptr) {
-                    continue;
-                }
-
-                char parent[96];
-                if (!GetParentPath(abs_file_path, parent, sizeof(parent))) {
-                    continue;
-                }
-                if (!StrEqual(parent, target_dir)) {
-                    continue;
-                }
-
-                char base[64];
-                GetBaseName(abs_file_path, base, sizeof(base));
-                AddLsEntry(base, false, fs->files[i].size, 2);
-            }
-        }
-
-        for (int i = 1; i < entry_count; ++i) {
-            LsEntry key;
-            CopyLsEntry(&key, &entries[i]);
-            int j = i - 1;
-            while (j >= 0) {
-                int cmp = StrCompare(entries[j].name, key.name);
-                if (cmp < 0) {
-                    break;
-                }
-                if (cmp == 0) {
-                    if (entries[j].is_dir && !key.is_dir) {
-                        break;
-                    }
-                    if (entries[j].is_dir == key.is_dir && entries[j].kind <= key.kind) {
-                        break;
-                    }
-                }
-                CopyLsEntry(&entries[j + 1], &entries[j]);
-                --j;
-            }
-            CopyLsEntry(&entries[j + 1], &key);
-        }
-
-        for (int i = 0; i < entry_count; ++i) {
-            if (long_format) {
-                if (entries[i].is_dir) {
-                    console->Print("drwxr-xr-x ");
-                    console->PrintDec(0);
-                    console->Print(" B ");
-                    console->Print(entries[i].name);
-                    console->PrintLine("/");
-                } else if (entries[i].kind == 1) {
-                    console->Print("-rw-rw-r-- ");
-                    console->PrintDec(static_cast<int64_t>(entries[i].size));
-                    console->Print(" B ");
-                    console->PrintLine(entries[i].name);
-                } else {
-                    console->Print("-rw-r--r-- ");
-                    console->PrintDec(static_cast<int64_t>(entries[i].size));
-                    console->Print(" B ");
-                    console->PrintLine(entries[i].name);
-                }
-            } else {
-                console->Print(entries[i].name);
-                if (entries[i].is_dir) {
-                    console->Print("/");
-                }
-                console->Print("\n");
-            }
-        }
+        ExecuteLsCommand(rest);
         return;
     }
 
     if (StrEqual(cmd, "stat")) {
-        char name[64];
-        if (!NextToken(command, &pos, name, sizeof(name))) {
-            console->PrintLine("stat: filename required");
-            return;
-        }
-        char extra[8];
-        if (NextToken(command, &pos, extra, sizeof(extra))) {
-            console->PrintLine("stat: too many arguments");
-            return;
-        }
-        const ShellFile* user_file = FindShellFileByPath(g_cwd, name);
-        if (user_file != nullptr) {
-            PrintShellFileStat(user_file);
-            return;
-        }
-        const BootFileEntry* boot_file = FindBootFileByPath(g_cwd, name);
-        if (boot_file == nullptr) {
-            console->Print("stat: not found: ");
-            console->PrintLine(name);
-            return;
-        }
-        PrintBootFileStat(boot_file);
+        ExecuteStatCommand(command, &pos);
         return;
     }
 
     if (StrEqual(cmd, "cat")) {
-        bool show_line_number = false;
-        bool paged = false;
-        char name[64];
-        if (!NextToken(command, &pos, name, sizeof(name))) {
-            console->PrintLine("cat: filename required");
-            return;
-        }
-        while (name[0] == '-') {
-            if (StrEqual(name, "-n")) {
-                show_line_number = true;
-            } else if (StrEqual(name, "-p")) {
-                paged = true;
-            } else {
-                console->Print("cat: unknown option: ");
-                console->PrintLine(name);
-                return;
-            }
-            if (!NextToken(command, &pos, name, sizeof(name))) {
-                console->PrintLine("cat: filename required");
-                return;
-            }
-        }
-        char extra[8];
-        if (NextToken(command, &pos, extra, sizeof(extra))) {
-            console->PrintLine("cat: too many arguments");
-            return;
-        }
-        const ShellFile* user_file = FindShellFileByPath(g_cwd, name);
-        if (user_file != nullptr) {
-            BootFileEntry temp;
-            temp.size = user_file->size;
-            temp.data = const_cast<uint8_t*>(user_file->data);
-            if (paged) {
-                PrintBootFilePaged(&temp, show_line_number);
-            } else if (show_line_number) {
-                PrintBootFileNumbered(&temp);
-            } else {
-                PrintBootFile(&temp);
-            }
-            return;
-        }
-        const BootFileEntry* boot_file = FindBootFileByPath(g_cwd, name);
-        if (boot_file == nullptr) {
-            console->Print("cat: not found: ");
-            console->PrintLine(name);
-            return;
-        }
-        if (paged) {
-            PrintBootFilePaged(boot_file, show_line_number);
-        } else if (show_line_number) {
-            PrintBootFileNumbered(boot_file);
-        } else {
-            PrintBootFile(boot_file);
-        }
+        ExecuteCatCommand(command, &pos);
         return;
     }
 
