@@ -528,6 +528,170 @@ bool IsPrintableAscii(char c) {
     return c >= 0x20 && c <= 0x7e;
 }
 
+char ToLowerAscii(char c) {
+    if (c >= 'A' && c <= 'Z') {
+        return static_cast<char>(c - 'A' + 'a');
+    }
+    return c;
+}
+
+bool IsRomajiVowel(char c) {
+    return c == 'a' || c == 'i' || c == 'u' || c == 'e' || c == 'o';
+}
+
+bool IsRomajiConsonant(char c) {
+    return c >= 'a' && c <= 'z' && !IsRomajiVowel(c);
+}
+
+struct RomajiKanaEntry {
+    const char* roma;
+    uint8_t bytes[3];
+    uint8_t len;
+};
+
+const RomajiKanaEntry kRomajiKanaTable[] = {
+    {"kya", {0xB7, 0xAC, 0x00}, 2}, {"kyu", {0xB7, 0xAD, 0x00}, 2}, {"kyo", {0xB7, 0xAE, 0x00}, 2},
+    {"sha", {0xBC, 0xAC, 0x00}, 2}, {"shu", {0xBC, 0xAD, 0x00}, 2}, {"sho", {0xBC, 0xAE, 0x00}, 2},
+    {"cha", {0xC1, 0xAC, 0x00}, 2}, {"chu", {0xC1, 0xAD, 0x00}, 2}, {"cho", {0xC1, 0xAE, 0x00}, 2},
+    {"nya", {0xC6, 0xAC, 0x00}, 2}, {"nyu", {0xC6, 0xAD, 0x00}, 2}, {"nyo", {0xC6, 0xAE, 0x00}, 2},
+    {"hya", {0xCB, 0xAC, 0x00}, 2}, {"hyu", {0xCB, 0xAD, 0x00}, 2}, {"hyo", {0xCB, 0xAE, 0x00}, 2},
+    {"mya", {0xD0, 0xAC, 0x00}, 2}, {"myu", {0xD0, 0xAD, 0x00}, 2}, {"myo", {0xD0, 0xAE, 0x00}, 2},
+    {"rya", {0xD8, 0xAC, 0x00}, 2}, {"ryu", {0xD8, 0xAD, 0x00}, 2}, {"ryo", {0xD8, 0xAE, 0x00}, 2},
+    {"gya", {0xB7, 0xDE, 0xAC}, 3}, {"gyu", {0xB7, 0xDE, 0xAD}, 3}, {"gyo", {0xB7, 0xDE, 0xAE}, 3},
+    {"ja",  {0xBC, 0xDE, 0xAC}, 3}, {"ju",  {0xBC, 0xDE, 0xAD}, 3}, {"jo",  {0xBC, 0xDE, 0xAE}, 3},
+    {"bya", {0xCB, 0xDE, 0xAC}, 3}, {"byu", {0xCB, 0xDE, 0xAD}, 3}, {"byo", {0xCB, 0xDE, 0xAE}, 3},
+    {"pya", {0xCB, 0xDF, 0xAC}, 3}, {"pyu", {0xCB, 0xDF, 0xAD}, 3}, {"pyo", {0xCB, 0xDF, 0xAE}, 3},
+    {"fa",  {0xCC, 0xA7, 0x00}, 2}, {"fi",  {0xCC, 0xA8, 0x00}, 2}, {"fe",  {0xCC, 0xAA, 0x00}, 2},
+    {"fo",  {0xCC, 0xAB, 0x00}, 2}, {"la",  {0xA7, 0x00, 0x00}, 1}, {"li",  {0xA8, 0x00, 0x00}, 1},
+    {"lu",  {0xA9, 0x00, 0x00}, 1}, {"le",  {0xAA, 0x00, 0x00}, 1}, {"lo",  {0xAB, 0x00, 0x00}, 1},
+    {"xa",  {0xA7, 0x00, 0x00}, 1}, {"xi",  {0xA8, 0x00, 0x00}, 1}, {"xu",  {0xA9, 0x00, 0x00}, 1},
+    {"xe",  {0xAA, 0x00, 0x00}, 1}, {"xo",  {0xAB, 0x00, 0x00}, 1}, {"xtsu",{0xAF, 0x00, 0x00}, 1},
+    {"ltsu",{0xAF, 0x00, 0x00}, 1}, {"nn",  {0xDD, 0x00, 0x00}, 1}, {"a",   {0xB1, 0x00, 0x00}, 1},
+    {"i",   {0xB2, 0x00, 0x00}, 1}, {"u",   {0xB3, 0x00, 0x00}, 1}, {"e",   {0xB4, 0x00, 0x00}, 1},
+    {"o",   {0xB5, 0x00, 0x00}, 1}, {"ka",  {0xB6, 0x00, 0x00}, 1}, {"ki",  {0xB7, 0x00, 0x00}, 1},
+    {"ku",  {0xB8, 0x00, 0x00}, 1}, {"ke",  {0xB9, 0x00, 0x00}, 1}, {"ko",  {0xBA, 0x00, 0x00}, 1},
+    {"sa",  {0xBB, 0x00, 0x00}, 1}, {"shi", {0xBC, 0x00, 0x00}, 1}, {"si",  {0xBC, 0x00, 0x00}, 1},
+    {"su",  {0xBD, 0x00, 0x00}, 1}, {"se",  {0xBE, 0x00, 0x00}, 1}, {"so",  {0xBF, 0x00, 0x00}, 1},
+    {"ta",  {0xC0, 0x00, 0x00}, 1}, {"chi", {0xC1, 0x00, 0x00}, 1}, {"ti",  {0xC1, 0x00, 0x00}, 1},
+    {"tsu", {0xC2, 0x00, 0x00}, 1}, {"tu",  {0xC2, 0x00, 0x00}, 1}, {"te",  {0xC3, 0x00, 0x00}, 1},
+    {"to",  {0xC4, 0x00, 0x00}, 1}, {"na",  {0xC5, 0x00, 0x00}, 1}, {"ni",  {0xC6, 0x00, 0x00}, 1},
+    {"nu",  {0xC7, 0x00, 0x00}, 1}, {"ne",  {0xC8, 0x00, 0x00}, 1}, {"no",  {0xC9, 0x00, 0x00}, 1},
+    {"ha",  {0xCA, 0x00, 0x00}, 1}, {"hi",  {0xCB, 0x00, 0x00}, 1}, {"fu",  {0xCC, 0x00, 0x00}, 1},
+    {"hu",  {0xCC, 0x00, 0x00}, 1}, {"he",  {0xCD, 0x00, 0x00}, 1}, {"ho",  {0xCE, 0x00, 0x00}, 1},
+    {"ma",  {0xCF, 0x00, 0x00}, 1}, {"mi",  {0xD0, 0x00, 0x00}, 1}, {"mu",  {0xD1, 0x00, 0x00}, 1},
+    {"me",  {0xD2, 0x00, 0x00}, 1}, {"mo",  {0xD3, 0x00, 0x00}, 1}, {"ya",  {0xD4, 0x00, 0x00}, 1},
+    {"yu",  {0xD5, 0x00, 0x00}, 1}, {"yo",  {0xD6, 0x00, 0x00}, 1}, {"ra",  {0xD7, 0x00, 0x00}, 1},
+    {"ri",  {0xD8, 0x00, 0x00}, 1}, {"ru",  {0xD9, 0x00, 0x00}, 1}, {"re",  {0xDA, 0x00, 0x00}, 1},
+    {"ro",  {0xDB, 0x00, 0x00}, 1}, {"wa",  {0xDC, 0x00, 0x00}, 1}, {"wo",  {0xA6, 0x00, 0x00}, 1},
+    {"ga",  {0xB6, 0xDE, 0x00}, 2}, {"gi",  {0xB7, 0xDE, 0x00}, 2}, {"gu",  {0xB8, 0xDE, 0x00}, 2},
+    {"ge",  {0xB9, 0xDE, 0x00}, 2}, {"go",  {0xBA, 0xDE, 0x00}, 2}, {"za",  {0xBB, 0xDE, 0x00}, 2},
+    {"ji",  {0xBC, 0xDE, 0x00}, 2}, {"zi",  {0xBC, 0xDE, 0x00}, 2}, {"zu",  {0xBD, 0xDE, 0x00}, 2},
+    {"ze",  {0xBE, 0xDE, 0x00}, 2}, {"zo",  {0xBF, 0xDE, 0x00}, 2}, {"da",  {0xC0, 0xDE, 0x00}, 2},
+    {"di",  {0xC1, 0xDE, 0x00}, 2}, {"du",  {0xC2, 0xDE, 0x00}, 2}, {"de",  {0xC3, 0xDE, 0x00}, 2},
+    {"do",  {0xC4, 0xDE, 0x00}, 2}, {"ba",  {0xCA, 0xDE, 0x00}, 2}, {"bi",  {0xCB, 0xDE, 0x00}, 2},
+    {"bu",  {0xCC, 0xDE, 0x00}, 2}, {"be",  {0xCD, 0xDE, 0x00}, 2}, {"bo",  {0xCE, 0xDE, 0x00}, 2},
+    {"pa",  {0xCA, 0xDF, 0x00}, 2}, {"pi",  {0xCB, 0xDF, 0x00}, 2}, {"pu",  {0xCC, 0xDF, 0x00}, 2},
+    {"pe",  {0xCD, 0xDF, 0x00}, 2}, {"po",  {0xCE, 0xDF, 0x00}, 2}, {"n",   {0xDD, 0x00, 0x00}, 1},
+};
+
+int RomajiEntryLength(const char* s) {
+    int n = 0;
+    while (s[n] != '\0') {
+        ++n;
+    }
+    return n;
+}
+
+bool RomajiPrefixEquals(const char* buf, int buf_len, const char* roma) {
+    const int n = RomajiEntryLength(roma);
+    if (buf_len < n) {
+        return false;
+    }
+    for (int i = 0; i < n; ++i) {
+        if (buf[i] != roma[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ConvertRomajiHeadToHalfKana(const char* buf,
+                                 int buf_len,
+                                 bool finalize,
+                                 int* consume_len,
+                                 uint8_t* out,
+                                 int* out_len) {
+    *consume_len = 0;
+    *out_len = 0;
+    if (buf_len <= 0) {
+        return false;
+    }
+    if (buf_len >= 2 &&
+        buf[0] == buf[1] &&
+        IsRomajiConsonant(buf[0]) &&
+        buf[0] != 'n') {
+        out[0] = 0xAF;  // small tsu
+        *consume_len = 1;
+        *out_len = 1;
+        return true;
+    }
+    if (buf[0] == 'n') {
+        if (buf_len >= 2) {
+            const char next = buf[1];
+            if (next == 'n' || (!IsRomajiVowel(next) && next != 'y')) {
+                out[0] = 0xDD;
+                *consume_len = 1;
+                *out_len = 1;
+                return true;
+            }
+        } else if (finalize) {
+            out[0] = 0xDD;
+            *consume_len = 1;
+            *out_len = 1;
+            return true;
+        }
+    }
+
+    int best_n = 0;
+    const RomajiKanaEntry* best = nullptr;
+    for (int i = 0; i < static_cast<int>(sizeof(kRomajiKanaTable) / sizeof(kRomajiKanaTable[0])); ++i) {
+        const int n = RomajiEntryLength(kRomajiKanaTable[i].roma);
+        if (n < best_n) {
+            continue;
+        }
+        if (!RomajiPrefixEquals(buf, buf_len, kRomajiKanaTable[i].roma)) {
+            continue;
+        }
+        if (!finalize && buf_len == n && n >= 2) {
+            bool has_longer = false;
+            for (int j = 0; j < static_cast<int>(sizeof(kRomajiKanaTable) / sizeof(kRomajiKanaTable[0])); ++j) {
+                const int m = RomajiEntryLength(kRomajiKanaTable[j].roma);
+                if (m <= n || buf_len < m) {
+                    continue;
+                }
+                if (RomajiPrefixEquals(buf, buf_len, kRomajiKanaTable[j].roma)) {
+                    has_longer = true;
+                    break;
+                }
+            }
+            if (has_longer) {
+                continue;
+            }
+        }
+        best = &kRomajiKanaTable[i];
+        best_n = n;
+    }
+    if (best == nullptr) {
+        return false;
+    }
+    for (int i = 0; i < best->len; ++i) {
+        out[i] = best->bytes[i];
+    }
+    *consume_len = best_n;
+    *out_len = best->len;
+    return true;
+}
+
 ShellPair* FindPair(ShellPair* pairs, int count, const char* key) {
     for (int i = 0; i < count; ++i) {
         if (pairs[i].used && StrEqual(pairs[i].key, key)) {
@@ -1477,6 +1641,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int history_nav = -1;   // -1 = browsing off, 0..history_count-1 = selected history row
     char draft_buffer[128];
     draft_buffer[0] = '\0';
+    char ime_romaji_buffer[32];
+    int ime_romaji_len = 0;
+    ime_romaji_buffer[0] = '\0';
     bool e0_prefix = false;
     bool key_down_normal[128];
     bool key_down_extended[128];
@@ -1564,6 +1731,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     auto ReplaceInputLine = [&](const char* text) {
         CopyString(command_buffer, text, static_cast<int>(sizeof(command_buffer)));
         command_len = StrLength(command_buffer);
+        ime_romaji_len = 0;
+        ime_romaji_buffer[0] = '\0';
         const int max_input_len = MaxInputLen();
         if (command_len > max_input_len) {
             command_len = max_input_len;
@@ -1630,6 +1799,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto BackspaceAtCursor = [&]() {
+        if (g_ime_enabled && ime_romaji_len > 0) {
+            --ime_romaji_len;
+            ime_romaji_buffer[ime_romaji_len] = '\0';
+            return;
+        }
         if (DeleteSelection()) {
             return;
         }
@@ -1828,6 +2002,73 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
     };
 
+    auto InsertByteAtCursor = [&](uint8_t b) -> bool {
+        if (command_len >= MaxInputLen()) {
+            return false;
+        }
+        for (int i = command_len; i > cursor_pos; --i) {
+            command_buffer[i] = command_buffer[i - 1];
+        }
+        command_buffer[cursor_pos] = static_cast<char>(b);
+        ++command_len;
+        ++cursor_pos;
+        command_buffer[command_len] = '\0';
+        return true;
+    };
+
+    auto FlushImeRomaji = [&](bool finalize) -> bool {
+        if (ime_romaji_len <= 0) {
+            return false;
+        }
+        bool inserted = false;
+        if (HasSelection()) {
+            DeleteSelection();
+        }
+        while (ime_romaji_len > 0) {
+            int consume = 0;
+            uint8_t kana_bytes[3] = {0, 0, 0};
+            int kana_len = 0;
+            if (!ConvertRomajiHeadToHalfKana(ime_romaji_buffer,
+                                             ime_romaji_len,
+                                             finalize,
+                                             &consume,
+                                             kana_bytes,
+                                             &kana_len)) {
+                break;
+            }
+            for (int i = 0; i < kana_len; ++i) {
+                if (!InsertByteAtCursor(kana_bytes[i])) {
+                    break;
+                }
+                inserted = true;
+            }
+            for (int i = consume; i <= ime_romaji_len; ++i) {
+                ime_romaji_buffer[i - consume] = ime_romaji_buffer[i];
+            }
+            ime_romaji_len -= consume;
+            if (ime_romaji_len < 0) {
+                ime_romaji_len = 0;
+                ime_romaji_buffer[0] = '\0';
+                break;
+            }
+        }
+        if (finalize && ime_romaji_len > 0) {
+            for (int i = 0; i < ime_romaji_len; ++i) {
+                if (!InsertByteAtCursor(static_cast<uint8_t>(ime_romaji_buffer[i]))) {
+                    break;
+                }
+                inserted = true;
+            }
+            ime_romaji_len = 0;
+            ime_romaji_buffer[0] = '\0';
+        }
+        if (inserted) {
+            RenderInputLine();
+            RefreshInputLine();
+        }
+        return inserted;
+    };
+
     auto HandleMouseMessage = [&](const Message& msg) {
         const uint8_t prev_buttons = g_mouse_buttons_current;
         const uint8_t now_buttons = msg.buttons;
@@ -1957,6 +2198,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
         if (IsCtrlPressed(keyboard_mods)) {
             if (key == 0x39) { // Ctrl + Space => IME toggle fallback
+                FlushImeRomaji(true);
                 g_ime_enabled = !g_ime_enabled;
                 if (g_ime_enabled) {
                     g_jp_layout = true;
@@ -1989,6 +2231,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 command_len = 0;
                 cursor_pos = 0;
                 command_buffer[0] = '\0';
+                ime_romaji_len = 0;
+                ime_romaji_buffer[0] = '\0';
                 ClearSelection();
                 history_nav = -1;
                 draft_buffer[0] = '\0';
@@ -2038,12 +2282,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return true;
         }
         if (key == 0x29) { // Hankaku/Zenkaku (JP)
+            FlushImeRomaji(true);
             g_ime_enabled = !g_ime_enabled;
             g_jp_layout = true;
             RepaintPromptAndInput();
             return true;
         }
         if (key == 0x70) { // Kana
+            FlushImeRomaji(true);
             g_ime_enabled = !g_ime_enabled;
             if (g_ime_enabled) {
                 g_jp_layout = true;
@@ -2052,6 +2298,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return true;
         }
         if (key == 0x79 || key == 0x7B) { // Henkan / Muhenkan
+            FlushImeRomaji(true);
             g_ime_enabled = (key == 0x79);
             if (g_ime_enabled) {
                 g_jp_layout = true;
@@ -2145,6 +2392,20 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 if (ch != 0) {
                     EnsureLiveConsole();
                     bool full_refresh = false;
+                    if (g_ime_enabled && g_jp_layout) {
+                        char lower = ToLowerAscii(ch);
+                        const bool is_alpha = (lower >= 'a' && lower <= 'z');
+                        if (is_alpha) {
+                            if (ime_romaji_len + 1 < static_cast<int>(sizeof(ime_romaji_buffer))) {
+                                ime_romaji_buffer[ime_romaji_len++] = lower;
+                                ime_romaji_buffer[ime_romaji_len] = '\0';
+                                FlushImeRomaji(false);
+                            }
+                            break;
+                        }
+                        // Finalize pending romaji before non-alpha key (space/punct/enter).
+                        FlushImeRomaji(true);
+                    }
                     if (ch == '\n') {
                         console->SetCursorPosition(input_row, input_col + command_len);
                         console->Print("\n");
@@ -2175,6 +2436,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         cursor_pos = 0;
                         rendered_len = 0;
                         command_buffer[0] = '\0';
+                        ime_romaji_len = 0;
+                        ime_romaji_buffer[0] = '\0';
                         ClearSelection();
                         history_nav = -1;
                         draft_buffer[0] = '\0';
@@ -2185,14 +2448,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         full_refresh = true;
                     } else if (IsPrintableAscii(ch)) {
                         DeleteSelection();
-                        if (command_len < MaxInputLen()) {
-                            for (int i = command_len; i > cursor_pos; --i) {
-                                command_buffer[i] = command_buffer[i - 1];
-                            }
-                            command_buffer[cursor_pos] = ch;
-                            ++command_len;
-                            ++cursor_pos;
-                            command_buffer[command_len] = '\0';
+                        if (InsertByteAtCursor(static_cast<uint8_t>(ch))) {
                             RenderInputLine();
                         }
                     }
