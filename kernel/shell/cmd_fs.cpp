@@ -1,3 +1,41 @@
+#include <stdint.h>
+#include "console.hpp"
+#include "boot_info.h"
+#include "shell/context.hpp"
+#include "shell/text.hpp"
+
+extern Console* console;
+extern const BootInfo* g_boot_info;
+extern char g_cwd[96];
+extern ShellDir g_dirs[32];
+extern ShellFile g_files[64];
+
+bool IsPrintableAscii(char c);
+void InitializeDirectories();
+bool ResolvePath(const char* cwd, const char* path, char* out, int out_len);
+bool DirectoryExists(const char* path);
+bool GetParentPath(const char* path, char* out, int out_len);
+bool CreateDirectory(const char* path);
+const ShellFile* FindShellFileByAbsPath(const char* abs_path);
+ShellFile* FindShellFileByAbsPathMutable(const char* abs_path);
+ShellFile* CreateShellFile(const char* abs_path);
+bool ResolveFilePath(const char* cwd, const char* input, char* out, int out_len);
+ShellDir* FindDirectoryMutable(const char* path);
+bool IsPathSameOrChild(const char* path, const char* base);
+bool IsDirectoryEmpty(const char* path);
+bool BuildMovedPath(const char* current, const char* src_prefix, const char* dst_prefix, char* out, int out_len);
+bool DirectoryExistsOutsideMove(const char* path, const char* src_prefix);
+bool ShellFileExistsOutsideMove(const char* path, const char* src_prefix);
+void GetBaseName(const char* path, char* out, int out_len);
+void BuildBootFileAbsolutePath(const char* file_name, char* out, int out_len);
+const ShellFile* FindShellFileByPath(const char* cwd, const char* input_path);
+const BootFileEntry* FindBootFileByPath(const char* cwd, const char* input_path);
+void PrintBootFile(const BootFileEntry* file);
+void PrintBootFilePaged(const BootFileEntry* file, bool numbered);
+void PrintBootFileNumbered(const BootFileEntry* file);
+void PrintBootFileStat(const BootFileEntry* file);
+void PrintShellFileStat(const ShellFile* file);
+
 bool ExecuteFindCommand(const char* command, int* pos_ptr) {
     int& pos = *pos_ptr;
     char args[4][64];

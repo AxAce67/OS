@@ -1251,8 +1251,6 @@ int ParseInt(const char* s) {
     return value * sign;
 }
 
-#include "shell/cmd_fs.cpp"
-
 #include "shell/cmd_xhci.cpp"
 
 void ExecuteCommand(const char* command) {
