@@ -81,6 +81,9 @@ if ($LASTEXITCODE -ne 0) { Write-Host "Shell Text Compile Error!" -ForegroundCol
 & $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/cmd_dispatch.cpp -o shell_cmd_dispatch.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Shell Dispatch Compile Error!" -ForegroundColor Red; exit 1 }
 
+& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/cmd_core.cpp -o shell_cmd_core.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Shell Core Compile Error!" -ForegroundColor Red; exit 1 }
+
 # 割り込みハンドラはSSEレジスタを使わないように -mgeneral-regs-only を指定する
 & $clang -target x86_64-elf -mno-red-zone -mgeneral-regs-only -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/interrupt_handler.cpp -o interrupt_handler.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Interrupt Handler Compile Error!" -ForegroundColor Red; exit 1 }
@@ -107,7 +110,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "Layer Compile Error!" -ForegroundColor Re
 if ($LASTEXITCODE -ne 0) { Write-Host "Kernel Compile Error!" -ForegroundColor Red; exit 1 }
 
 # ELFファイルとしてリンク
-& $ld_lld -m elf_x86_64 -z norelro --image-base 0x100000 --entry KernelMain -o kernel.elf kernel.o console.o mouse.o interrupt.o pic.o ps2.o pci.o xhci.o shell_commands.o shell_text.o shell_cmd_dispatch.o interrupt_handler.o font.o memory.o paging.o apic.o timer.o window.o layer.o
+& $ld_lld -m elf_x86_64 -z norelro --image-base 0x100000 --entry KernelMain -o kernel.elf kernel.o console.o mouse.o interrupt.o pic.o ps2.o pci.o xhci.o shell_commands.o shell_text.o shell_cmd_dispatch.o shell_cmd_core.o interrupt_handler.o font.o memory.o paging.o apic.o timer.o window.o layer.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Kernel Link Error!" -ForegroundColor Red; exit 1 }
 
 Write-Host "Build Success! -> main.efi & kernel.elf" -ForegroundColor Green

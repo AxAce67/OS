@@ -1253,8 +1253,6 @@ int ParseInt(const char* s) {
 
 #include "shell/cmd_fs.cpp"
 
-#include "shell/cmd_core.cpp"
-
 #include "shell/cmd_xhci.cpp"
 
 void ExecuteCommand(const char* command) {

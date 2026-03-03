@@ -1,3 +1,27 @@
+#include <stdint.h>
+#include "console.hpp"
+#include "memory.hpp"
+#include "timer.hpp"
+#include "arch/x86_64/interrupt_handler.hpp"
+#include "shell/context.hpp"
+#include "shell/text.hpp"
+
+extern Console* console;
+extern bool g_key_repeat_enabled;
+extern bool g_jp_layout;
+extern bool g_boot_mouse_auto_enabled;
+extern ShellPair g_vars[16];
+extern ShellPair g_aliases[16];
+extern char g_cwd[96];
+extern uint8_t g_mouse_buttons_current;
+extern uint64_t g_mouse_left_press_count;
+extern uint64_t g_mouse_right_press_count;
+extern uint64_t g_mouse_middle_press_count;
+
+ShellPair* EnsurePair(ShellPair* pairs, int count, const char* key);
+void PrintPairs(const char* label, ShellPair* pairs, int count);
+void Reboot();
+
 bool ExecuteHelpCommand() {
     console->PrintLine("help: core  help clear tick time mem uptime echo reboot");
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
