@@ -1,6 +1,7 @@
 #include "input/key_event.hpp"
 
 namespace {
+uint8_t g_e1_skip_bytes = 0;
 
 bool ApplyModifierSet1(uint8_t keycode, bool extended, bool released, KeyboardModifiers* mods) {
     if (!extended) {
@@ -66,6 +67,18 @@ bool DecodePS2Set1KeyEvent(uint8_t raw_scancode,
     out->caps_lock = mods->caps_lock;
     out->num_lock = mods->num_lock;
 
+    if (g_e1_skip_bytes > 0) {
+        --g_e1_skip_bytes;
+        return false;
+    }
+
+    if (raw_scancode == 0xE1) {
+        // Pause/Break sequence in set-1: E1 1D 45 E1 9D C5 (plus controller variations).
+        // Ignore the rest to avoid bogus key events.
+        g_e1_skip_bytes = 7;
+        return false;
+    }
+
     if (raw_scancode == 0xE0) {
         *e0_prefix = true;
         return false;
@@ -75,6 +88,11 @@ bool DecodePS2Set1KeyEvent(uint8_t raw_scancode,
     *e0_prefix = false;
     const bool released = (raw_scancode & 0x80) != 0;
     const uint8_t keycode = raw_scancode & 0x7F;
+
+    // Ignore E0-prefixed fake shift codes used by PrintScreen sequences.
+    if (extended && (keycode == 0x2A || keycode == 0x36)) {
+        return false;
+    }
 
     out->keycode = keycode;
     out->extended = extended;
