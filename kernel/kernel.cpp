@@ -275,6 +275,17 @@ bool StrStartsWith(const char* s, const char* prefix) {
     return true;
 }
 
+int StrCompare(const char* a, const char* b) {
+    int i = 0;
+    while (a[i] != '\0' && b[i] != '\0') {
+        if (a[i] != b[i]) {
+            return static_cast<unsigned char>(a[i]) - static_cast<unsigned char>(b[i]);
+        }
+        ++i;
+    }
+    return static_cast<unsigned char>(a[i]) - static_cast<unsigned char>(b[i]);
+}
+
 bool ContainsChar(const char* s, char ch) {
     for (int i = 0; s[i] != '\0'; ++i) {
         if (s[i] == ch) {
@@ -1023,13 +1034,11 @@ void ExecuteCommand(const char* command) {
     const char* rest = RestOfLine(command, pos);
 
     if (StrEqual(cmd, "help")) {
-        console->PrintLine("commands: help clear tick time mem uptime echo reboot");
-        console->PrintLine("          pwd cd <dir> mkdir <dir> touch <file>");
-        console->PrintLine("          write <file> <text> append <file> <text> cp <src> <dst>");
-        console->PrintLine("          rm <path> rmdir <dir> mv <src> <dst>");
-        console->PrintLine("          history clearhistory inputstat about ls [-l] [dir] stat <file>");
-        console->PrintLine("          cat [-n] [-p] <file>");
-        console->PrintLine("          repeat layout set alias");
+        console->PrintLine("help: core  help clear tick time mem uptime echo reboot");
+        console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
+        console->PrintLine("help: fs2   rm rmdir mv ls stat cat");
+        console->PrintLine("help: misc  history clearhistory inputstat about");
+        console->PrintLine("help: cfg   repeat layout set alias");
         return;
     }
 
@@ -1071,6 +1080,11 @@ void ExecuteCommand(const char* command) {
             console->PrintLine("mkdir: directory required");
             return;
         }
+        char extra[8];
+        if (NextToken(command, &pos, extra, sizeof(extra))) {
+            console->PrintLine("mkdir: too many arguments");
+            return;
+        }
         char resolved[96];
         if (!ResolvePath(g_cwd, name, resolved, sizeof(resolved))) {
             console->PrintLine("mkdir: invalid path");
@@ -1106,6 +1120,11 @@ void ExecuteCommand(const char* command) {
         char name[64];
         if (!NextToken(command, &pos, name, sizeof(name))) {
             console->PrintLine("touch: filename required");
+            return;
+        }
+        char extra[8];
+        if (NextToken(command, &pos, extra, sizeof(extra))) {
+            console->PrintLine("touch: too many arguments");
             return;
         }
         char resolved_path[96];
@@ -1192,6 +1211,11 @@ void ExecuteCommand(const char* command) {
             console->PrintLine("cp: src and dst required");
             return;
         }
+        char extra[8];
+        if (NextToken(command, &pos, extra, sizeof(extra))) {
+            console->PrintLine("cp: too many arguments");
+            return;
+        }
 
         char dst_path[96];
         if (!ResolveFilePath(g_cwd, dst_name, dst_path, sizeof(dst_path))) {
@@ -1255,6 +1279,11 @@ void ExecuteCommand(const char* command) {
             console->PrintLine("rm: path required");
             return;
         }
+        char extra[8];
+        if (NextToken(command, &pos, extra, sizeof(extra))) {
+            console->PrintLine("rm: too many arguments");
+            return;
+        }
         char resolved_path[96];
         if (!ResolvePath(g_cwd, target, resolved_path, sizeof(resolved_path))) {
             console->PrintLine("rm: invalid path");
@@ -1304,6 +1333,11 @@ void ExecuteCommand(const char* command) {
             console->PrintLine("rmdir: path required");
             return;
         }
+        char extra[8];
+        if (NextToken(command, &pos, extra, sizeof(extra))) {
+            console->PrintLine("rmdir: too many arguments");
+            return;
+        }
         char resolved_path[96];
         if (!ResolvePath(g_cwd, target, resolved_path, sizeof(resolved_path))) {
             console->PrintLine("rmdir: invalid path");
@@ -1342,6 +1376,11 @@ void ExecuteCommand(const char* command) {
         if (!NextToken(command, &pos, src_name, sizeof(src_name)) ||
             !NextToken(command, &pos, dst_name, sizeof(dst_name))) {
             console->PrintLine("mv: src and dst required");
+            return;
+        }
+        char extra[8];
+        if (NextToken(command, &pos, extra, sizeof(extra))) {
+            console->PrintLine("mv: too many arguments");
             return;
         }
 
@@ -1573,6 +1612,31 @@ void ExecuteCommand(const char* command) {
     }
 
     if (StrEqual(cmd, "ls")) {
+        struct LsEntry {
+            char name[64];
+            bool is_dir;
+            uint64_t size;
+            int kind; // 0=dir, 1=user file, 2=boot file
+        };
+        LsEntry entries[128];
+        int entry_count = 0;
+        auto CopyLsEntry = [&](LsEntry* dst, const LsEntry* src) {
+            CopyString(dst->name, src->name, sizeof(dst->name));
+            dst->is_dir = src->is_dir;
+            dst->size = src->size;
+            dst->kind = src->kind;
+        };
+        auto AddLsEntry = [&](const char* name, bool is_dir, uint64_t size, int kind) {
+            if (entry_count >= static_cast<int>(sizeof(entries) / sizeof(entries[0]))) {
+                return;
+            }
+            CopyString(entries[entry_count].name, name, sizeof(entries[entry_count].name));
+            entries[entry_count].is_dir = is_dir;
+            entries[entry_count].size = size;
+            entries[entry_count].kind = kind;
+            ++entry_count;
+        };
+
         bool long_format = false;
         char target_arg[64];
         target_arg[0] = '\0';
@@ -1622,16 +1686,7 @@ void ExecuteCommand(const char* command) {
             }
             char base[64];
             GetBaseName(g_dirs[i].path, base, sizeof(base));
-            if (long_format) {
-                console->Print("drwxr-xr-x ");
-                console->PrintDec(0);
-                console->Print(" B ");
-                console->Print(base);
-                console->PrintLine("/");
-            } else {
-                console->Print(base);
-                console->PrintLine("/");
-            }
+            AddLsEntry(base, true, 0, 0);
         }
 
         for (int i = 0; i < static_cast<int>(sizeof(g_files) / sizeof(g_files[0])); ++i) {
@@ -1647,14 +1702,7 @@ void ExecuteCommand(const char* command) {
             }
             char base[64];
             GetBaseName(g_files[i].path, base, sizeof(base));
-            if (long_format) {
-                console->Print("-rw-rw-r-- ");
-                console->PrintDec(static_cast<int64_t>(g_files[i].size));
-                console->Print(" B ");
-                console->PrintLine(base);
-            } else {
-                console->PrintLine(base);
-            }
+            AddLsEntry(base, false, g_files[i].size, 1);
         }
 
         if (g_boot_info != nullptr && g_boot_info->boot_fs != nullptr) {
@@ -1676,14 +1724,58 @@ void ExecuteCommand(const char* command) {
 
                 char base[64];
                 GetBaseName(abs_file_path, base, sizeof(base));
-                if (long_format) {
-                    console->Print("-rw-r--r-- ");
-                    console->PrintDec(static_cast<int64_t>(fs->files[i].size));
-                    console->Print(" B ");
-                    console->PrintLine(base);
-                } else {
-                    console->PrintLine(base);
+                AddLsEntry(base, false, fs->files[i].size, 2);
+            }
+        }
+
+        for (int i = 1; i < entry_count; ++i) {
+            LsEntry key;
+            CopyLsEntry(&key, &entries[i]);
+            int j = i - 1;
+            while (j >= 0) {
+                int cmp = StrCompare(entries[j].name, key.name);
+                if (cmp < 0) {
+                    break;
                 }
+                if (cmp == 0) {
+                    if (entries[j].is_dir && !key.is_dir) {
+                        break;
+                    }
+                    if (entries[j].is_dir == key.is_dir && entries[j].kind <= key.kind) {
+                        break;
+                    }
+                }
+                CopyLsEntry(&entries[j + 1], &entries[j]);
+                --j;
+            }
+            CopyLsEntry(&entries[j + 1], &key);
+        }
+
+        for (int i = 0; i < entry_count; ++i) {
+            if (long_format) {
+                if (entries[i].is_dir) {
+                    console->Print("drwxr-xr-x ");
+                    console->PrintDec(0);
+                    console->Print(" B ");
+                    console->Print(entries[i].name);
+                    console->PrintLine("/");
+                } else if (entries[i].kind == 1) {
+                    console->Print("-rw-rw-r-- ");
+                    console->PrintDec(static_cast<int64_t>(entries[i].size));
+                    console->Print(" B ");
+                    console->PrintLine(entries[i].name);
+                } else {
+                    console->Print("-rw-r--r-- ");
+                    console->PrintDec(static_cast<int64_t>(entries[i].size));
+                    console->Print(" B ");
+                    console->PrintLine(entries[i].name);
+                }
+            } else {
+                console->Print(entries[i].name);
+                if (entries[i].is_dir) {
+                    console->Print("/");
+                }
+                console->Print("\n");
             }
         }
         return;
@@ -1693,6 +1785,11 @@ void ExecuteCommand(const char* command) {
         char name[64];
         if (!NextToken(command, &pos, name, sizeof(name))) {
             console->PrintLine("stat: filename required");
+            return;
+        }
+        char extra[8];
+        if (NextToken(command, &pos, extra, sizeof(extra))) {
+            console->PrintLine("stat: too many arguments");
             return;
         }
         const ShellFile* user_file = FindShellFileByPath(g_cwd, name);
@@ -1732,6 +1829,11 @@ void ExecuteCommand(const char* command) {
                 console->PrintLine("cat: filename required");
                 return;
             }
+        }
+        char extra[8];
+        if (NextToken(command, &pos, extra, sizeof(extra))) {
+            console->PrintLine("cat: too many arguments");
+            return;
         }
         const ShellFile* user_file = FindShellFileByPath(g_cwd, name);
         if (user_file != nullptr) {
