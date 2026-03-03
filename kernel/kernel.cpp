@@ -1478,9 +1478,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     char draft_buffer[128];
     draft_buffer[0] = '\0';
     bool e0_prefix = false;
-    bool key_down[128];
+    bool key_down_normal[128];
+    bool key_down_extended[128];
     for (int i = 0; i < 128; ++i) {
-        key_down[i] = false;
+        key_down_normal[i] = false;
+        key_down_extended[i] = false;
     }
     int input_row = console->CursorRow();
     int input_col = console->CursorColumn();
@@ -2092,7 +2094,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 }
                 if (key_event.released) {
                     if (key_event.keycode < 128) {
-                        key_down[key_event.keycode] = false;
+                        if (key_event.extended) {
+                            key_down_extended[key_event.keycode] = false;
+                        } else {
+                            key_down_normal[key_event.keycode] = false;
+                        }
                     }
                     break;
                 }
@@ -2106,11 +2112,18 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         break;
                     }
                 }
-                if (key < 128 && !g_key_repeat_enabled && key_down[key]) {
-                    break;
+                if (key < 128 && !g_key_repeat_enabled) {
+                    const bool already_down = key_event.extended ? key_down_extended[key] : key_down_normal[key];
+                    if (already_down) {
+                        break;
+                    }
                 }
                 if (key < 128) {
-                    key_down[key] = true;
+                    if (key_event.extended) {
+                        key_down_extended[key] = true;
+                    } else {
+                        key_down_normal[key] = true;
+                    }
                 }
                 if (HandleRegularKeyShortcut(key)) {
                     break;
