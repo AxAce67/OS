@@ -60,10 +60,19 @@ void MemoryManager::Initialize(const BootInfo* boot_info) {
     // したがって、0番地は強制的に「使用済み」にマークし、newやmallocで返さないよう保護します。
     MarkAllocated(0, 1);
 
+    // 低位メモリはブート情報・ページテーブル・各種初期化データと衝突しやすいため
+    // まとめて予約して、動的確保はより高位の物理アドレスから使う。
+    // これにより、初期化後の不定期クラッシュ/再起動ループを防ぐ。
+    const uint64_t kReservedLowMemoryBytes = 64 * kMiB;
+    MarkAllocated(0, kReservedLowMemoryBytes / kPageSize);
+
     if (console != nullptr) {
         console->Print("MemoryManager Initialized.\n");
         console->Print("Available RAM: ");
         console->PrintDec((available_pages * kPageSize) / kMiB);
+        console->PrintLine(" MB");
+        console->Print("Reserved low memory: ");
+        console->PrintDec(kReservedLowMemoryBytes / kMiB);
         console->PrintLine(" MB");
     }
 }
