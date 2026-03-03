@@ -2468,40 +2468,66 @@ void ExecuteCommand(const char* command) {
     }
 
     if (StrEqual(cmd, "find")) {
-        char arg1[64];
-        if (!NextToken(command, &pos, arg1, sizeof(arg1))) {
-            console->PrintLine("find: path or pattern required");
-            return;
-        }
-        char arg2[64];
-        bool has_arg2 = NextToken(command, &pos, arg2, sizeof(arg2));
-        char extra[8];
-        if (NextToken(command, &pos, extra, sizeof(extra))) {
-            console->PrintLine("find: too many arguments");
-            return;
+        char args[4][64];
+        int argc = 0;
+        while (true) {
+            char tok[64];
+            if (!NextToken(command, &pos, tok, sizeof(tok))) {
+                break;
+            }
+            if (argc >= static_cast<int>(sizeof(args) / sizeof(args[0]))) {
+                console->PrintLine("find: too many arguments");
+                return;
+            }
+            CopyString(args[argc], tok, sizeof(args[argc]));
+            ++argc;
         }
 
+        int type_filter = 0;  // 0=all, 1=file, 2=dir
+        int idx = 0;
+        while (idx < argc && StrEqual(args[idx], "-type")) {
+            if (idx + 1 >= argc) {
+                console->PrintLine("find: -type requires f or d");
+                return;
+            }
+            if (StrEqual(args[idx + 1], "f")) {
+                type_filter = 1;
+            } else if (StrEqual(args[idx + 1], "d")) {
+                type_filter = 2;
+            } else {
+                console->PrintLine("find: -type must be f or d");
+                return;
+            }
+            idx += 2;
+        }
+
+        const int remain = argc - idx;
         char base_path[96];
         char pattern[64];
         pattern[0] = '\0';
-        char resolved1[96];
-        bool arg1_is_dir = ResolvePath(g_cwd, arg1, resolved1, sizeof(resolved1)) && DirectoryExists(resolved1);
-
-        if (has_arg2) {
-            if (!arg1_is_dir) {
-                console->Print("find: no such directory: ");
-                console->PrintLine(arg1);
-                return;
-            }
-            CopyString(base_path, resolved1, sizeof(base_path));
-            CopyString(pattern, arg2, sizeof(pattern));
-        } else {
+        if (remain <= 0) {
+            CopyString(base_path, g_cwd, sizeof(base_path));
+        } else if (remain == 1) {
+            char resolved1[96];
+            bool arg1_is_dir = ResolvePath(g_cwd, args[idx], resolved1, sizeof(resolved1)) && DirectoryExists(resolved1);
             if (arg1_is_dir) {
                 CopyString(base_path, resolved1, sizeof(base_path));
             } else {
                 CopyString(base_path, g_cwd, sizeof(base_path));
-                CopyString(pattern, arg1, sizeof(pattern));
+                CopyString(pattern, args[idx], sizeof(pattern));
             }
+        } else if (remain == 2) {
+            char resolved1[96];
+            if (!(ResolvePath(g_cwd, args[idx], resolved1, sizeof(resolved1)) && DirectoryExists(resolved1))) {
+                console->Print("find: no such directory: ");
+                console->PrintLine(args[idx]);
+                return;
+            }
+            CopyString(base_path, resolved1, sizeof(base_path));
+            CopyString(pattern, args[idx + 1], sizeof(pattern));
+        } else {
+            console->PrintLine("find: too many arguments");
+            return;
         }
 
         int match_count = 0;
@@ -2516,7 +2542,7 @@ void ExecuteCommand(const char* command) {
             if (!IsPathSameOrChild(g_dirs[i].path, base_path)) {
                 continue;
             }
-            if (!PathMatches(g_dirs[i].path)) {
+            if (type_filter == 1 || !PathMatches(g_dirs[i].path)) {
                 continue;
             }
             console->Print(g_dirs[i].path);
@@ -2531,7 +2557,7 @@ void ExecuteCommand(const char* command) {
             if (!IsPathSameOrChild(g_files[i].path, base_path)) {
                 continue;
             }
-            if (!PathMatches(g_files[i].path)) {
+            if (type_filter == 2 || !PathMatches(g_files[i].path)) {
                 continue;
             }
             console->PrintLine(g_files[i].path);
@@ -2549,7 +2575,7 @@ void ExecuteCommand(const char* command) {
                 if (!IsPathSameOrChild(abs_file_path, base_path)) {
                     continue;
                 }
-                if (!PathMatches(abs_file_path)) {
+                if (type_filter == 2 || !PathMatches(abs_file_path)) {
                     continue;
                 }
                 console->PrintLine(abs_file_path);
@@ -2565,6 +2591,8 @@ void ExecuteCommand(const char* command) {
 
     if (StrEqual(cmd, "grep")) {
         bool show_line_number = false;
+        char files[8][64];
+        int file_count = 0;
         char tok[64];
         if (!NextToken(command, &pos, tok, sizeof(tok))) {
             console->PrintLine("grep: pattern and file required");
@@ -2585,91 +2613,103 @@ void ExecuteCommand(const char* command) {
         }
         char pattern[64];
         CopyString(pattern, tok, sizeof(pattern));
-        char name[64];
-        if (!NextToken(command, &pos, name, sizeof(name))) {
+        while (NextToken(command, &pos, tok, sizeof(tok))) {
+            if (file_count >= static_cast<int>(sizeof(files) / sizeof(files[0]))) {
+                console->PrintLine("grep: too many files");
+                return;
+            }
+            CopyString(files[file_count], tok, sizeof(files[file_count]));
+            ++file_count;
+        }
+        if (file_count == 0) {
             console->PrintLine("grep: file required");
             return;
         }
-        char extra[8];
-        if (NextToken(command, &pos, extra, sizeof(extra))) {
-            console->PrintLine("grep: too many arguments");
-            return;
-        }
-
-        const uint8_t* data = nullptr;
-        uint64_t size = 0;
-        const ShellFile* user_file = FindShellFileByPath(g_cwd, name);
-        if (user_file != nullptr) {
-            data = user_file->data;
-            size = user_file->size;
-        } else {
-            const BootFileEntry* boot_file = FindBootFileByPath(g_cwd, name);
-            if (boot_file == nullptr) {
-                console->Print("grep: not found: ");
-                console->PrintLine(name);
-                return;
-            }
-            data = boot_file->data;
-            size = boot_file->size;
-        }
 
         const int pat_len = StrLength(pattern);
-        auto LineContains = [&](uint64_t begin, uint64_t end) {
-            if (pat_len == 0) {
-                return true;
-            }
-            if (end < begin) {
-                return false;
-            }
-            uint64_t len = end - begin;
-            if (len < static_cast<uint64_t>(pat_len)) {
-                return false;
-            }
-            for (uint64_t i = begin; i + static_cast<uint64_t>(pat_len) <= end; ++i) {
-                bool ok = true;
-                for (int j = 0; j < pat_len; ++j) {
-                    if (static_cast<char>(data[i + static_cast<uint64_t>(j)]) != pattern[j]) {
-                        ok = false;
-                        break;
-                    }
-                }
-                if (ok) {
+        bool matched = false;
+        const bool multi_file = file_count > 1;
+        auto SearchOne = [&](const char* display_name, const uint8_t* data, uint64_t size) {
+            auto LineContains = [&](uint64_t begin, uint64_t end) {
+                if (pat_len == 0) {
                     return true;
                 }
+                if (end < begin) {
+                    return false;
+                }
+                uint64_t len = end - begin;
+                if (len < static_cast<uint64_t>(pat_len)) {
+                    return false;
+                }
+                for (uint64_t i = begin; i + static_cast<uint64_t>(pat_len) <= end; ++i) {
+                    bool ok = true;
+                    for (int j = 0; j < pat_len; ++j) {
+                        if (static_cast<char>(data[i + static_cast<uint64_t>(j)]) != pattern[j]) {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if (ok) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            uint64_t line_begin = 0;
+            int line_no = 1;
+            for (uint64_t i = 0; i <= size; ++i) {
+                if (i < size && data[i] != '\n') {
+                    continue;
+                }
+                uint64_t line_end = i;
+                if (LineContains(line_begin, line_end)) {
+                    matched = true;
+                    if (multi_file) {
+                        console->Print(display_name);
+                        console->Print(":");
+                    }
+                    if (show_line_number) {
+                        console->PrintDec(line_no);
+                        console->Print(": ");
+                    }
+                    for (uint64_t k = line_begin; k < line_end; ++k) {
+                        char c = static_cast<char>(data[k]);
+                        if (c == '\r') {
+                            continue;
+                        }
+                        if (c == '\t' || IsPrintableAscii(c)) {
+                            char s[2] = {c, '\0'};
+                            console->Print(s);
+                        } else {
+                            console->Print(".");
+                        }
+                    }
+                    console->Print("\n");
+                }
+                line_begin = i + 1;
+                ++line_no;
             }
-            return false;
         };
 
-        bool matched = false;
-        uint64_t line_begin = 0;
-        int line_no = 1;
-        for (uint64_t i = 0; i <= size; ++i) {
-            if (i < size && data[i] != '\n') {
-                continue;
-            }
-            uint64_t line_end = i;
-            if (LineContains(line_begin, line_end)) {
-                matched = true;
-                if (show_line_number) {
-                    console->PrintDec(line_no);
-                    console->Print(": ");
+        for (int fi = 0; fi < file_count; ++fi) {
+            const uint8_t* data = nullptr;
+            uint64_t size = 0;
+            const ShellFile* user_file = FindShellFileByPath(g_cwd, files[fi]);
+            if (user_file != nullptr) {
+                data = user_file->data;
+                size = user_file->size;
+            } else {
+                const BootFileEntry* boot_file = FindBootFileByPath(g_cwd, files[fi]);
+                if (boot_file == nullptr) {
+                    console->Print("grep: not found: ");
+                    console->PrintLine(files[fi]);
+                    continue;
                 }
-                for (uint64_t k = line_begin; k < line_end; ++k) {
-                    char c = static_cast<char>(data[k]);
-                    if (c == '\r') {
-                        continue;
-                    }
-                    if (c == '\t' || IsPrintableAscii(c)) {
-                        char s[2] = {c, '\0'};
-                        console->Print(s);
-                    } else {
-                        console->Print(".");
-                    }
-                }
-                console->Print("\n");
+                data = boot_file->data;
+                size = boot_file->size;
             }
-            line_begin = i + 1;
-            ++line_no;
+            SearchOne(files[fi], data, size);
         }
         if (!matched) {
             console->PrintLine("grep: no match");
