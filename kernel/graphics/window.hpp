@@ -30,6 +30,7 @@ public:
 
     // 文字列の描画（フォントデータを利用）
     void DrawChar(int x, int y, char c, const PixelColor& color);
+    void DrawCharScaled(int x, int y, char c, const PixelColor& color, int scale);
     void DrawString(int x, int y, const char* s, const PixelColor& color);
 
     void SetTransparentColor(const PixelColor& c);

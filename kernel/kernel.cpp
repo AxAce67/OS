@@ -2093,7 +2093,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int input_col = console->CursorColumn();
     int rendered_len = 0;
     auto RefreshConsole = [&]() {
-        layer_manager->Draw(0, 0, 8 * console->Columns(), 16 * console->Rows());
+        layer_manager->Draw(0, 0, console->PixelWidth(), console->PixelHeight());
     };
     auto EnsureLiveConsole = [&]() {
         if (console->IsScrolled()) {

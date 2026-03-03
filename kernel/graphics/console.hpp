@@ -6,6 +6,11 @@
 
 class Console {
 public:
+    static const int kFontWidth = 8;
+    static const int kFontHeight = 16;
+    static const int kFontScale = 2;
+    static const int kCellWidth = kFontWidth * kFontScale;
+    static const int kCellHeight = kFontHeight * kFontScale;
     static const int kMaxRows = 90;
     static const int kMaxColumns = 120;
     static const int kScrollbackLines = 512;
@@ -25,6 +30,8 @@ public:
     int CursorColumn() const;
     int Rows() const;
     int Columns() const;
+    int PixelWidth() const;
+    int PixelHeight() const;
     void SetCursorPosition(int row, int column);
     void ScrollUp(int lines = 1);
     void ScrollDown(int lines = 1);

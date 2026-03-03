@@ -20,8 +20,8 @@ Console::Console(Window* window,
     : window_{window},
       fg_r_{fg_r}, fg_g_{fg_g}, fg_b_{fg_b},
       bg_r_{bg_r}, bg_g_{bg_g}, bg_b_{bg_b},
-      rows_{window->Height() / 16},
-      columns_{window->Width() / 8},
+      rows_{window->Height() / kCellHeight},
+      columns_{window->Width() / kCellWidth},
       cursor_row_{0}, cursor_column_{0},
       scrollback_head_{0}, scrollback_count_{0}, view_offset_{0} {
     if (rows_ < 1) rows_ = 1;
@@ -44,8 +44,10 @@ void Console::Print(const char* s) {
             if (view_offset_ == 0) {
                 // 文字セルを背景色で消してから文字を描く。
                 // これをしないと space 描画時に既存ピクセルが残って重なって見える。
-                window_->FillRectangle(8 * cursor_column_, 16 * cursor_row_, 8, 16, {bg_r_, bg_g_, bg_b_});
-                window_->DrawChar(8 * cursor_column_, 16 * cursor_row_, *s, {fg_r_, fg_g_, fg_b_});
+                window_->FillRectangle(kCellWidth * cursor_column_, kCellHeight * cursor_row_,
+                                       kCellWidth, kCellHeight, {bg_r_, bg_g_, bg_b_});
+                window_->DrawCharScaled(kCellWidth * cursor_column_, kCellHeight * cursor_row_,
+                                        *s, {fg_r_, fg_g_, fg_b_}, kFontScale);
             }
             ++cursor_column_;
         }
@@ -123,7 +125,8 @@ bool Console::Backspace() {
     --cursor_column_;
     buffer_[cursor_row_][cursor_column_] = '\0';
     if (view_offset_ == 0) {
-        window_->FillRectangle(8 * cursor_column_, 16 * cursor_row_, 8, 16, {bg_r_, bg_g_, bg_b_});
+        window_->FillRectangle(kCellWidth * cursor_column_, kCellHeight * cursor_row_,
+                               kCellWidth, kCellHeight, {bg_r_, bg_g_, bg_b_});
     }
     return true;
 }
@@ -142,6 +145,14 @@ int Console::Rows() const {
 
 int Console::Columns() const {
     return columns_;
+}
+
+int Console::PixelWidth() const {
+    return columns_ * kCellWidth;
+}
+
+int Console::PixelHeight() const {
+    return rows_ * kCellHeight;
 }
 
 void Console::SetCursorPosition(int row, int column) {
@@ -246,7 +257,8 @@ void Console::RenderVisible() {
 
         for (int col = 0; col < columns_; ++col) {
             if (src[col] != '\0') {
-                window_->DrawChar(8 * col, 16 * row, src[col], {fg_r_, fg_g_, fg_b_});
+                window_->DrawCharScaled(kCellWidth * col, kCellHeight * row,
+                                        src[col], {fg_r_, fg_g_, fg_b_}, kFontScale);
             }
         }
     }
