@@ -430,9 +430,10 @@ bool ResolvePath(const char* cwd, const char* path, char* out, int out_len) {
         char seg[32];
         int w = 0;
         while (joined[i] != '\0' && joined[i] != '/') {
-            if (w + 1 < static_cast<int>(sizeof(seg))) {
-                seg[w++] = joined[i];
+            if (w + 1 >= static_cast<int>(sizeof(seg))) {
+                return false;
             }
+            seg[w++] = joined[i];
             ++i;
         }
         seg[w] = '\0';
@@ -644,6 +645,36 @@ bool BuildMovedPath(const char* current, const char* src_prefix, const char* dst
     }
     out[n] = '\0';
     return true;
+}
+
+bool DirectoryExistsOutsideMove(const char* path, const char* src_prefix) {
+    for (int i = 0; i < static_cast<int>(sizeof(g_dirs) / sizeof(g_dirs[0])); ++i) {
+        if (!g_dirs[i].used) {
+            continue;
+        }
+        if (IsPathSameOrChild(g_dirs[i].path, src_prefix)) {
+            continue;
+        }
+        if (StrEqual(g_dirs[i].path, path)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ShellFileExistsOutsideMove(const char* path, const char* src_prefix) {
+    for (int i = 0; i < static_cast<int>(sizeof(g_files) / sizeof(g_files[0])); ++i) {
+        if (!g_files[i].used) {
+            continue;
+        }
+        if (IsPathSameOrChild(g_files[i].path, src_prefix)) {
+            continue;
+        }
+        if (StrEqual(g_files[i].path, path)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void GetBaseName(const char* path, char* out, int out_len) {
@@ -1233,6 +1264,10 @@ void ExecuteCommand(const char* command) {
             console->PrintLine("rm: cannot remove /");
             return;
         }
+        if (IsPathSameOrChild(g_cwd, resolved_path)) {
+            console->PrintLine("rm: path is in use");
+            return;
+        }
 
         ShellFile* file = FindShellFileByAbsPathMutable(resolved_path);
         if (file != nullptr) {
@@ -1276,6 +1311,10 @@ void ExecuteCommand(const char* command) {
         }
         if (StrEqual(resolved_path, "/")) {
             console->PrintLine("rmdir: cannot remove /");
+            return;
+        }
+        if (IsPathSameOrChild(g_cwd, resolved_path)) {
+            console->PrintLine("rmdir: path is in use");
             return;
         }
         ShellDir* dir = FindDirectoryMutable(resolved_path);
@@ -1357,6 +1396,39 @@ void ExecuteCommand(const char* command) {
 
         char new_path[96];
         for (int i = 0; i < static_cast<int>(sizeof(g_dirs) / sizeof(g_dirs[0])); ++i) {
+            if (!g_dirs[i].used || !IsPathSameOrChild(g_dirs[i].path, src_path)) {
+                continue;
+            }
+            if (!BuildMovedPath(g_dirs[i].path, src_path, dst_path, new_path, sizeof(new_path))) {
+                console->PrintLine("mv: path too long");
+                return;
+            }
+            if (DirectoryExistsOutsideMove(new_path, src_path) ||
+                ShellFileExistsOutsideMove(new_path, src_path)) {
+                console->PrintLine("mv: destination exists");
+                return;
+            }
+        }
+        for (int i = 0; i < static_cast<int>(sizeof(g_files) / sizeof(g_files[0])); ++i) {
+            if (!g_files[i].used || !IsPathSameOrChild(g_files[i].path, src_path)) {
+                continue;
+            }
+            if (!BuildMovedPath(g_files[i].path, src_path, dst_path, new_path, sizeof(new_path))) {
+                console->PrintLine("mv: path too long");
+                return;
+            }
+            if (DirectoryExistsOutsideMove(new_path, src_path) ||
+                ShellFileExistsOutsideMove(new_path, src_path)) {
+                console->PrintLine("mv: destination exists");
+                return;
+            }
+            if (FindBootFileByPath("/", new_path) != nullptr) {
+                console->PrintLine("mv: destination conflicts with boot file");
+                return;
+            }
+        }
+
+        for (int i = 0; i < static_cast<int>(sizeof(g_dirs) / sizeof(g_dirs[0])); ++i) {
             if (!g_dirs[i].used) {
                 continue;
             }
@@ -1381,6 +1453,10 @@ void ExecuteCommand(const char* command) {
                 return;
             }
             CopyString(g_files[i].path, new_path, sizeof(g_files[i].path));
+        }
+        if (IsPathSameOrChild(g_cwd, src_path) &&
+            BuildMovedPath(g_cwd, src_path, dst_path, new_path, sizeof(new_path))) {
+            CopyString(g_cwd, new_path, sizeof(g_cwd));
         }
         return;
     }
