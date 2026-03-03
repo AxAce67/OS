@@ -384,6 +384,7 @@ bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t time
         return false;
     }
     g_hid_buttons_mask = buttons;
+    g_last_absolute_mouse_tick = CurrentTick();
 
     // Suppress tiny absolute-pointer jitter to avoid cursor flicker while typing.
     if (g_last_abs_dispatched_x >= 0 && g_last_abs_dispatched_y >= 0) {
@@ -393,7 +394,7 @@ bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t time
         const int ady = (dy < 0) ? -dy : dy;
         if (wheel == 0 &&
             buttons == g_last_abs_dispatched_buttons &&
-            adx <= 1 && ady <= 1) {
+            adx <= 3 && ady <= 3) {
             return true;
         }
     }
@@ -3414,7 +3415,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     }
                 } else {
                     if (g_xhci_hid_auto_enabled &&
-                        (CurrentTick() - g_last_absolute_mouse_tick) < 180) {
+                        (CurrentTick() - g_last_absolute_mouse_tick) < 1000) {
                         break;  // USB absolute pointer is active; ignore noisy PS/2 relative moves.
                     }
                     mouse_cursor->Move(msg.dx, msg.dy);
