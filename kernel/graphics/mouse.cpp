@@ -68,40 +68,30 @@ MouseCursor::MouseCursor(unsigned int initial_x, unsigned int initial_y, LayerMa
 }
 
 void MouseCursor::Move(int dx, int dy) {
-    // 古い座標を記憶
+    SetPosition(layer_->GetX() + dx, layer_->GetY() + dy);
+}
+
+void MouseCursor::SetPosition(int x, int y) {
     int old_x = layer_->GetX();
     int old_y = layer_->GetY();
-    
-    // 一度相対移動させる
-    layer_->MoveRelative(dx, dy);
-
-    // 新しい座標が画面外（上下左右）に出てしまった場合は画面端に押し戻す（クランプ処理）
-    // （完全に見失うことや、クリッピング計算のオーバーフローを防ぐため）
-    int new_x = layer_->GetX();
-    int new_y = layer_->GetY();
     int w = layer_->GetWindow()->Width();
     int h = layer_->GetWindow()->Height();
 
-    // LayerManagerから実際の画面解像度を取得してクランプする
     const auto& config = layer_manager_->GetConfig();
     int res_x = static_cast<int>(config.horizontal_resolution);
     int res_y = static_cast<int>(config.vertical_resolution);
 
     const int max_x = (res_x > w) ? (res_x - w) : 0;
     const int max_y = (res_y > h) ? (res_y - h) : 0;
-    if (new_x < 0) new_x = 0;
-    if (new_y < 0) new_y = 0;
-    if (new_x > max_x) new_x = max_x;
-    if (new_y > max_y) new_y = max_y;
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x > max_x) x = max_x;
+    if (y > max_y) y = max_y;
 
-    // 押し戻した結果を再設定
-    layer_->Move(new_x, new_y);
+    layer_->Move(x, y);
 
-    // 最終的な描画更新用座標
     int final_x = layer_->GetX();
     int final_y = layer_->GetY();
-
-    // 古い位置（消去用）と新しい位置（描画用）だけを部分的にコンポジット再描画する
     layer_manager_->Draw(old_x, old_y, w, h);
     layer_manager_->Draw(final_x, final_y, w, h);
 }

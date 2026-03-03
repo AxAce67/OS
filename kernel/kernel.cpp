@@ -69,6 +69,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "ps2.hpp"
 #include "io.hpp"
 #include "queue.hpp"
+#include "input/message.hpp"
 #include "boot_info.h"
 #include "memory.hpp"
 #include "paging.hpp"
@@ -87,17 +88,6 @@ struct AllocationHeader {
 
 const uint64_t kAllocationMagic = 0x4F53414C4C4F4341ULL;  // "OSALLOCA"
 }
-
-// 割り込みハンドラとやり取りするメッセージ定義（interrupt_handler.cpp側と同じ構造）
-struct Message {
-    enum class Type {
-        kInterruptMouse,
-        kInterruptKeyboard,
-    } type;
-    int dx, dy;
-    int wheel;
-    uint8_t keycode;
-};
 
 extern ArrayQueue<Message, 256>* main_queue;
 extern MouseCursor* mouse_cursor;
@@ -2255,7 +2245,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         // 取り出したメッセージの種類ごとに重い処理（状態の更新）を行う
         switch (msg.type) {
             case Message::Type::kInterruptMouse:
-                mouse_cursor->Move(msg.dx, msg.dy);
+                if (msg.pointer_mode == Message::PointerMode::kAbsolute) {
+                    mouse_cursor->SetPosition(msg.x, msg.y);
+                } else {
+                    mouse_cursor->Move(msg.dx, msg.dy);
+                }
                 if (msg.wheel > 0) {
                     console->ScrollUp(msg.wheel * 3);
                     RefreshConsole();

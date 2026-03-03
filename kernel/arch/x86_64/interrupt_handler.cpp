@@ -7,20 +7,10 @@
 #include "apic.hpp"
 #include "timer.hpp"
 #include "ps2.hpp"
+#include "input/message.hpp"
 
 // kernel.cpp で定義しているコンソールとマウスカーソルの参照
 extern Console* console;
-
-// 割り込みとメインループ間でやり取りする「イベントメッセージ」
-struct Message {
-    enum class Type {
-        kInterruptMouse,
-        kInterruptKeyboard,
-    } type;
-    int dx, dy;
-    int wheel;
-    uint8_t keycode;
-};
 
 // kernel.cpp で実体を定義するメインキュー
 extern ArrayQueue<Message, 256>* main_queue;
@@ -100,8 +90,11 @@ void IntHandlerMouse(InterruptFrame* frame) {
         if (main_queue != nullptr) {
             Message msg;
             msg.type = Message::Type::kInterruptMouse;
+            msg.pointer_mode = Message::PointerMode::kRelative;
             msg.dx = dx;
             msg.dy = dy;
+            msg.x = 0;
+            msg.y = 0;
             msg.wheel = wheel;
             msg.keycode = 0;
             if (!main_queue->Push(msg)) {
@@ -120,8 +113,11 @@ void IntHandlerKeyboard(InterruptFrame* frame) {
     if (main_queue != nullptr) {
         Message msg;
         msg.type = Message::Type::kInterruptKeyboard;
+        msg.pointer_mode = Message::PointerMode::kRelative;
         msg.dx = 0;
         msg.dy = 0;
+        msg.x = 0;
+        msg.y = 0;
         msg.wheel = 0;
         msg.keycode = data;
         if (!main_queue->Push(msg)) {

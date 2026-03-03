@@ -12,6 +12,7 @@ class MouseCursor {
 public:
     MouseCursor(unsigned int initial_x, unsigned int initial_y, LayerManager* layer_manager);
     void Move(int dx, int dy);
+    void SetPosition(int x, int y);
 
 private:
     LayerManager* layer_manager_;
