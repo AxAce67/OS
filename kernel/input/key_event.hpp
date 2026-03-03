@@ -6,6 +6,7 @@ struct KeyboardModifiers {
     bool left_shift;
     bool right_shift;
     bool caps_lock;
+    bool num_lock;
     bool left_ctrl;
     bool right_ctrl;
 };
@@ -24,6 +25,7 @@ struct KeyEvent {
     bool shift;
     bool ctrl;
     bool caps_lock;
+    bool num_lock;
 };
 
 void InitKeyboardModifiers(KeyboardModifiers* mods);
@@ -33,4 +35,3 @@ bool DecodePS2Set1KeyEvent(uint8_t raw_scancode,
                            KeyEvent* out);
 bool IsShiftPressed(const KeyboardModifiers& mods);
 bool IsCtrlPressed(const KeyboardModifiers& mods);
-

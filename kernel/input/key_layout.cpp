@@ -1,6 +1,6 @@
 #include "input/key_layout.hpp"
 
-char KeycodeToAsciiByLayout(uint8_t keycode, bool shift, bool caps_lock, bool jp_layout) {
+char KeycodeToAsciiByLayout(uint8_t keycode, bool shift, bool caps_lock, bool num_lock, bool jp_layout) {
     if (jp_layout) {
         switch (keycode) {
             case 0x02: return shift ? '!' : '1';
@@ -79,6 +79,20 @@ char KeycodeToAsciiByLayout(uint8_t keycode, bool shift, bool caps_lock, bool jp
         case 0x34: return shift ? '>' : '.';
         case 0x35: return shift ? '?' : '/';
         case 0x56: return shift ? '>' : '<';
+        case 0x37: return '*';  // keypad *
+        case 0x4A: return '-';  // keypad -
+        case 0x4E: return '+';  // keypad +
+        case 0x53: return num_lock ? '.' : 0; // keypad .
+        case 0x47: return num_lock ? '7' : 0; // keypad 7 / Home
+        case 0x48: return num_lock ? '8' : 0; // keypad 8 / Up
+        case 0x49: return num_lock ? '9' : 0; // keypad 9 / PgUp
+        case 0x4B: return num_lock ? '4' : 0; // keypad 4 / Left
+        case 0x4C: return num_lock ? '5' : 0; // keypad 5
+        case 0x4D: return num_lock ? '6' : 0; // keypad 6 / Right
+        case 0x4F: return num_lock ? '1' : 0; // keypad 1 / End
+        case 0x50: return num_lock ? '2' : 0; // keypad 2 / Down
+        case 0x51: return num_lock ? '3' : 0; // keypad 3 / PgDn
+        case 0x52: return num_lock ? '0' : 0; // keypad 0 / Ins
         case 0x39: return ' ';
         case 0x1C: return '\n';
         default: return 0;

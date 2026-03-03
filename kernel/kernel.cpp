@@ -1967,7 +1967,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 return true;
             }
         }
-        if (key == 0x47) { // Home (non-E0 fallback)
+        if (!keyboard_mods.num_lock && key == 0x47) { // Home (non-E0 fallback)
             EnsureLiveConsole();
             ClearSelection();
             cursor_pos = 0;
@@ -1975,12 +1975,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             RefreshInputLine();
             return true;
         }
-        if (key == 0x48) { // Arrow Up (non-E0 fallback)
+        if (!keyboard_mods.num_lock && key == 0x48) { // Arrow Up (non-E0 fallback)
             EnsureLiveConsole();
             BrowseHistoryUp();
             return true;
         }
-        if (key == 0x4F) { // End (non-E0 fallback)
+        if (!keyboard_mods.num_lock && key == 0x4F) { // End (non-E0 fallback)
             EnsureLiveConsole();
             ClearSelection();
             cursor_pos = command_len;
@@ -1988,12 +1988,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             RefreshInputLine();
             return true;
         }
-        if (key == 0x50) { // Arrow Down (non-E0 fallback)
+        if (!keyboard_mods.num_lock && key == 0x50) { // Arrow Down (non-E0 fallback)
             EnsureLiveConsole();
             BrowseHistoryDown();
             return true;
         }
-        if (key == 0x0E || key == 0x53 || key == 0x71) { // Backspace/Delete
+        if (key == 0x0E || ((!keyboard_mods.num_lock) && (key == 0x53 || key == 0x71))) { // Backspace/Delete
             EnsureLiveConsole();
             if (key == 0x0E) {
                 BackspaceAtCursor();
@@ -2083,6 +2083,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 char ch = KeycodeToAsciiByLayout(key,
                                                  key_event.shift,
                                                  key_event.caps_lock,
+                                                 key_event.num_lock,
                                                  g_jp_layout);
                 if (ch != 0) {
                     EnsureLiveConsole();

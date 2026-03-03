@@ -19,6 +19,11 @@ bool ApplyModifierSet1(uint8_t keycode, bool extended, bool released, KeyboardMo
                     mods->caps_lock = !mods->caps_lock;
                 }
                 return true;
+            case 0x45:
+                if (!released) {
+                    mods->num_lock = !mods->num_lock;
+                }
+                return true;
             default:
                 break;
         }
@@ -35,6 +40,7 @@ void InitKeyboardModifiers(KeyboardModifiers* mods) {
     mods->left_shift = false;
     mods->right_shift = false;
     mods->caps_lock = false;
+    mods->num_lock = true;
     mods->left_ctrl = false;
     mods->right_ctrl = false;
 }
@@ -58,6 +64,7 @@ bool DecodePS2Set1KeyEvent(uint8_t raw_scancode,
     out->shift = IsShiftPressed(*mods);
     out->ctrl = IsCtrlPressed(*mods);
     out->caps_lock = mods->caps_lock;
+    out->num_lock = mods->num_lock;
 
     if (raw_scancode == 0xE0) {
         *e0_prefix = true;
@@ -78,6 +85,7 @@ bool DecodePS2Set1KeyEvent(uint8_t raw_scancode,
         out->shift = IsShiftPressed(*mods);
         out->ctrl = IsCtrlPressed(*mods);
         out->caps_lock = mods->caps_lock;
+        out->num_lock = mods->num_lock;
         return true;
     }
 
@@ -85,6 +93,6 @@ bool DecodePS2Set1KeyEvent(uint8_t raw_scancode,
     out->shift = IsShiftPressed(*mods);
     out->ctrl = IsCtrlPressed(*mods);
     out->caps_lock = mods->caps_lock;
+    out->num_lock = mods->num_lock;
     return true;
 }
-
