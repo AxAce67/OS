@@ -1969,6 +1969,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             HandleTabCompletion();
             return true;
         }
+        if (key == 0x70) { // Kana
+            g_jp_layout = !g_jp_layout;
+            return true;
+        }
+        if (key == 0x79 || key == 0x7B) { // Henkan / Muhenkan
+            g_jp_layout = (key == 0x79);
+            return true;
+        }
         return false;
     };
 

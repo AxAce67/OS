@@ -141,13 +141,18 @@ bool MapHIDUsageToSet1(uint8_t usage, Set1Code* out) {
         case 0x62: out->code = 0x52; out->extended = false; return true; // Keypad 0
         case 0x63: out->code = 0x53; out->extended = false; return true; // Keypad .
         case 0x64: out->code = 0x56; out->extended = false; return true; // Non-US key (ISO/JIS extra key)
+        case 0x87: out->code = 0x73; out->extended = false; return true; // International1 (JIS Ro)
+        case 0x89: out->code = 0x7D; out->extended = false; return true; // International3 (JIS Yen)
+        case 0x8A: out->code = 0x79; out->extended = false; return true; // International4 (Henkan)
+        case 0x8B: out->code = 0x7B; out->extended = false; return true; // International5 (Muhenkan)
+        case 0x90: out->code = 0x70; out->extended = false; return true; // Lang1 (Kana)
         default:
             return false;
     }
 }
 
 bool IsLikelyKeyboardKeyUsage(uint8_t usage) {
-    return usage == 0 || (usage >= 0x04 && usage <= 0x73);
+    return usage == 0 || (usage >= 0x04 && usage <= 0x90);
 }
 
 bool LooksLikeKeyboardKeyArray(const uint8_t* keys) {
