@@ -11,6 +11,7 @@ extern bool g_key_repeat_enabled;
 extern bool g_jp_layout;
 extern bool g_ime_enabled;
 extern bool g_boot_mouse_auto_enabled;
+extern bool g_xhci_hid_decode_keyboard;
 extern ShellPair g_vars[16];
 extern ShellPair g_aliases[16];
 extern char g_cwd[96];
@@ -103,6 +104,8 @@ bool ExecuteSetCommand(const char* command, int* pos_ptr) {
         PrintPairs("vars:", g_vars, static_cast<int>(sizeof(g_vars) / sizeof(g_vars[0])));
         console->Print("mouse.auto=");
         console->PrintLine(g_boot_mouse_auto_enabled ? "on" : "off");
+        console->Print("hid.kbd=");
+        console->PrintLine(g_xhci_hid_decode_keyboard ? "on" : "off");
         return true;
     }
     if (StrEqual(key, "mouse.auto")) {
@@ -123,6 +126,26 @@ bool ExecuteSetCommand(const char* command, int* pos_ptr) {
             return true;
         }
         console->PrintLine("set mouse.auto: use on/off");
+        return true;
+    }
+    if (StrEqual(key, "hid.kbd")) {
+        const char* v = RestOfLine(command, pos);
+        if (v[0] == '\0') {
+            console->Print("hid.kbd=");
+            console->PrintLine(g_xhci_hid_decode_keyboard ? "on" : "off");
+            return true;
+        }
+        if (StrEqual(v, "on")) {
+            g_xhci_hid_decode_keyboard = true;
+            console->PrintLine("hid.kbd=on");
+            return true;
+        }
+        if (StrEqual(v, "off")) {
+            g_xhci_hid_decode_keyboard = false;
+            console->PrintLine("hid.kbd=off");
+            return true;
+        }
+        console->PrintLine("set hid.kbd: use on/off");
         return true;
     }
     ShellPair* p = EnsurePair(g_vars, static_cast<int>(sizeof(g_vars) / sizeof(g_vars[0])), key);
@@ -219,6 +242,8 @@ bool ExecuteInputStatCommand() {
     console->Print(g_jp_layout ? "jp" : "us");
     console->Print(" ime=");
     console->Print(g_ime_enabled ? "on" : "off");
+    console->Print(" hid.kbd=");
+    console->Print(g_xhci_hid_decode_keyboard ? "on" : "off");
     console->Print("\n");
     return true;
 }

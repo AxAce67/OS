@@ -118,6 +118,7 @@ uint8_t g_last_xhci_slot_id = 0;
 bool g_xhci_hid_auto_enabled = false;
 uint8_t g_xhci_hid_auto_slot = 0;
 uint32_t g_xhci_hid_auto_len = 8;
+bool g_xhci_hid_decode_keyboard = false;
 uint64_t g_xhci_hid_last_poll_tick = 0;
 uint16_t g_xhci_hid_auto_mps = 8;
 uint8_t g_xhci_hid_auto_interval = 4;
@@ -348,19 +349,21 @@ bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t time
         return false;
     }
 
-    uint8_t key_scancodes[32];
-    uint8_t key_count = 0;
-    if (DecodeHIDBootKeyboardToSet1(rr.data, rr.data_length, key_scancodes, &key_count,
-                                    static_cast<uint8_t>(sizeof(key_scancodes)))) {
-        for (uint8_t i = 0; i < key_count; ++i) {
-            EnqueueKeyboardScancode(key_scancodes[i]);
+    if (g_xhci_hid_decode_keyboard) {
+        uint8_t key_scancodes[32];
+        uint8_t key_count = 0;
+        if (DecodeHIDBootKeyboardToSet1(rr.data, rr.data_length, key_scancodes, &key_count,
+                                        static_cast<uint8_t>(sizeof(key_scancodes)))) {
+            for (uint8_t i = 0; i < key_count; ++i) {
+                EnqueueKeyboardScancode(key_scancodes[i]);
+            }
+            if (verbose) {
+                console->Print("xhcihidpoll: keyboard bytes=");
+                console->PrintDec(key_count);
+                console->Print("\n");
+            }
+            return true;
         }
-        if (verbose) {
-            console->Print("xhcihidpoll: keyboard bytes=");
-            console->PrintDec(key_count);
-            console->Print("\n");
-        }
-        return true;
     }
 
     int x = 0;
@@ -472,6 +475,7 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
 
     g_xhci_hid_auto_slot = slot_result.slot_id;
     g_xhci_hid_auto_len = req_len;
+    g_xhci_hid_decode_keyboard = false;  // Auto path is used for absolute pointer polling.
     g_xhci_hid_auto_mps = mps;
     g_xhci_hid_auto_interval = interval;
     g_xhci_hid_auto_enabled = true;
@@ -1416,7 +1420,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     console->PrintDec(g_xhci_hid_auto_len);
                     console->Print(")\n");
                 } else {
-                    console->PrintLine("xHCI HID auto-start: failed");
+                    console->PrintLine("xHCI HID auto-start: failed (PS/2 mouse/keyboard fallback)");
                 }
             }
         }
