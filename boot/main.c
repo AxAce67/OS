@@ -87,15 +87,28 @@ static EFI_STATUS LoadBootFileSystem(
             continue;
         }
 
-        uint8_t info_buffer[512];
-        UINTN info_size = sizeof(info_buffer);
-        status = file->GetInfo(file, (EFI_GUID*)&gEfiFileInfoGuid, &info_size, info_buffer);
-        if (IsEfiError(status)) {
+        UINTN info_size = 0;
+        status = file->GetInfo(file, (EFI_GUID*)&gEfiFileInfoGuid, &info_size, NULL);
+        if (status != EFI_BUFFER_TOO_SMALL || info_size == 0) {
             file->Close(file);
             continue;
         }
-        EFI_FILE_INFO* info = (EFI_FILE_INFO*)info_buffer;
+
+        EFI_FILE_INFO* info = NULL;
+        status = SystemTable->BootServices->AllocatePool(EfiLoaderData, info_size, (void**)&info);
+        if (IsEfiError(status) || info == NULL) {
+            file->Close(file);
+            continue;
+        }
+        status = file->GetInfo(file, (EFI_GUID*)&gEfiFileInfoGuid, &info_size, info);
+        if (IsEfiError(status)) {
+            SystemTable->BootServices->FreePool(info);
+            file->Close(file);
+            continue;
+        }
+
         if (info->FileSize > kMaxBootFileDataSize) {
+            SystemTable->BootServices->FreePool(info);
             file->Close(file);
             continue;
         }
@@ -103,6 +116,7 @@ static EFI_STATUS LoadBootFileSystem(
         void* data = NULL;
         status = SystemTable->BootServices->AllocatePool(EfiLoaderData, info->FileSize, &data);
         if (IsEfiError(status) || data == NULL) {
+            SystemTable->BootServices->FreePool(info);
             file->Close(file);
             continue;
         }
@@ -112,6 +126,7 @@ static EFI_STATUS LoadBootFileSystem(
         file->Close(file);
         if (IsEfiError(status) || read_size != info->FileSize) {
             SystemTable->BootServices->FreePool(data);
+            SystemTable->BootServices->FreePool(info);
             continue;
         }
 
@@ -122,6 +137,7 @@ static EFI_STATUS LoadBootFileSystem(
         boot_fs->files[idx].size = info->FileSize;
         boot_fs->files[idx].data = (uint8_t*)data;
         boot_fs->file_count++;
+        SystemTable->BootServices->FreePool(info);
     }
 
     *out_boot_fs = boot_fs;
