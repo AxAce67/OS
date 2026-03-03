@@ -2553,27 +2553,13 @@ const ShellCommandEntry kShellCommandTable[] = {
     {"reboot", HandleReboot},
 };
 
-void ExecuteCommand(const char* command) {
-    if (command[0] == '\0') {
-        return;
-    }
-
-    char resolved[128];
-    ResolveAlias(command, resolved, sizeof(resolved));
-    command = resolved;
-
-    int pos = 0;
-    char cmd[32];
-    if (!NextToken(command, &pos, cmd, sizeof(cmd))) {
-        return;
-    }
-    const char* rest = RestOfLine(command, pos);
-
+bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
+    int& pos = *pos_ptr;
     if (StrEqual(cmd, "xhciinfo")) {
         const auto& info = GetXHCIControllerInfo();
         if (!info.found) {
             console->PrintLine("xhci: not found");
-            return;
+            return true;
         }
         console->Print("xhci: ");
         console->PrintDec(info.address.bus);
@@ -2607,18 +2593,18 @@ void ExecuteCommand(const char* command) {
             console->PrintHex(g_xhci_caps.hcc_params1, 8);
             console->Print("\n");
         }
-        return;
+        return true;
     }
 
     if (StrEqual(cmd, "xhciregs")) {
         if (!g_xhci_caps.valid) {
             console->PrintLine("xhciregs: xhci not ready");
-            return;
+            return true;
         }
         XHCIOperationalStatus st{};
         if (!ReadXHCIOperationalStatus(g_xhci_caps, &st) || !st.valid) {
             console->PrintLine("xhciregs: read failed");
-            return;
+            return true;
         }
         console->Print("usbcmd=0x");
         console->PrintHex(st.usbcmd, 8);
@@ -2643,70 +2629,70 @@ void ExecuteCommand(const char* command) {
         console->Print(" pcd=");
         console->Print(st.port_change_detect ? "1" : "0");
         console->Print("\n");
-        return;
+        return true;
     }
 
     if (StrEqual(cmd, "xhcistop")) {
         if (!g_xhci_caps.valid) {
             console->PrintLine("xhcistop: xhci not ready");
-            return;
+            return true;
         }
         if (XHCISetRunStop(g_xhci_caps, false)) {
             console->PrintLine("xhcistop: ok");
         } else {
             console->PrintLine("xhcistop: timeout");
         }
-        return;
+        return true;
     }
 
     if (StrEqual(cmd, "xhcistart")) {
         if (!g_xhci_caps.valid) {
             console->PrintLine("xhcistart: xhci not ready");
-            return;
+            return true;
         }
         if (XHCISetRunStop(g_xhci_caps, true)) {
             console->PrintLine("xhcistart: ok");
         } else {
             console->PrintLine("xhcistart: timeout");
         }
-        return;
+        return true;
     }
 
     if (StrEqual(cmd, "xhcireset")) {
         if (!g_xhci_caps.valid) {
             console->PrintLine("xhcireset: xhci not ready");
-            return;
+            return true;
         }
         if (XHCIResetController(g_xhci_caps)) {
             console->PrintLine("xhcireset: ok");
         } else {
             console->PrintLine("xhcireset: timeout");
         }
-        return;
+        return true;
     }
 
     if (StrEqual(cmd, "xhciinit")) {
         if (!g_xhci_caps.valid) {
             console->PrintLine("xhciinit: xhci not ready");
-            return;
+            return true;
         }
         if (XHCIInitializeCommandAndEventRings(g_xhci_caps)) {
             console->PrintLine("xhciinit: ok");
         } else {
             console->PrintLine("xhciinit: failed");
         }
-        return;
+        return true;
     }
 
     if (StrEqual(cmd, "xhcienableslot")) {
         if (!g_xhci_caps.valid) {
             console->PrintLine("xhcienableslot: xhci not ready");
-            return;
+            return true;
         }
         XHCICommandResult r{};
         if (!XHCIEnableSlot(g_xhci_caps, &r)) {
             console->PrintLine("xhcienableslot: timeout/fail");
-            return;
+            return true;
         }
         console->Print("xhcienableslot: type=");
         console->PrintDec(r.trb_type);
@@ -2718,13 +2704,13 @@ void ExecuteCommand(const char* command) {
         if (r.ok && r.slot_id > 0) {
             g_last_xhci_slot_id = r.slot_id;
         }
-        return;
+        return true;
     }
 
     if (StrEqual(cmd, "xhciaddress")) {
         if (!g_xhci_caps.valid) {
             console->PrintLine("xhciaddress: xhci not ready");
-            return;
+            return true;
         }
 
         int slot = g_last_xhci_slot_id;
@@ -2744,7 +2730,7 @@ void ExecuteCommand(const char* command) {
         }
         if (slot <= 0 || slot > 255) {
             console->PrintLine("xhciaddress: invalid slot");
-            return;
+            return true;
         }
         if (port <= 0 || speed <= 0) {
             XHCIPortStatus ports[32];
@@ -2763,7 +2749,7 @@ void ExecuteCommand(const char* command) {
         }
         if (port <= 0 || speed <= 0) {
             console->PrintLine("xhciaddress: port/speed unknown");
-            return;
+            return true;
         }
 
         XHCIAddressDeviceResult ar{};
@@ -2773,7 +2759,7 @@ void ExecuteCommand(const char* command) {
                                static_cast<uint8_t>(speed),
                                &ar)) {
             console->PrintLine("xhciaddress: timeout/fail");
-            return;
+            return true;
         }
         console->Print("xhciaddress: ccode=");
         console->PrintDec(ar.completion_code);
@@ -2787,13 +2773,13 @@ void ExecuteCommand(const char* command) {
         if (ar.ok && ar.slot_id > 0) {
             g_last_xhci_slot_id = ar.slot_id;
         }
-        return;
+        return true;
     }
 
     if (StrEqual(cmd, "xhciconfigep")) {
         if (!g_xhci_caps.valid) {
             console->PrintLine("xhciconfigep: xhci not ready");
-            return;
+            return true;
         }
         int slot = g_last_xhci_slot_id;
         int mps = 8;
@@ -2812,15 +2798,15 @@ void ExecuteCommand(const char* command) {
         }
         if (slot <= 0 || slot > 255) {
             console->PrintLine("xhciconfigep: invalid slot");
-            return;
+            return true;
         }
         if (mps <= 0 || mps > 1024) {
             console->PrintLine("xhciconfigep: invalid mps");
-            return;
+            return true;
         }
         if (interval <= 0 || interval > 255) {
             console->PrintLine("xhciconfigep: invalid interval");
-            return;
+            return true;
         }
         XHCIConfigureEndpointResult cr{};
         if (!XHCIConfigureInterruptInEndpoint(g_xhci_caps,
@@ -2829,7 +2815,7 @@ void ExecuteCommand(const char* command) {
                                               static_cast<uint8_t>(interval),
                                               &cr)) {
             console->PrintLine("xhciconfigep: timeout/fail");
-            return;
+            return true;
         }
         console->Print("xhciconfigep: ccode=");
         console->PrintDec(cr.completion_code);
@@ -2840,13 +2826,13 @@ void ExecuteCommand(const char* command) {
         console->Print(" interval=");
         console->PrintDec(interval);
         console->Print("\n");
-        return;
+        return true;
     }
 
     if (StrEqual(cmd, "xhciintrin")) {
         if (!g_xhci_caps.valid) {
             console->PrintLine("xhciintrin: xhci not ready");
-            return;
+            return true;
         }
         int slot = g_last_xhci_slot_id;
         int req_len = 8;
@@ -2860,17 +2846,17 @@ void ExecuteCommand(const char* command) {
         }
         if (slot <= 0 || slot > 255) {
             console->PrintLine("xhciintrin: invalid slot");
-            return;
+            return true;
         }
         if (req_len <= 0 || req_len > 64) {
             console->PrintLine("xhciintrin: len must be 1..64");
-            return;
+            return true;
         }
 
         XHCIInterruptInResult rr{};
         if (!XHCIPollInterruptIn(g_xhci_caps, static_cast<uint8_t>(slot), static_cast<uint32_t>(req_len), &rr)) {
             console->PrintLine("xhciintrin: timeout/fail");
-            return;
+            return true;
         }
         console->Print("xhciintrin: ccode=");
         console->PrintDec(rr.completion_code);
@@ -2888,13 +2874,13 @@ void ExecuteCommand(const char* command) {
             }
         }
         console->Print("\n");
-        return;
+        return true;
     }
 
     if (StrEqual(cmd, "xhcihidpoll")) {
         if (!g_xhci_caps.valid) {
             console->PrintLine("xhcihidpoll: xhci not ready");
-            return;
+            return true;
         }
         int slot = g_last_xhci_slot_id;
         int req_len = 8;
@@ -2908,15 +2894,15 @@ void ExecuteCommand(const char* command) {
         }
         if (slot <= 0 || slot > 255) {
             console->PrintLine("xhcihidpoll: invalid slot");
-            return;
+            return true;
         }
         if (req_len <= 0 || req_len > 64) {
             console->PrintLine("xhcihidpoll: len must be 1..64");
-            return;
+            return true;
         }
 
         PollHIDAndApply(static_cast<uint8_t>(slot), static_cast<uint32_t>(req_len), true);
-        return;
+        return true;
     }
 
     if (StrEqual(cmd, "xhcihidstat")) {
@@ -2924,7 +2910,7 @@ void ExecuteCommand(const char* command) {
         if (NextToken(command, &pos, arg, sizeof(arg)) && StrEqual(arg, "reset")) {
             ResetHIDDecodeLearning();
             console->PrintLine("xhcihidstat: reset");
-            return;
+            return true;
         }
         console->Print("xhcihidstat: mode=");
         if (g_hid_format_mode == 2) {
@@ -2956,7 +2942,7 @@ void ExecuteCommand(const char* command) {
         console->Print(" auto_recover=");
         console->PrintDec(g_xhci_hid_auto_recover_count);
         console->Print("\n");
-        return;
+        return true;
     }
 
     if (StrEqual(cmd, "xhciauto")) {
@@ -2969,21 +2955,21 @@ void ExecuteCommand(const char* command) {
             console->Print(" len=");
             console->PrintDec(g_xhci_hid_auto_len);
             console->Print("\n");
-            return;
+            return true;
         }
         if (StrEqual(mode, "off")) {
             g_xhci_hid_auto_enabled = false;
             g_xhci_hid_auto_consecutive_failures = 0;
             console->PrintLine("xhciauto: off");
-            return;
+            return true;
         }
         if (!StrEqual(mode, "on")) {
             console->PrintLine("xhciauto: use on/off");
-            return;
+            return true;
         }
         if (!g_xhci_caps.valid) {
             console->PrintLine("xhciauto: xhci not ready");
-            return;
+            return true;
         }
         int slot = g_last_xhci_slot_id;
         int req_len = static_cast<int>(g_xhci_hid_auto_len);
@@ -2997,11 +2983,11 @@ void ExecuteCommand(const char* command) {
         }
         if (slot <= 0 || slot > 255) {
             console->PrintLine("xhciauto: invalid slot");
-            return;
+            return true;
         }
         if (req_len <= 0 || req_len > 64) {
             console->PrintLine("xhciauto: len must be 1..64");
-            return;
+            return true;
         }
         g_xhci_hid_auto_slot = static_cast<uint8_t>(slot);
         g_xhci_hid_auto_len = static_cast<uint32_t>(req_len);
@@ -3017,13 +3003,13 @@ void ExecuteCommand(const char* command) {
         console->Print(" len=");
         console->PrintDec(req_len);
         console->Print("\n");
-        return;
+        return true;
     }
 
     if (StrEqual(cmd, "xhciautostart")) {
         if (!g_xhci_caps.valid) {
             console->PrintLine("xhciautostart: xhci not ready");
-            return;
+            return true;
         }
         int req_len = 8;
         int mps = 8;
@@ -3042,15 +3028,15 @@ void ExecuteCommand(const char* command) {
         }
         if (req_len <= 0 || req_len > 64) {
             console->PrintLine("xhciautostart: len must be 1..64");
-            return;
+            return true;
         }
         if (mps <= 0 || mps > 1024) {
             console->PrintLine("xhciautostart: mps must be 1..1024");
-            return;
+            return true;
         }
         if (interval <= 0 || interval > 255) {
             console->PrintLine("xhciautostart: interval must be 1..255");
-            return;
+            return true;
         }
         ResetHIDDecodeLearning();
         g_xhci_hid_auto_fail_count = 0;
@@ -3061,14 +3047,14 @@ void ExecuteCommand(const char* command) {
                                 static_cast<uint16_t>(mps),
                                 static_cast<uint8_t>(interval))) {
             console->PrintLine("xhciautostart: failed");
-            return;
+            return true;
         }
         console->Print("xhciautostart: ok slot=");
         console->PrintDec(g_xhci_hid_auto_slot);
         console->Print(" len=");
         console->PrintDec(g_xhci_hid_auto_len);
         console->Print("\n");
-        return;
+        return true;
     }
 
     if (StrEqual(cmd, "mouseabs")) {
@@ -3077,24 +3063,24 @@ void ExecuteCommand(const char* command) {
         if (!NextToken(command, &pos, sx, sizeof(sx)) ||
             !NextToken(command, &pos, sy, sizeof(sy))) {
             console->PrintLine("mouseabs: x y required");
-            return;
+            return true;
         }
         int x = ParseInt(sx);
         int y = ParseInt(sy);
         EnqueueAbsolutePointerEvent(x, y, 0);
-        return;
+        return true;
     }
 
     if (StrEqual(cmd, "usbports")) {
         if (!g_xhci_caps.valid) {
             console->PrintLine("usbports: xhci not ready");
-            return;
+            return true;
         }
         XHCIPortStatus ports[32];
         int n = ReadXHCIPortStatus(g_xhci_caps, ports, 32);
         if (n <= 0) {
             console->PrintLine("usbports: no ports");
-            return;
+            return true;
         }
         for (int i = 0; i < n; ++i) {
             console->Print("port ");
@@ -3111,6 +3097,29 @@ void ExecuteCommand(const char* command) {
             console->PrintHex(ports[i].raw_portsc, 8);
             console->Print("\n");
         }
+        return true;
+    }
+
+    return false;
+}
+
+void ExecuteCommand(const char* command) {
+    if (command[0] == '\0') {
+        return;
+    }
+
+    char resolved[128];
+    ResolveAlias(command, resolved, sizeof(resolved));
+    command = resolved;
+
+    int pos = 0;
+    char cmd[32];
+    if (!NextToken(command, &pos, cmd, sizeof(cmd))) {
+        return;
+    }
+    const char* rest = RestOfLine(command, pos);
+
+    if (ExecuteXHCICommand(cmd, command, &pos)) {
         return;
     }
 
