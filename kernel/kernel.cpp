@@ -72,6 +72,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "usb/xhci.hpp"
 #include "queue.hpp"
 #include "input/message.hpp"
+#include "input/key_event.hpp"
 #include "boot_info.h"
 #include "memory.hpp"
 #include "paging.hpp"
@@ -99,14 +100,6 @@ const uint64_t kAllocationMagic = 0x4F53414C4C4F4341ULL;  // "OSALLOCA"
 extern ArrayQueue<Message, 256>* main_queue;
 extern MouseCursor* mouse_cursor;
 extern LayerManager* layer_manager;
-
-struct KeyboardState {
-    bool left_shift;
-    bool right_shift;
-    bool caps_lock;
-    bool left_ctrl;
-    bool right_ctrl;
-};
 
 ShellPair g_vars[16];
 ShellPair g_aliases[16];
@@ -585,39 +578,8 @@ char KeycodeToAscii(uint8_t keycode, bool shift, bool caps_lock) {
     }
 }
 
-bool HandleModifierKey(uint8_t scancode, KeyboardState& kb) {
-    bool released = (scancode & 0x80) != 0;
-    uint8_t keycode = scancode & 0x7F;
-    switch (keycode) {
-        case 0x2A:
-            kb.left_shift = !released;
-            return true;
-        case 0x36:
-            kb.right_shift = !released;
-            return true;
-        case 0x1D:
-            kb.left_ctrl = !released;
-            return true;
-        case 0x3A:
-            if (!released) {
-                kb.caps_lock = !kb.caps_lock;
-            }
-            return true;
-        default:
-            return false;
-    }
-}
-
-bool IsShiftPressed(const KeyboardState& kb) {
-    return kb.left_shift || kb.right_shift;
-}
-
 bool IsPrintableAscii(char c) {
     return c >= 0x20 && c <= 0x7e;
-}
-
-bool IsCtrlPressed(const KeyboardState& kb) {
-    return kb.left_ctrl || kb.right_ctrl;
 }
 
 ShellPair* FindPair(ShellPair* pairs, int count, const char* key) {
@@ -1548,12 +1510,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     __asm__ volatile("sti");
 
     // OSのメインループ（イベントループ）
-    KeyboardState keyboard_state;
-    keyboard_state.left_shift = false;
-    keyboard_state.right_shift = false;
-    keyboard_state.caps_lock = false;
-    keyboard_state.left_ctrl = false;
-    keyboard_state.right_ctrl = false;
+    KeyboardModifiers keyboard_mods;
+    InitKeyboardModifiers(&keyboard_mods);
     char command_buffer[128];
     int command_len = 0;
     int cursor_pos = 0;
@@ -1953,24 +1911,17 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
     };
 
-    auto HandleExtendedKey = [&](uint8_t ext) {
-        if ((ext & 0x7F) == 0x1D) { // Right Ctrl
-            keyboard_state.right_ctrl = ((ext & 0x80) == 0);
-            return;
-        }
-        if ((ext & 0x80) != 0) {
-            return;
-        }
-        if ((ext & 0x7F) == 0x49) { // Page Up
+    auto HandleExtendedKey = [&](uint8_t key) {
+        if (key == 0x49) { // Page Up
             console->ScrollUp(3);
             RefreshConsole();
-        } else if ((ext & 0x7F) == 0x51) { // Page Down
+        } else if (key == 0x51) { // Page Down
             console->ScrollDown(3);
             RefreshConsole();
-        } else if ((ext & 0x7F) == 0x53) { // Delete
+        } else if (key == 0x53) { // Delete
             EnsureLiveConsole();
             DeleteAtCursor();
-        } else if ((ext & 0x7F) == 0x4B) { // Arrow Left
+        } else if (key == 0x4B) { // Arrow Left
             EnsureLiveConsole();
             if (cursor_pos > 0) {
                 ClearSelection();
@@ -1978,7 +1929,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RenderInputLine();
                 RefreshInputLine();
             }
-        } else if ((ext & 0x7F) == 0x4D) { // Arrow Right
+        } else if (key == 0x4D) { // Arrow Right
             EnsureLiveConsole();
             if (cursor_pos < command_len) {
                 ClearSelection();
@@ -1986,29 +1937,29 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RenderInputLine();
                 RefreshInputLine();
             }
-        } else if ((ext & 0x7F) == 0x47) { // Home
+        } else if (key == 0x47) { // Home
             EnsureLiveConsole();
             ClearSelection();
             cursor_pos = 0;
             RenderInputLine();
             RefreshInputLine();
-        } else if ((ext & 0x7F) == 0x4F) { // End
+        } else if (key == 0x4F) { // End
             EnsureLiveConsole();
             ClearSelection();
             cursor_pos = command_len;
             RenderInputLine();
             RefreshInputLine();
-        } else if ((ext & 0x7F) == 0x48) { // Arrow Up
+        } else if (key == 0x48) { // Arrow Up
             EnsureLiveConsole();
             BrowseHistoryUp();
-        } else if ((ext & 0x7F) == 0x50) { // Arrow Down
+        } else if (key == 0x50) { // Arrow Down
             EnsureLiveConsole();
             BrowseHistoryDown();
         }
     };
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
-        if (IsCtrlPressed(keyboard_state)) {
+        if (IsCtrlPressed(keyboard_mods)) {
             if (key == 0x1E) { // Ctrl + A
                 EnsureLiveConsole();
                 ClearSelection();
@@ -2110,106 +2061,100 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             case Message::Type::kInterruptMouse:
                 HandleMouseMessage(msg);
                 break;
-            case Message::Type::kInterruptKeyboard:
-                if (msg.keycode == 0xE0) {
-                    e0_prefix = true;
+            case Message::Type::kInterruptKeyboard: {
+                KeyEvent key_event{};
+                if (!DecodePS2Set1KeyEvent(msg.keycode, &e0_prefix, &keyboard_mods, &key_event)) {
+                    break;
+                }
+                if (key_event.kind == KeyEventKind::kModifier) {
+                    break;
+                }
+                if (key_event.released) {
+                    if (key_event.keycode < 128) {
+                        key_down[key_event.keycode] = false;
+                    }
+                    break;
+                }
+                if (key_event.extended) {
+                    HandleExtendedKey(key_event.keycode);
+                    break;
+                }
+                const uint8_t key = key_event.keycode;
+                if (key < 128 && !g_key_repeat_enabled && key_down[key]) {
+                    break;
+                }
+                if (key < 128) {
+                    key_down[key] = true;
+                }
+                if (HandleRegularKeyShortcut(key)) {
                     break;
                 }
 
-                if (e0_prefix) {
-                    uint8_t ext = msg.keycode;
-                    e0_prefix = false;
-                    HandleExtendedKey(ext);
-                    break;
-                }
-
-                if (HandleModifierKey(msg.keycode, keyboard_state)) {
-                    break;
-                }
-                if ((msg.keycode & 0x80) != 0) {
-                    uint8_t keyup = msg.keycode & 0x7F;
-                    if (keyup < 128) {
-                        key_down[keyup] = false;
-                    }
-                    break;
-                }
-                if ((msg.keycode & 0x80) == 0) {
-                    const uint8_t key = msg.keycode & 0x7F;
-                    if (key < 128 && !g_key_repeat_enabled && key_down[key]) {
-                        break;
-                    }
-                    if (key < 128) {
-                        key_down[key] = true;
-                    }
-                    if (HandleRegularKeyShortcut(key)) {
-                        break;
-                    }
-
-                    char ch = KeycodeToAscii(key,
-                                             IsShiftPressed(keyboard_state),
-                                             keyboard_state.caps_lock);
-                    if (ch != 0) {
-                        EnsureLiveConsole();
-                        bool full_refresh = false;
-                        if (ch == '\n') {
-                            console->SetCursorPosition(input_row, input_col + command_len);
-                            console->Print("\n");
-                            command_buffer[command_len] = '\0';
-                            const bool is_history_cmd = StrEqual(command_buffer, "history");
-                            const bool is_clear_history_cmd = StrEqual(command_buffer, "clearhistory");
-                            if (command_len > 0) {
-                                if (history_count < static_cast<int>(sizeof(command_history) / sizeof(command_history[0]))) {
-                                    CopyString(command_history[history_count], command_buffer, 128);
-                                    ++history_count;
-                                } else {
-                                    for (int i = 1; i < static_cast<int>(sizeof(command_history) / sizeof(command_history[0])); ++i) {
-                                        CopyString(command_history[i - 1], command_history[i], 128);
-                                    }
-                                    CopyString(command_history[static_cast<int>(sizeof(command_history) / sizeof(command_history[0])) - 1],
-                                               command_buffer, 128);
-                                }
-                            }
-                            if (is_history_cmd) {
-                                PrintHistory(command_history, history_count);
-                            } else if (is_clear_history_cmd) {
-                                history_count = 0;
-                                console->PrintLine("history cleared");
+                char ch = KeycodeToAscii(key,
+                                         key_event.shift,
+                                         key_event.caps_lock);
+                if (ch != 0) {
+                    EnsureLiveConsole();
+                    bool full_refresh = false;
+                    if (ch == '\n') {
+                        console->SetCursorPosition(input_row, input_col + command_len);
+                        console->Print("\n");
+                        command_buffer[command_len] = '\0';
+                        const bool is_history_cmd = StrEqual(command_buffer, "history");
+                        const bool is_clear_history_cmd = StrEqual(command_buffer, "clearhistory");
+                        if (command_len > 0) {
+                            if (history_count < static_cast<int>(sizeof(command_history) / sizeof(command_history[0]))) {
+                                CopyString(command_history[history_count], command_buffer, 128);
+                                ++history_count;
                             } else {
-                                ExecuteCommand(command_buffer);
-                            }
-                            command_len = 0;
-                            cursor_pos = 0;
-                            rendered_len = 0;
-                            command_buffer[0] = '\0';
-                            ClearSelection();
-                            history_nav = -1;
-                            draft_buffer[0] = '\0';
-                            PrintPrompt();
-                            input_row = console->CursorRow();
-                            input_col = console->CursorColumn();
-                            console->SetCursorPosition(input_row, input_col);
-                            full_refresh = true;
-                        } else if (IsPrintableAscii(ch)) {
-                            DeleteSelection();
-                            if (command_len < MaxInputLen()) {
-                                for (int i = command_len; i > cursor_pos; --i) {
-                                    command_buffer[i] = command_buffer[i - 1];
+                                for (int i = 1; i < static_cast<int>(sizeof(command_history) / sizeof(command_history[0])); ++i) {
+                                    CopyString(command_history[i - 1], command_history[i], 128);
                                 }
-                                command_buffer[cursor_pos] = ch;
-                                ++command_len;
-                                ++cursor_pos;
-                                command_buffer[command_len] = '\0';
-                                RenderInputLine();
+                                CopyString(command_history[static_cast<int>(sizeof(command_history) / sizeof(command_history[0])) - 1],
+                                           command_buffer, 128);
                             }
                         }
-                        if (full_refresh) {
-                            RefreshConsole();
+                        if (is_history_cmd) {
+                            PrintHistory(command_history, history_count);
+                        } else if (is_clear_history_cmd) {
+                            history_count = 0;
+                            console->PrintLine("history cleared");
                         } else {
-                            RefreshInputLine();
+                            ExecuteCommand(command_buffer);
                         }
+                        command_len = 0;
+                        cursor_pos = 0;
+                        rendered_len = 0;
+                        command_buffer[0] = '\0';
+                        ClearSelection();
+                        history_nav = -1;
+                        draft_buffer[0] = '\0';
+                        PrintPrompt();
+                        input_row = console->CursorRow();
+                        input_col = console->CursorColumn();
+                        console->SetCursorPosition(input_row, input_col);
+                        full_refresh = true;
+                    } else if (IsPrintableAscii(ch)) {
+                        DeleteSelection();
+                        if (command_len < MaxInputLen()) {
+                            for (int i = command_len; i > cursor_pos; --i) {
+                                command_buffer[i] = command_buffer[i - 1];
+                            }
+                            command_buffer[cursor_pos] = ch;
+                            ++command_len;
+                            ++cursor_pos;
+                            command_buffer[command_len] = '\0';
+                            RenderInputLine();
+                        }
+                    }
+                    if (full_refresh) {
+                        RefreshConsole();
+                    } else {
+                        RefreshInputLine();
                     }
                 }
                 break;
+            }
             default:
                 break;
         }
