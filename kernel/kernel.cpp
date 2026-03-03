@@ -3081,6 +3081,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int input_row = console->CursorRow();
     int input_col = console->CursorColumn();
     int rendered_len = 0;
+    int selection_anchor = -1;
+    int selection_end = -1;
+    bool selecting_with_mouse = false;
     auto RefreshConsole = [&]() {
         layer_manager->Draw(0, 0, console->PixelWidth(), console->PixelHeight());
     };
@@ -3091,6 +3094,21 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
     };
 
+    auto HasSelection = [&]() {
+        return selection_anchor >= 0 && selection_end >= 0 && selection_anchor != selection_end;
+    };
+    auto SelectionStart = [&]() {
+        return (selection_anchor < selection_end) ? selection_anchor : selection_end;
+    };
+    auto SelectionEnd = [&]() {
+        return (selection_anchor > selection_end) ? selection_anchor : selection_end;
+    };
+    auto ClearSelection = [&]() {
+        selection_anchor = -1;
+        selection_end = -1;
+        selecting_with_mouse = false;
+    };
+
     auto RenderInputLine = [&]() {
         const int clear_len = console->Columns() - input_col - 1;
         console->SetCursorPosition(input_row, input_col);
@@ -3099,6 +3117,22 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         console->SetCursorPosition(input_row, input_col);
         console->Print(command_buffer);
+        if (HasSelection()) {
+            const int sel_start = SelectionStart();
+            const int sel_end = SelectionEnd();
+            Window* win = console->RawWindow();
+            for (int i = sel_start; i < sel_end; ++i) {
+                const int col = input_col + i;
+                if (col < input_col || col >= console->Columns()) {
+                    continue;
+                }
+                const int px = Console::kMarginX + col * Console::kCellWidth;
+                const int py = Console::kMarginY + input_row * Console::kCellHeight;
+                win->FillRectangle(px, py, Console::kCellWidth, Console::kCellHeight, {255, 255, 255});
+                char c = (i < command_len) ? command_buffer[i] : ' ';
+                win->DrawCharScaled(px, py, c, {0, 0, 0}, Console::kFontScale);
+            }
+        }
         rendered_len = command_len;
         console->SetCursorPosition(input_row, input_col + cursor_pos);
     };
@@ -3121,11 +3155,41 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             command_buffer[command_len] = '\0';
         }
         cursor_pos = command_len;
+        ClearSelection();
         RenderInputLine();
         RefreshConsole();
     };
 
+    auto DeleteSelection = [&]() -> bool {
+        if (!HasSelection()) {
+            return false;
+        }
+        int sel_start = SelectionStart();
+        int sel_end = SelectionEnd();
+        if (sel_start < 0) sel_start = 0;
+        if (sel_end > command_len) sel_end = command_len;
+        const int remove_len = sel_end - sel_start;
+        if (remove_len <= 0) {
+            ClearSelection();
+            return false;
+        }
+        for (int i = sel_start; i + remove_len <= command_len; ++i) {
+            command_buffer[i] = command_buffer[i + remove_len];
+        }
+        command_len -= remove_len;
+        if (command_len < 0) command_len = 0;
+        command_buffer[command_len] = '\0';
+        cursor_pos = sel_start;
+        ClearSelection();
+        RenderInputLine();
+        RefreshConsole();
+        return true;
+    };
+
     auto BackspaceAtCursor = [&]() {
+        if (DeleteSelection()) {
+            return;
+        }
         if (cursor_pos <= 0 || command_len <= 0) {
             return;
         }
@@ -3140,6 +3204,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto DeleteAtCursor = [&]() {
+        if (DeleteSelection()) {
+            return;
+        }
         if (command_len <= 0) {
             return;
         }
@@ -3282,10 +3349,24 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     mouse_cursor->SetPosition(msg.x, msg.y);
                     const int click_col = (msg.x - Console::kMarginX) / Console::kCellWidth;
                     const int click_row = (msg.y - Console::kMarginY) / Console::kCellHeight;
-                    if ((now_buttons & 0x01) != 0 && click_row == input_row && click_col >= input_col) {
+                    if ((pressed & 0x01) != 0) {
+                        selecting_with_mouse = true;
+                        if (click_row == input_row && click_col >= input_col) {
+                            int at = click_col - input_col;
+                            if (at < 0) at = 0;
+                            if (at > command_len) at = command_len;
+                            selection_anchor = at;
+                            selection_end = at;
+                        } else {
+                            ClearSelection();
+                        }
+                    }
+                    if ((now_buttons & 0x01) != 0 && selecting_with_mouse &&
+                        click_row == input_row && click_col >= input_col) {
                         int next_cursor = click_col - input_col;
                         if (next_cursor < 0) next_cursor = 0;
                         if (next_cursor > command_len) next_cursor = command_len;
+                        selection_end = next_cursor;
                         if (next_cursor != cursor_pos) {
                             EnsureLiveConsole();
                             cursor_pos = next_cursor;
@@ -3293,7 +3374,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             RefreshConsole();
                         }
                     }
-                    if ((pressed & 0x01) != 0) {  // Left click
+                    if (((prev_buttons & 0x01) != 0) && ((now_buttons & 0x01) == 0)) {
+                        selecting_with_mouse = false;
+                    }
+                    if ((pressed & 0x01) != 0 && !HasSelection()) {  // Left click
                         EnsureLiveConsole();
                         if (click_row == input_row && click_col >= input_col) {
                             int next_cursor = click_col - input_col;
@@ -3344,6 +3428,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     } else if ((ext & 0x7F) == 0x4B) { // Arrow Left
                         EnsureLiveConsole();
                         if (cursor_pos > 0) {
+                            ClearSelection();
                             --cursor_pos;
                             RenderInputLine();
                             RefreshConsole();
@@ -3351,17 +3436,20 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     } else if ((ext & 0x7F) == 0x4D) { // Arrow Right
                         EnsureLiveConsole();
                         if (cursor_pos < command_len) {
+                            ClearSelection();
                             ++cursor_pos;
                             RenderInputLine();
                             RefreshConsole();
                         }
                     } else if ((ext & 0x7F) == 0x47) { // Home
                         EnsureLiveConsole();
+                        ClearSelection();
                         cursor_pos = 0;
                         RenderInputLine();
                         RefreshConsole();
                     } else if ((ext & 0x7F) == 0x4F) { // End
                         EnsureLiveConsole();
+                        ClearSelection();
                         cursor_pos = command_len;
                         RenderInputLine();
                         RefreshConsole();
@@ -3395,6 +3483,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     if (IsCtrlPressed(keyboard_state)) {
                         if (key == 0x1E) { // Ctrl + A
                             EnsureLiveConsole();
+                            ClearSelection();
                             cursor_pos = 0;
                             RenderInputLine();
                             RefreshConsole();
@@ -3402,6 +3491,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         }
                         if (key == 0x12) { // Ctrl + E
                             EnsureLiveConsole();
+                            ClearSelection();
                             cursor_pos = command_len;
                             RenderInputLine();
                             RefreshConsole();
@@ -3416,6 +3506,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             command_len = 0;
                             cursor_pos = 0;
                             command_buffer[0] = '\0';
+                            ClearSelection();
                             history_nav = -1;
                             draft_buffer[0] = '\0';
                             RenderInputLine();
@@ -3425,6 +3516,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     }
                     if (key == 0x47) { // Home (non-E0 fallback)
                         EnsureLiveConsole();
+                        ClearSelection();
                         cursor_pos = 0;
                         RenderInputLine();
                         RefreshConsole();
@@ -3437,6 +3529,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     }
                     if (key == 0x4F) { // End (non-E0 fallback)
                         EnsureLiveConsole();
+                        ClearSelection();
                         cursor_pos = command_len;
                         RenderInputLine();
                         RefreshConsole();
@@ -3497,22 +3590,25 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             cursor_pos = 0;
                             rendered_len = 0;
                             command_buffer[0] = '\0';
+                            ClearSelection();
                             history_nav = -1;
                             draft_buffer[0] = '\0';
                             PrintPrompt();
                             input_row = console->CursorRow();
                             input_col = console->CursorColumn();
                             console->SetCursorPosition(input_row, input_col);
-                        } else if (IsPrintableAscii(ch) &&
-                                   command_len < MaxInputLen()) {
-                            for (int i = command_len; i > cursor_pos; --i) {
-                                command_buffer[i] = command_buffer[i - 1];
+                        } else if (IsPrintableAscii(ch)) {
+                            DeleteSelection();
+                            if (command_len < MaxInputLen()) {
+                                for (int i = command_len; i > cursor_pos; --i) {
+                                    command_buffer[i] = command_buffer[i - 1];
+                                }
+                                command_buffer[cursor_pos] = ch;
+                                ++command_len;
+                                ++cursor_pos;
+                                command_buffer[command_len] = '\0';
+                                RenderInputLine();
                             }
-                            command_buffer[cursor_pos] = ch;
-                            ++command_len;
-                            ++cursor_pos;
-                            command_buffer[command_len] = '\0';
-                            RenderInputLine();
                         }
                         RefreshConsole();
                     }

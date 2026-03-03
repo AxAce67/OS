@@ -35,6 +35,7 @@ public:
     int PixelWidth() const;
     int PixelHeight() const;
     void SetCursorPosition(int row, int column);
+    Window* RawWindow() const;
     void ScrollUp(int lines = 1);
     void ScrollDown(int lines = 1);
     void ResetScroll();

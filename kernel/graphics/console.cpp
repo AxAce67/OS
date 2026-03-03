@@ -155,6 +155,10 @@ int Console::PixelHeight() const {
     return window_->Height();
 }
 
+Window* Console::RawWindow() const {
+    return window_;
+}
+
 void Console::SetCursorPosition(int row, int column) {
     if (row < 0) row = 0;
     if (row >= rows_) row = rows_ - 1;
