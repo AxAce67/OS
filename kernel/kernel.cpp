@@ -950,7 +950,9 @@ const char* const kBuiltInCommands[] = {
     "touch",
     "write",
     "append",
+    "cp",
     "rm",
+    "rmdir",
     "mv",
     "ls",
     "stat",
@@ -992,8 +994,8 @@ void ExecuteCommand(const char* command) {
     if (StrEqual(cmd, "help")) {
         console->PrintLine("commands: help clear tick time mem uptime echo reboot");
         console->PrintLine("          pwd cd <dir> mkdir <dir> touch <file>");
-        console->PrintLine("          write <file> <text> append <file> <text>");
-        console->PrintLine("          rm <path> mv <src> <dst>");
+        console->PrintLine("          write <file> <text> append <file> <text> cp <src> <dst>");
+        console->PrintLine("          rm <path> rmdir <dir> mv <src> <dst>");
         console->PrintLine("          history clearhistory inputstat about ls [-l] [dir] stat <file>");
         console->PrintLine("          cat [-n] [-p] <file>");
         console->PrintLine("          repeat layout set alias");
@@ -1151,6 +1153,71 @@ void ExecuteCommand(const char* command) {
         return;
     }
 
+    if (StrEqual(cmd, "cp")) {
+        char src_name[64];
+        char dst_name[64];
+        if (!NextToken(command, &pos, src_name, sizeof(src_name)) ||
+            !NextToken(command, &pos, dst_name, sizeof(dst_name))) {
+            console->PrintLine("cp: src and dst required");
+            return;
+        }
+
+        char dst_path[96];
+        if (!ResolveFilePath(g_cwd, dst_name, dst_path, sizeof(dst_path))) {
+            console->PrintLine("cp: invalid destination");
+            return;
+        }
+        if (DirectoryExists(dst_path)) {
+            console->PrintLine("cp: destination is directory");
+            return;
+        }
+        if (FindBootFileByPath("/", dst_path) != nullptr && FindShellFileByAbsPath(dst_path) == nullptr) {
+            console->PrintLine("cp: destination conflicts with boot file");
+            return;
+        }
+
+        const ShellFile* src_user_file = FindShellFileByPath(g_cwd, src_name);
+        const BootFileEntry* src_boot_file = nullptr;
+        if (src_user_file == nullptr) {
+            src_boot_file = FindBootFileByPath(g_cwd, src_name);
+        }
+        if (src_user_file == nullptr && src_boot_file == nullptr) {
+            console->Print("cp: not found: ");
+            console->PrintLine(src_name);
+            return;
+        }
+
+        uint64_t src_size = 0;
+        const uint8_t* src_data = nullptr;
+        if (src_user_file != nullptr) {
+            src_size = src_user_file->size;
+            src_data = src_user_file->data;
+        } else {
+            src_size = src_boot_file->size;
+            src_data = src_boot_file->data;
+        }
+
+        ShellFile* dst_file = FindShellFileByAbsPathMutable(dst_path);
+        if (dst_file == nullptr) {
+            dst_file = CreateShellFile(dst_path);
+            if (dst_file == nullptr) {
+                console->PrintLine("cp: file table full");
+                return;
+            }
+        }
+
+        const uint64_t max_size = sizeof(dst_file->data);
+        uint64_t copy_len = (src_size < max_size) ? src_size : max_size;
+        for (uint64_t i = 0; i < copy_len; ++i) {
+            dst_file->data[i] = src_data[i];
+        }
+        dst_file->size = copy_len;
+        if (copy_len < src_size) {
+            console->PrintLine("cp: truncated");
+        }
+        return;
+    }
+
     if (StrEqual(cmd, "rm")) {
         char target[64];
         if (!NextToken(command, &pos, target, sizeof(target))) {
@@ -1193,6 +1260,40 @@ void ExecuteCommand(const char* command) {
 
         console->Print("rm: not found: ");
         console->PrintLine(target);
+        return;
+    }
+
+    if (StrEqual(cmd, "rmdir")) {
+        char target[64];
+        if (!NextToken(command, &pos, target, sizeof(target))) {
+            console->PrintLine("rmdir: path required");
+            return;
+        }
+        char resolved_path[96];
+        if (!ResolvePath(g_cwd, target, resolved_path, sizeof(resolved_path))) {
+            console->PrintLine("rmdir: invalid path");
+            return;
+        }
+        if (StrEqual(resolved_path, "/")) {
+            console->PrintLine("rmdir: cannot remove /");
+            return;
+        }
+        ShellDir* dir = FindDirectoryMutable(resolved_path);
+        if (dir == nullptr) {
+            if (FindBootFileByPath(g_cwd, target) != nullptr || FindShellFileByPath(g_cwd, target) != nullptr) {
+                console->PrintLine("rmdir: not a directory");
+            } else {
+                console->Print("rmdir: not found: ");
+                console->PrintLine(target);
+            }
+            return;
+        }
+        if (!IsDirectoryEmpty(resolved_path)) {
+            console->PrintLine("rmdir: directory not empty");
+            return;
+        }
+        dir->used = false;
+        dir->path[0] = '\0';
         return;
     }
 
