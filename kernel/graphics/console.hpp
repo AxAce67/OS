@@ -11,6 +11,8 @@ public:
     static const int kFontScale = 1;
     static const int kCellWidth = kFontWidth * kFontScale;
     static const int kCellHeight = kFontHeight * kFontScale;
+    static const int kMarginX = 8;
+    static const int kMarginY = 8;
     static const int kMaxRows = 200;
     static const int kMaxColumns = 320;
     static const int kScrollbackLines = 512;
@@ -54,6 +56,9 @@ private:
     int scrollback_head_;
     int scrollback_count_;
     int view_offset_;
+
+    int PixelX(int column) const;
+    int PixelY(int row) const;
 };
 
 // kernel.cpp等で定義されている文字描画関数を呼び出せるようにする

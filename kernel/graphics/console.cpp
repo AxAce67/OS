@@ -20,8 +20,8 @@ Console::Console(Window* window,
     : window_{window},
       fg_r_{fg_r}, fg_g_{fg_g}, fg_b_{fg_b},
       bg_r_{bg_r}, bg_g_{bg_g}, bg_b_{bg_b},
-      rows_{window->Height() / kCellHeight},
-      columns_{window->Width() / kCellWidth},
+      rows_{(window->Height() - (kMarginY * 2)) / kCellHeight},
+      columns_{(window->Width() - (kMarginX * 2)) / kCellWidth},
       cursor_row_{0}, cursor_column_{0},
       scrollback_head_{0}, scrollback_count_{0}, view_offset_{0} {
     if (rows_ < 1) rows_ = 1;
@@ -44,9 +44,9 @@ void Console::Print(const char* s) {
             if (view_offset_ == 0) {
                 // 文字セルを背景色で消してから文字を描く。
                 // これをしないと space 描画時に既存ピクセルが残って重なって見える。
-                window_->FillRectangle(kCellWidth * cursor_column_, kCellHeight * cursor_row_,
+                window_->FillRectangle(PixelX(cursor_column_), PixelY(cursor_row_),
                                        kCellWidth, kCellHeight, {bg_r_, bg_g_, bg_b_});
-                window_->DrawCharScaled(kCellWidth * cursor_column_, kCellHeight * cursor_row_,
+                window_->DrawCharScaled(PixelX(cursor_column_), PixelY(cursor_row_),
                                         *s, {fg_r_, fg_g_, fg_b_}, kFontScale);
             }
             ++cursor_column_;
@@ -125,7 +125,7 @@ bool Console::Backspace() {
     --cursor_column_;
     buffer_[cursor_row_][cursor_column_] = '\0';
     if (view_offset_ == 0) {
-        window_->FillRectangle(kCellWidth * cursor_column_, kCellHeight * cursor_row_,
+        window_->FillRectangle(PixelX(cursor_column_), PixelY(cursor_row_),
                                kCellWidth, kCellHeight, {bg_r_, bg_g_, bg_b_});
     }
     return true;
@@ -148,11 +148,11 @@ int Console::Columns() const {
 }
 
 int Console::PixelWidth() const {
-    return columns_ * kCellWidth;
+    return window_->Width();
 }
 
 int Console::PixelHeight() const {
-    return rows_ * kCellHeight;
+    return window_->Height();
 }
 
 void Console::SetCursorPosition(int row, int column) {
@@ -257,9 +257,17 @@ void Console::RenderVisible() {
 
         for (int col = 0; col < columns_; ++col) {
             if (src[col] != '\0') {
-                window_->DrawCharScaled(kCellWidth * col, kCellHeight * row,
+                window_->DrawCharScaled(PixelX(col), PixelY(row),
                                         src[col], {fg_r_, fg_g_, fg_b_}, kFontScale);
             }
         }
     }
+}
+
+int Console::PixelX(int column) const {
+    return kMarginX + (column * kCellWidth);
+}
+
+int Console::PixelY(int row) const {
+    return kMarginY + (row * kCellHeight);
 }
