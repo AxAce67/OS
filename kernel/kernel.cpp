@@ -1559,6 +1559,34 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RefreshInputLine();
     };
 
+    auto RepaintPromptAndInput = [&]() {
+        char snapshot[128];
+        CopyString(snapshot, command_buffer, static_cast<int>(sizeof(snapshot)));
+        int saved_cursor = cursor_pos;
+
+        console->SetCursorPosition(input_row, 0);
+        for (int i = 0; i < console->Columns(); ++i) {
+            console->Print(" ");
+        }
+        console->SetCursorPosition(input_row, 0);
+        PrintPrompt();
+        input_row = console->CursorRow();
+        input_col = console->CursorColumn();
+        ReplaceInputLine(snapshot);
+
+        if (saved_cursor < 0) {
+            saved_cursor = 0;
+        }
+        if (saved_cursor > command_len) {
+            saved_cursor = command_len;
+        }
+        if (cursor_pos != saved_cursor) {
+            cursor_pos = saved_cursor;
+            RenderInputLine();
+            RefreshInputLine();
+        }
+    };
+
     auto DeleteSelection = [&]() -> bool {
         if (!HasSelection()) {
             return false;
@@ -1980,6 +2008,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             if (g_ime_enabled) {
                 g_jp_layout = true;
             }
+            RepaintPromptAndInput();
             return true;
         }
         if (key == 0x79 || key == 0x7B) { // Henkan / Muhenkan
@@ -1987,6 +2016,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             if (g_ime_enabled) {
                 g_jp_layout = true;
             }
+            RepaintPromptAndInput();
             return true;
         }
         return false;
