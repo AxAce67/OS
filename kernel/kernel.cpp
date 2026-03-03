@@ -80,6 +80,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "apic.hpp"
 #include "timer.hpp"
 #include "shell/commands.hpp"
+#include "shell/context.hpp"
 #include "shell/cmd_dispatch.hpp"
 #include "shell/text.hpp"
 
@@ -105,24 +106,6 @@ struct KeyboardState {
     bool caps_lock;
     bool left_ctrl;
     bool right_ctrl;
-};
-
-struct ShellPair {
-    bool used;
-    char key[32];
-    char value[96];
-};
-
-struct ShellDir {
-    bool used;
-    char path[96];
-};
-
-struct ShellFile {
-    bool used;
-    char path[96];
-    uint64_t size;
-    uint8_t data[2048];
 };
 
 ShellPair g_vars[16];
