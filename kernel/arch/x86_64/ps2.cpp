@@ -1,6 +1,8 @@
 #include "ps2.hpp"
 #include "io.hpp"
 
+static bool g_ps2_mouse_wheel_enabled = false;
+
 // PS/2コントローラのステータス確認用
 void WaitKBC_SendReady() {
     // 0x64ポートのビット1が0になるまで待つ
@@ -14,6 +16,35 @@ void WaitKBC_ReceiveReady() {
     while ((In8(0x64) & 0x01) == 0) {
         // wait
     }
+}
+
+void SendMouseCommand(uint8_t cmd) {
+    WaitKBC_SendReady();
+    Out8(0x64, 0xD4);
+    WaitKBC_SendReady();
+    Out8(0x60, cmd);
+    WaitKBC_ReceiveReady();
+    In8(0x60); // ACK(0xFA) を読み捨て
+}
+
+void SetMouseSampleRate(uint8_t rate) {
+    SendMouseCommand(0xF3);
+    SendMouseCommand(rate);
+}
+
+uint8_t GetMouseDeviceId() {
+    WaitKBC_SendReady();
+    Out8(0x64, 0xD4);
+    WaitKBC_SendReady();
+    Out8(0x60, 0xF2);
+    WaitKBC_ReceiveReady();
+    In8(0x60); // ACK
+    WaitKBC_ReceiveReady();
+    return In8(0x60); // Device ID
+}
+
+bool IsPS2MouseWheelEnabled() {
+    return g_ps2_mouse_wheel_enabled;
 }
 
 void InitializePS2Mouse() {
@@ -32,13 +63,12 @@ void InitializePS2Mouse() {
     WaitKBC_SendReady();
     Out8(0x60, config | 0x03); // IRQ1/IRQ12（第1/第2ポート）を有効化して書き戻す
 
-    // 3. マウス本体に「データ送信開始してね」と伝える
-    WaitKBC_SendReady();
-    Out8(0x64, 0xD4); // 次のデータを第2ポート(マウス)へ送るコマンド
-    WaitKBC_SendReady();
-    Out8(0x60, 0xF4); // データ送信開始(Enable Packet Streaming)コマンド
-    
-    // マウスから「了解(0xFA=ACK)」という返事が来るのを待って読み捨てる (確実な動作のため)
-    WaitKBC_ReceiveReady();
-    In8(0x60);
+    // 3. IntelliMouse シーケンスでホイール機能を有効化
+    SetMouseSampleRate(200);
+    SetMouseSampleRate(100);
+    SetMouseSampleRate(80);
+    g_ps2_mouse_wheel_enabled = (GetMouseDeviceId() == 3);
+
+    // 4. マウス本体に「データ送信開始してね」と伝える
+    SendMouseCommand(0xF4); // Enable Packet Streaming
 }

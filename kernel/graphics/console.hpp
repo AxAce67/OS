@@ -6,7 +6,7 @@
 
 class Console {
 public:
-    static const int kRows = 25;
+    static const int kRows = 50;
     static const int kColumns = 80;
     static const int kScrollbackLines = 512;
 

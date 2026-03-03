@@ -6,6 +6,7 @@
 #include "console.hpp"
 #include "apic.hpp"
 #include "timer.hpp"
+#include "ps2.hpp"
 
 // kernel.cpp で定義しているコンソールとマウスカーソルの参照
 extern Console* console;
@@ -17,11 +18,15 @@ struct Message {
         kInterruptKeyboard,
     } type;
     int dx, dy;
+    int wheel;
     uint8_t keycode;
 };
 
 // kernel.cpp で実体を定義するメインキュー
 extern ArrayQueue<Message, 256>* main_queue;
+
+volatile uint64_t g_keyboard_dropped_events = 0;
+volatile uint64_t g_mouse_dropped_events = 0;
 
 // 割り込みフレーム構造体
 struct InterruptFrame {
@@ -34,7 +39,9 @@ struct InterruptFrame {
 
 // PS/2マウスの状態管理用変数
 static int mouse_phase = 0;
-static uint8_t mouse_buf[3];
+static int mouse_packet_bytes = 3;
+static bool mouse_packet_initialized = false;
+static uint8_t mouse_buf[4];
 
 // PS/2マウスからの割り込みハンドラ
 __attribute__((interrupt))
@@ -45,6 +52,11 @@ void IntHandlerMouse(InterruptFrame* frame) {
 
     // データポートから1バイト受信
     uint8_t data = In8(0x60);
+
+    if (!mouse_packet_initialized) {
+        mouse_packet_bytes = IsPS2MouseWheelEnabled() ? 4 : 3;
+        mouse_packet_initialized = true;
+    }
 
     // フェーズごとの受信処理（3バイトで1セットの移動情報になる）
     if (mouse_phase == 0) {
@@ -57,12 +69,13 @@ void IntHandlerMouse(InterruptFrame* frame) {
     mouse_buf[mouse_phase] = data;
     mouse_phase++;
 
-    if (mouse_phase == 3) {
-        // 3バイト揃った
+    if (mouse_phase == mouse_packet_bytes) {
+        // 3/4バイト揃った
         mouse_phase = 0; // 次のパケットのためにリセット
 
         int dx = mouse_buf[1];
         int dy = mouse_buf[2];
+        int wheel = 0;
 
         // 1バイト目のビット情報から、dxとdyの符号（マイナスかどうか）を拡張する
         if ((mouse_buf[0] & 0x10) != 0) { dx |= 0xFFFFFF00; }
@@ -71,9 +84,29 @@ void IntHandlerMouse(InterruptFrame* frame) {
         // PS/2マウスのY軸は上がプラスだが、画面座標は下がプラスなので反転する
         dy = -dy;
 
+        if (mouse_packet_bytes == 4) {
+            int z = mouse_buf[3] & 0x0F;
+            if ((z & 0x08) != 0) {
+                z |= 0xFFFFFFF0;
+            }
+            if (z > 0) {
+                wheel = 1;
+            } else if (z < 0) {
+                wheel = -1;
+            }
+        }
+
         // **超重要：ここでは描画せず（VRAMアクセスは遅いため）、移動情報をキューに積んで一瞬で終わる**
         if (main_queue != nullptr) {
-            main_queue->Push(Message{Message::Type::kInterruptMouse, dx, dy});
+            Message msg;
+            msg.type = Message::Type::kInterruptMouse;
+            msg.dx = dx;
+            msg.dy = dy;
+            msg.wheel = wheel;
+            msg.keycode = 0;
+            if (!main_queue->Push(msg)) {
+                ++g_mouse_dropped_events;
+            }
         }
     }
 }
@@ -85,7 +118,15 @@ void IntHandlerKeyboard(InterruptFrame* frame) {
     SendEndOfInterrupt(1);
 
     if (main_queue != nullptr) {
-        main_queue->Push(Message{Message::Type::kInterruptKeyboard, 0, 0, data});
+        Message msg;
+        msg.type = Message::Type::kInterruptKeyboard;
+        msg.dx = 0;
+        msg.dy = 0;
+        msg.wheel = 0;
+        msg.keycode = data;
+        if (!main_queue->Push(msg)) {
+            ++g_keyboard_dropped_events;
+        }
     }
 }
 

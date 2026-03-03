@@ -95,6 +95,7 @@ struct Message {
         kInterruptKeyboard,
     } type;
     int dx, dy;
+    int wheel;
     uint8_t keycode;
 };
 
@@ -2255,6 +2256,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         switch (msg.type) {
             case Message::Type::kInterruptMouse:
                 mouse_cursor->Move(msg.dx, msg.dy);
+                if (msg.wheel > 0) {
+                    console->ScrollUp(msg.wheel * 3);
+                    RefreshConsole();
+                } else if (msg.wheel < 0) {
+                    console->ScrollDown((-msg.wheel) * 3);
+                    RefreshConsole();
+                }
                 break;
             case Message::Type::kInterruptKeyboard:
                 if (msg.keycode == 0xE0) {
