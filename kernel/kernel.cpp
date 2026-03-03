@@ -137,6 +137,12 @@ bool g_xhci_hid_auto_enabled = false;
 uint8_t g_xhci_hid_auto_slot = 0;
 uint32_t g_xhci_hid_auto_len = 8;
 uint64_t g_xhci_hid_last_poll_tick = 0;
+uint16_t g_xhci_hid_auto_mps = 8;
+uint8_t g_xhci_hid_auto_interval = 4;
+uint32_t g_xhci_hid_auto_consecutive_failures = 0;
+uint64_t g_xhci_hid_auto_fail_count = 0;
+uint64_t g_xhci_hid_auto_recover_count = 0;
+uint64_t g_xhci_hid_next_recover_tick = 0;
 const bool kAutoStartXHCIHID = true;
 const uint32_t kAutoStartHIDLen = 8;
 const uint16_t kAutoStartHIDMps = 8;
@@ -153,6 +159,7 @@ int g_hid_smooth_x = -1;
 int g_hid_smooth_y = -1;
 const int kHidSmoothAlphaNum = 1;  // 1/4 EMA
 const int kHidSmoothAlphaDen = 4;
+uint8_t g_hid_buttons_mask = 0;
 
 int ClampInt(int v, int min_v, int max_v) {
     if (v < min_v) return min_v;
@@ -180,11 +187,14 @@ int ScreenHeight() {
     return static_cast<int>(g_boot_info->frame_buffer_config->vertical_resolution);
 }
 
-bool DecodeHIDAbsoluteXY(const uint8_t* data, uint32_t len, int* out_x, int* out_y, int* out_wheel) {
+bool DecodeHIDAbsoluteXY(const uint8_t* data, uint32_t len, int* out_x, int* out_y, int* out_wheel, uint8_t* out_buttons) {
     if (data == nullptr || out_x == nullptr || out_y == nullptr || len < 5) {
         return false;
     }
     *out_wheel = 0;
+    if (out_buttons != nullptr) {
+        *out_buttons = 0;
+    }
 
     // Candidate A: [buttons][x_lo][x_hi][y_lo][y_hi](...)
     uint16_t ax = static_cast<uint16_t>(data[1] | (static_cast<uint16_t>(data[2]) << 8));
@@ -229,6 +239,14 @@ bool DecodeHIDAbsoluteXY(const uint8_t* data, uint32_t len, int* out_x, int* out
         }
     } else if (g_hid_format_mode == 0) {
         g_hid_format_mode = 1;
+    }
+
+    if (out_buttons != nullptr) {
+        if (chosen_mode == 2 && len >= 2) {
+            *out_buttons = data[1];
+        } else {
+            *out_buttons = data[0];
+        }
     }
 
     if (raw_x > g_hid_observed_max_raw) g_hid_observed_max_raw = raw_x;
@@ -298,9 +316,10 @@ bool DecodeHIDAbsoluteXY(const uint8_t* data, uint32_t len, int* out_x, int* out
     *out_x = g_hid_smooth_x;
     *out_y = g_hid_smooth_y;
 
-    if (len >= 6) {
-        int8_t wh = static_cast<int8_t>(data[len - 1]);
-        *out_wheel = static_cast<int>(wh);
+    if (chosen_mode == 2 && len >= 7) {
+        *out_wheel = static_cast<int>(static_cast<int8_t>(data[6]));
+    } else if (chosen_mode == 1 && len >= 6) {
+        *out_wheel = static_cast<int>(static_cast<int8_t>(data[5]));
     }
     return true;
 }
@@ -316,6 +335,7 @@ void ResetHIDDecodeLearning() {
     g_hid_max_y = 0;
     g_hid_smooth_x = -1;
     g_hid_smooth_y = -1;
+    g_hid_buttons_mask = 0;
 }
 
 bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t timeout_iters = 3000000) {
@@ -338,7 +358,8 @@ bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t time
     int x = 0;
     int y = 0;
     int wheel = 0;
-    if (!DecodeHIDAbsoluteXY(rr.data, rr.data_length, &x, &y, &wheel)) {
+    uint8_t buttons = 0;
+    if (!DecodeHIDAbsoluteXY(rr.data, rr.data_length, &x, &y, &wheel, &buttons)) {
         if (verbose) {
             console->Print("xhcihidpoll: raw=");
             for (uint32_t i = 0; i < rr.data_length; ++i) {
@@ -351,6 +372,7 @@ bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t time
         }
         return false;
     }
+    g_hid_buttons_mask = buttons;
 
     EnqueueAbsolutePointerEvent(x, y, wheel);
     if (verbose) {
@@ -360,6 +382,8 @@ bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t time
         console->PrintDec(y);
         console->Print(" wheel=");
         console->PrintDec(wheel);
+        console->Print(" btn=0x");
+        console->PrintHex(buttons, 2);
         console->Print("\n");
     }
     return true;
@@ -423,8 +447,12 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
 
     g_xhci_hid_auto_slot = slot_result.slot_id;
     g_xhci_hid_auto_len = req_len;
+    g_xhci_hid_auto_mps = mps;
+    g_xhci_hid_auto_interval = interval;
     g_xhci_hid_auto_enabled = true;
     g_xhci_hid_last_poll_tick = CurrentTick();
+    g_xhci_hid_auto_consecutive_failures = 0;
+    g_xhci_hid_next_recover_tick = 0;
 
     // 起動直後の追従精度を上げるため、短いタイムアウトで数サンプルを先に学習する。
     for (int i = 0; i < 8; ++i) {
@@ -1762,6 +1790,12 @@ void ExecuteCommand(const char* command) {
         console->Print(",");
         console->PrintDec(g_hid_max_y);
         console->Print(")");
+        console->Print(" btn=0x");
+        console->PrintHex(g_hid_buttons_mask, 2);
+        console->Print(" auto_fail=");
+        console->PrintDec(g_xhci_hid_auto_fail_count);
+        console->Print(" auto_recover=");
+        console->PrintDec(g_xhci_hid_auto_recover_count);
         console->Print("\n");
         return;
     }
@@ -1780,6 +1814,7 @@ void ExecuteCommand(const char* command) {
         }
         if (StrEqual(mode, "off")) {
             g_xhci_hid_auto_enabled = false;
+            g_xhci_hid_auto_consecutive_failures = 0;
             console->PrintLine("xhciauto: off");
             return;
         }
@@ -1813,6 +1848,10 @@ void ExecuteCommand(const char* command) {
         g_xhci_hid_auto_len = static_cast<uint32_t>(req_len);
         g_xhci_hid_auto_enabled = true;
         g_xhci_hid_last_poll_tick = CurrentTick();
+        g_xhci_hid_auto_consecutive_failures = 0;
+        g_xhci_hid_auto_fail_count = 0;
+        g_xhci_hid_auto_recover_count = 0;
+        g_xhci_hid_next_recover_tick = 0;
         ResetHIDDecodeLearning();
         console->Print("xhciauto: on slot=");
         console->PrintDec(slot);
@@ -1855,6 +1894,10 @@ void ExecuteCommand(const char* command) {
             return;
         }
         ResetHIDDecodeLearning();
+        g_xhci_hid_auto_fail_count = 0;
+        g_xhci_hid_auto_recover_count = 0;
+        g_xhci_hid_auto_consecutive_failures = 0;
+        g_xhci_hid_next_recover_tick = 0;
         if (!StartXHCIAutoMouse(static_cast<uint32_t>(req_len),
                                 static_cast<uint16_t>(mps),
                                 static_cast<uint8_t>(interval))) {
@@ -3158,7 +3201,22 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 if (now_tick != g_xhci_hid_last_poll_tick) {
                     g_xhci_hid_last_poll_tick = now_tick;
                     if (PollHIDAndApply(g_xhci_hid_auto_slot, g_xhci_hid_auto_len, false)) {
+                        g_xhci_hid_auto_consecutive_failures = 0;
                         continue;
+                    } else {
+                        ++g_xhci_hid_auto_fail_count;
+                        ++g_xhci_hid_auto_consecutive_failures;
+                    }
+                }
+
+                const uint32_t kRecoverFailThreshold = 24;
+                if (g_xhci_hid_auto_consecutive_failures >= kRecoverFailThreshold &&
+                    now_tick >= g_xhci_hid_next_recover_tick) {
+                    g_xhci_hid_next_recover_tick = now_tick + 120;  // retry after a short cool down
+                    ResetHIDDecodeLearning();
+                    if (StartXHCIAutoMouse(g_xhci_hid_auto_len, g_xhci_hid_auto_mps, g_xhci_hid_auto_interval)) {
+                        ++g_xhci_hid_auto_recover_count;
+                        g_xhci_hid_auto_consecutive_failures = 0;
                     }
                 }
             }
