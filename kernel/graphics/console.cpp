@@ -20,8 +20,14 @@ Console::Console(Window* window,
     : window_{window},
       fg_r_{fg_r}, fg_g_{fg_g}, fg_b_{fg_b},
       bg_r_{bg_r}, bg_g_{bg_g}, bg_b_{bg_b},
+      rows_{window->Height() / 16},
+      columns_{window->Width() / 8},
       cursor_row_{0}, cursor_column_{0},
       scrollback_head_{0}, scrollback_count_{0}, view_offset_{0} {
+    if (rows_ < 1) rows_ = 1;
+    if (rows_ > kMaxRows) rows_ = kMaxRows;
+    if (columns_ < 1) columns_ = 1;
+    if (columns_ > kMaxColumns) columns_ = kMaxColumns;
     memset(buffer_, 0, sizeof(buffer_));
     memset(scrollback_, 0, sizeof(scrollback_));
 }
@@ -31,7 +37,7 @@ void Console::Print(const char* s) {
         if (*s == '\n') {
             Newline();
         } else {
-            if (cursor_column_ >= kColumns) {
+            if (cursor_column_ >= columns_) {
                 Newline();
             }
             buffer_[cursor_row_][cursor_column_] = *s;
@@ -130,11 +136,19 @@ int Console::CursorColumn() const {
     return cursor_column_;
 }
 
+int Console::Rows() const {
+    return rows_;
+}
+
+int Console::Columns() const {
+    return columns_;
+}
+
 void Console::SetCursorPosition(int row, int column) {
     if (row < 0) row = 0;
-    if (row >= kRows) row = kRows - 1;
+    if (row >= rows_) row = rows_ - 1;
     if (column < 0) column = 0;
-    if (column >= kColumns) column = kColumns - 1;
+    if (column >= columns_) column = columns_ - 1;
     cursor_row_ = row;
     cursor_column_ = column;
 }
@@ -176,7 +190,7 @@ bool Console::IsScrolled() const {
 
 void Console::Newline() {
     cursor_column_ = 0;
-    if (cursor_row_ < kRows - 1) {
+    if (cursor_row_ < rows_ - 1) {
         ++cursor_row_;
     } else {
         Scroll();
@@ -192,31 +206,31 @@ void Console::Scroll() {
         slot = scrollback_head_;
         scrollback_head_ = (scrollback_head_ + 1) % kScrollbackLines;
     }
-    memcpy(scrollback_[slot], buffer_[0], kColumns + 1);
+    memcpy(scrollback_[slot], buffer_[0], columns_ + 1);
     if (view_offset_ > 0 && view_offset_ < scrollback_count_) {
         ++view_offset_;
     }
 
     // バッファを1行ずつ上にずらす
-    for (int row = 0; row < kRows - 1; ++row) {
-        memcpy(buffer_[row], buffer_[row + 1], kColumns + 1);
+    for (int row = 0; row < rows_ - 1; ++row) {
+        memcpy(buffer_[row], buffer_[row + 1], columns_ + 1);
     }
 
-    // 最後の行（kRows - 1）をクリアする
-    memset(buffer_[kRows - 1], 0, kColumns + 1);
+    // 最後の行をクリアする
+    memset(buffer_[rows_ - 1], 0, columns_ + 1);
     RenderVisible();
 }
 
 void Console::RenderVisible() {
     window_->FillRectangle(0, 0, window_->Width(), window_->Height(), {bg_r_, bg_g_, bg_b_});
 
-    const int total_lines = scrollback_count_ + kRows;
-    int top_line = total_lines - kRows - view_offset_;
+    const int total_lines = scrollback_count_ + rows_;
+    int top_line = total_lines - rows_ - view_offset_;
     if (top_line < 0) {
         top_line = 0;
     }
 
-    for (int row = 0; row < kRows; ++row) {
+    for (int row = 0; row < rows_; ++row) {
         const int virtual_line = top_line + row;
         const char* src = nullptr;
         if (virtual_line < scrollback_count_) {
@@ -224,13 +238,13 @@ void Console::RenderVisible() {
             src = scrollback_[idx];
         } else {
             const int buf_row = virtual_line - scrollback_count_;
-            if (buf_row < 0 || buf_row >= kRows) {
+            if (buf_row < 0 || buf_row >= rows_) {
                 continue;
             }
             src = buffer_[buf_row];
         }
 
-        for (int col = 0; col < kColumns; ++col) {
+        for (int col = 0; col < columns_; ++col) {
             if (src[col] != '\0') {
                 window_->DrawChar(8 * col, 16 * row, src[col], {fg_r_, fg_g_, fg_b_});
             }

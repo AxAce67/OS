@@ -6,8 +6,8 @@
 
 class Console {
 public:
-    static const int kRows = 50;
-    static const int kColumns = 80;
+    static const int kMaxRows = 90;
+    static const int kMaxColumns = 120;
     static const int kScrollbackLines = 512;
 
     Console(Window* window,
@@ -23,6 +23,8 @@ public:
     bool Backspace();
     int CursorRow() const;
     int CursorColumn() const;
+    int Rows() const;
+    int Columns() const;
     void SetCursorPosition(int row, int column);
     void ScrollUp(int lines = 1);
     void ScrollDown(int lines = 1);
@@ -37,9 +39,11 @@ private:
     Window* window_;
     uint8_t fg_r_, fg_g_, fg_b_;
     uint8_t bg_r_, bg_g_, bg_b_;
+    int rows_;
+    int columns_;
     int cursor_row_, cursor_column_;
-    char buffer_[kRows][kColumns + 1];
-    char scrollback_[kScrollbackLines][kColumns + 1];
+    char buffer_[kMaxRows][kMaxColumns + 1];
+    char scrollback_[kScrollbackLines][kMaxColumns + 1];
     int scrollback_head_;
     int scrollback_count_;
     int view_offset_;

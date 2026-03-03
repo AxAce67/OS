@@ -144,6 +144,42 @@ static EFI_STATUS LoadBootFileSystem(
     return EFI_SUCCESS;
 }
 
+static int IsSupportedPixelFormat(EFI_GRAPHICS_PIXEL_FORMAT format) {
+    return format == PixelBlueGreenRedReserved8BitPerColor ||
+           format == PixelRedGreenBlueReserved8BitPerColor;
+}
+
+static void SelectBestGraphicsMode(EFI_GRAPHICS_OUTPUT_PROTOCOL* gop, EFI_SYSTEM_TABLE* SystemTable) {
+    if (gop == NULL || gop->Mode == NULL || gop->QueryMode == NULL || gop->SetMode == NULL) {
+        return;
+    }
+
+    UINT32 best_mode = gop->Mode->Mode;
+    UINT64 best_pixels = 0;
+
+    for (UINT32 mode = 0; mode < gop->Mode->MaxMode; ++mode) {
+        UINTN info_size = 0;
+        EFI_GRAPHICS_OUTPUT_MODE_INFORMATION* info = NULL;
+        EFI_STATUS status = gop->QueryMode(gop, mode, &info_size, &info);
+        if (IsEfiError(status) || info == NULL) {
+            continue;
+        }
+
+        if (IsSupportedPixelFormat(info->PixelFormat)) {
+            UINT64 pixels = (UINT64)info->HorizontalResolution * (UINT64)info->VerticalResolution;
+            if (pixels > best_pixels) {
+                best_pixels = pixels;
+                best_mode = mode;
+            }
+        }
+        SystemTable->BootServices->FreePool(info);
+    }
+
+    if (best_mode != gop->Mode->Mode) {
+        gop->SetMode(gop, best_mode);
+    }
+}
+
 EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *conOut = SystemTable->ConOut;
     conOut->ClearScreen(conOut);
@@ -158,6 +194,8 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
         conOut->OutputString(conOut, L"Error: Failed to locate GOP.\r\n");
         while(1){}
     }
+
+    SelectBestGraphicsMode(gop, SystemTable);
 
     // 2. カーネルに渡すための情報構造体を埋める
     struct FrameBufferConfig config;

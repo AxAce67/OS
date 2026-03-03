@@ -90,9 +90,21 @@ typedef struct {
     UINTN FrameBufferSize;
 } EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE;
 
+struct _EFI_GRAPHICS_OUTPUT_PROTOCOL;
+typedef EFI_STATUS (*EFI_GRAPHICS_OUTPUT_PROTOCOL_QUERY_MODE)(
+    struct _EFI_GRAPHICS_OUTPUT_PROTOCOL *This,
+    UINT32 ModeNumber,
+    UINTN *SizeOfInfo,
+    EFI_GRAPHICS_OUTPUT_MODE_INFORMATION **Info
+);
+typedef EFI_STATUS (*EFI_GRAPHICS_OUTPUT_PROTOCOL_SET_MODE)(
+    struct _EFI_GRAPHICS_OUTPUT_PROTOCOL *This,
+    UINT32 ModeNumber
+);
+
 typedef struct _EFI_GRAPHICS_OUTPUT_PROTOCOL {
-    void *QueryMode;
-    void *SetMode;
+    EFI_GRAPHICS_OUTPUT_PROTOCOL_QUERY_MODE QueryMode;
+    EFI_GRAPHICS_OUTPUT_PROTOCOL_SET_MODE SetMode;
     void *Blt;
     EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE *Mode; // フレームバッファ情報へのポインタ
 } EFI_GRAPHICS_OUTPUT_PROTOCOL;
@@ -249,6 +261,7 @@ typedef struct {
 #define EFI_FILE_MODE_READ   0x0000000000000001
 #define EFI_FILE_MODE_WRITE  0x0000000000000002
 #define EFI_FILE_MODE_CREATE 0x8000000000000000
+#define EFI_FILE_DIRECTORY   0x0000000000000010
 
 // -----------------------------------------
 // ファイルパリア操作 (Simple File System Protocol)
@@ -268,6 +281,11 @@ typedef EFI_STATUS (*EFI_FILE_CLOSE)(
     struct _EFI_FILE_PROTOCOL *This
 );
 
+typedef EFI_STATUS (*EFI_FILE_SET_POSITION)(
+    struct _EFI_FILE_PROTOCOL *This,
+    UINT64 Position
+);
+
 typedef struct _EFI_FILE_PROTOCOL {
     UINT64 Revision;
     EFI_FILE_OPEN Open;
@@ -276,7 +294,7 @@ typedef struct _EFI_FILE_PROTOCOL {
     EFI_STATUS (*Read)(struct _EFI_FILE_PROTOCOL *This, UINTN *BufferSize, void *Buffer);
     void *Write;
     void *GetPosition;
-    void *SetPosition;
+    EFI_FILE_SET_POSITION SetPosition;
     EFI_STATUS (*GetInfo)(struct _EFI_FILE_PROTOCOL *This, EFI_GUID *InformationType, UINTN *BufferSize, void *Buffer);
     void *SetInfo;
     void *Flush;

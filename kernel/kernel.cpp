@@ -845,7 +845,7 @@ void PrintBootFilePaged(const BootFileEntry* file, bool numbered) {
         if (c == '\n') {
             console->Print("\n");
             ++shown_lines;
-            if (shown_lines >= Console::kRows - 2) {
+            if (shown_lines >= console->Rows() - 2) {
                 console->Print("-- more -- (Enter/Space/q)");
                 layer_manager->Draw();
                 char k = WaitPagerKey();
@@ -2093,7 +2093,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int input_col = console->CursorColumn();
     int rendered_len = 0;
     auto RefreshConsole = [&]() {
-        layer_manager->Draw(0, 0, 8 * Console::kColumns, 16 * Console::kRows);
+        layer_manager->Draw(0, 0, 8 * console->Columns(), 16 * console->Rows());
     };
     auto EnsureLiveConsole = [&]() {
         if (console->IsScrolled()) {
@@ -2103,7 +2103,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto RenderInputLine = [&]() {
-        const int clear_len = Console::kColumns - input_col - 1;
+        const int clear_len = console->Columns() - input_col - 1;
         console->SetCursorPosition(input_row, input_col);
         for (int i = 0; i < clear_len; ++i) {
             console->Print(" ");
@@ -2115,7 +2115,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto MaxInputLen = [&]() {
-        const int row_limit = Console::kColumns - input_col - 1;
+        const int row_limit = console->Columns() - input_col - 1;
         if (row_limit <= 0) {
             return 0;
         }
