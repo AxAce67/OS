@@ -2406,6 +2406,153 @@ bool ExecuteInputStatCommand() {
     return true;
 }
 
+using ShellCommandHandler = bool (*)(const char* cmd, const char* command, const char* rest, int* pos_ptr);
+
+struct ShellCommandEntry {
+    const char* name;
+    ShellCommandHandler handler;
+};
+
+bool HandleHelp(const char*, const char*, const char*, int*) {
+    return ExecuteHelpCommand();
+}
+
+bool HandleAbout(const char*, const char*, const char*, int*) {
+    return ExecuteAboutCommand();
+}
+
+bool HandlePwd(const char*, const char*, const char*, int*) {
+    return ExecutePwdCommand();
+}
+
+bool HandleCd(const char*, const char*, const char* rest, int*) {
+    return ExecuteCdCommand(rest);
+}
+
+bool HandleMkdir(const char*, const char* command, const char*, int* pos_ptr) {
+    return ExecuteMkdirCommand(command, pos_ptr);
+}
+
+bool HandleTouch(const char*, const char* command, const char*, int* pos_ptr) {
+    return ExecuteTouchCommand(command, pos_ptr);
+}
+
+bool HandleWriteAppend(const char* cmd, const char* command, const char*, int* pos_ptr) {
+    return ExecuteWriteAppendCommand(cmd, command, pos_ptr);
+}
+
+bool HandleCp(const char*, const char* command, const char*, int* pos_ptr) {
+    return ExecuteCpCommand(command, pos_ptr);
+}
+
+bool HandleRm(const char*, const char* command, const char*, int* pos_ptr) {
+    return ExecuteRmCommand(command, pos_ptr);
+}
+
+bool HandleRmdir(const char*, const char* command, const char*, int* pos_ptr) {
+    return ExecuteRmdirCommand(command, pos_ptr);
+}
+
+bool HandleMv(const char*, const char* command, const char*, int* pos_ptr) {
+    return ExecuteMvCommand(command, pos_ptr);
+}
+
+bool HandleFind(const char*, const char* command, const char*, int* pos_ptr) {
+    return ExecuteFindCommand(command, pos_ptr);
+}
+
+bool HandleGrep(const char*, const char* command, const char*, int* pos_ptr) {
+    return ExecuteGrepCommand(command, pos_ptr);
+}
+
+bool HandleClear(const char*, const char*, const char*, int*) {
+    return ExecuteClearCommand();
+}
+
+bool HandleTickTime(const char*, const char*, const char*, int*) {
+    return ExecuteTickTimeCommand();
+}
+
+bool HandleUptime(const char*, const char*, const char*, int*) {
+    return ExecuteUptimeCommand();
+}
+
+bool HandleMem(const char*, const char*, const char*, int*) {
+    return ExecuteMemCommand();
+}
+
+bool HandleInputStat(const char*, const char*, const char*, int*) {
+    return ExecuteInputStatCommand();
+}
+
+bool HandleRepeat(const char*, const char*, const char* rest, int*) {
+    return ExecuteRepeatCommand(rest);
+}
+
+bool HandleLayout(const char*, const char*, const char* rest, int*) {
+    return ExecuteLayoutCommand(rest);
+}
+
+bool HandleSet(const char*, const char* command, const char*, int* pos_ptr) {
+    return ExecuteSetCommand(command, pos_ptr);
+}
+
+bool HandleAlias(const char*, const char* command, const char*, int* pos_ptr) {
+    return ExecuteAliasCommand(command, pos_ptr);
+}
+
+bool HandleLs(const char*, const char*, const char* rest, int*) {
+    return ExecuteLsCommand(rest);
+}
+
+bool HandleStat(const char*, const char* command, const char*, int* pos_ptr) {
+    return ExecuteStatCommand(command, pos_ptr);
+}
+
+bool HandleCat(const char*, const char* command, const char*, int* pos_ptr) {
+    return ExecuteCatCommand(command, pos_ptr);
+}
+
+bool HandleEcho(const char*, const char*, const char* rest, int*) {
+    return ExecuteEchoCommand(rest);
+}
+
+bool HandleReboot(const char*, const char*, const char*, int*) {
+    return ExecuteRebootCommand();
+}
+
+const ShellCommandEntry kShellCommandTable[] = {
+    {"help", HandleHelp},
+    {"about", HandleAbout},
+    {"pwd", HandlePwd},
+    {"cd", HandleCd},
+    {"mkdir", HandleMkdir},
+    {"touch", HandleTouch},
+    {"write", HandleWriteAppend},
+    {"append", HandleWriteAppend},
+    {"cp", HandleCp},
+    {"rm", HandleRm},
+    {"rmdir", HandleRmdir},
+    {"mv", HandleMv},
+    {"find", HandleFind},
+    {"grep", HandleGrep},
+    {"clear", HandleClear},
+    {"tick", HandleTickTime},
+    {"time", HandleTickTime},
+    {"uptime", HandleUptime},
+    {"mem", HandleMem},
+    {"inputstat", HandleInputStat},
+    {"repeat", HandleRepeat},
+    {"layout", HandleLayout},
+    {"set", HandleSet},
+    {"alias", HandleAlias},
+    {"ls", HandleLs},
+    {"stat", HandleStat},
+    {"cat", HandleCat},
+    {"echo", HandleEcho},
+    {"reboot", HandleReboot},
+};
+
 void ExecuteCommand(const char* command) {
     if (command[0] == '\0') {
         return;
@@ -2421,16 +2568,6 @@ void ExecuteCommand(const char* command) {
         return;
     }
     const char* rest = RestOfLine(command, pos);
-
-    if (StrEqual(cmd, "help")) {
-        ExecuteHelpCommand();
-        return;
-    }
-
-    if (StrEqual(cmd, "about")) {
-        ExecuteAboutCommand();
-        return;
-    }
 
     if (StrEqual(cmd, "xhciinfo")) {
         const auto& info = GetXHCIControllerInfo();
@@ -2977,130 +3114,15 @@ void ExecuteCommand(const char* command) {
         return;
     }
 
-    if (StrEqual(cmd, "pwd")) {
-        ExecutePwdCommand();
-        return;
-    }
-
-    if (StrEqual(cmd, "cd")) {
-        ExecuteCdCommand(rest);
-        return;
-    }
-
-    if (StrEqual(cmd, "mkdir")) {
-        ExecuteMkdirCommand(command, &pos);
-        return;
-    }
-
-    if (StrEqual(cmd, "touch")) {
-        ExecuteTouchCommand(command, &pos);
-        return;
-    }
-
-    if (StrEqual(cmd, "write") || StrEqual(cmd, "append")) {
-        ExecuteWriteAppendCommand(cmd, command, &pos);
-        return;
-    }
-
-    if (StrEqual(cmd, "cp")) {
-        ExecuteCpCommand(command, &pos);
-        return;
-    }
-
-    if (StrEqual(cmd, "rm")) {
-        ExecuteRmCommand(command, &pos);
-        return;
-    }
-
-    if (StrEqual(cmd, "rmdir")) {
-        ExecuteRmdirCommand(command, &pos);
-        return;
-    }
-
-    if (StrEqual(cmd, "mv")) {
-        ExecuteMvCommand(command, &pos);
-        return;
-    }
-
-    if (StrEqual(cmd, "find")) {
-        ExecuteFindCommand(command, &pos);
-        return;
-    }
-
-    if (StrEqual(cmd, "grep")) {
-        ExecuteGrepCommand(command, &pos);
-        return;
-    }
-
-    if (StrEqual(cmd, "clear")) {
-        ExecuteClearCommand();
-        return;
-    }
-
-    if (StrEqual(cmd, "tick") || StrEqual(cmd, "time")) {
-        ExecuteTickTimeCommand();
-        return;
-    }
-
-    if (StrEqual(cmd, "uptime")) {
-        ExecuteUptimeCommand();
-        return;
-    }
-
-    if (StrEqual(cmd, "mem")) {
-        ExecuteMemCommand();
-        return;
-    }
-
-    if (StrEqual(cmd, "inputstat")) {
-        ExecuteInputStatCommand();
-        return;
-    }
-
-    if (StrEqual(cmd, "repeat")) {
-        if (ExecuteRepeatCommand(rest)) {
+    for (int i = 0; i < static_cast<int>(sizeof(kShellCommandTable) / sizeof(kShellCommandTable[0])); ++i) {
+        const ShellCommandEntry& entry = kShellCommandTable[i];
+        if (!StrEqual(cmd, entry.name)) {
+            continue;
+        }
+        if (entry.handler(cmd, command, rest, &pos)) {
             return;
         }
-    }
-
-    if (StrEqual(cmd, "layout")) {
-        if (ExecuteLayoutCommand(rest)) {
-            return;
-        }
-    }
-
-    if (StrEqual(cmd, "set")) {
-        ExecuteSetCommand(command, &pos);
-        return;
-    }
-
-    if (StrEqual(cmd, "alias")) {
-        ExecuteAliasCommand(command, &pos);
-        return;
-    }
-
-    if (StrEqual(cmd, "ls")) {
-        ExecuteLsCommand(rest);
-        return;
-    }
-
-    if (StrEqual(cmd, "stat")) {
-        ExecuteStatCommand(command, &pos);
-        return;
-    }
-
-    if (StrEqual(cmd, "cat")) {
-        ExecuteCatCommand(command, &pos);
-        return;
-    }
-
-    if (StrEqual(cmd, "echo")) {
-        ExecuteEchoCommand(rest);
-        return;
-    }
-
-    if (StrEqual(cmd, "reboot")) {
-        ExecuteRebootCommand();
+        break;
     }
 
     console->Print("unknown command: ");
