@@ -1776,6 +1776,159 @@ bool ExecuteCatCommand(const char* command, int* pos_ptr) {
     return true;
 }
 
+bool ExecuteCdCommand(const char* rest) {
+    InitializeDirectories();
+    if (rest[0] == '\0') {
+        CopyString(g_cwd, "/", sizeof(g_cwd));
+        return true;
+    }
+    char resolved[96];
+    if (!ResolvePath(g_cwd, rest, resolved, sizeof(resolved))) {
+        console->PrintLine("cd: invalid path");
+        return true;
+    }
+    if (!DirectoryExists(resolved)) {
+        console->Print("cd: no such directory: ");
+        console->PrintLine(rest);
+        return true;
+    }
+    CopyString(g_cwd, resolved, sizeof(g_cwd));
+    return true;
+}
+
+bool ExecuteMkdirCommand(const char* command, int* pos_ptr) {
+    InitializeDirectories();
+    int& pos = *pos_ptr;
+    char name[64];
+    if (!NextToken(command, &pos, name, sizeof(name))) {
+        console->PrintLine("mkdir: directory required");
+        return true;
+    }
+    char extra[8];
+    if (NextToken(command, &pos, extra, sizeof(extra))) {
+        console->PrintLine("mkdir: too many arguments");
+        return true;
+    }
+    char resolved[96];
+    if (!ResolvePath(g_cwd, name, resolved, sizeof(resolved))) {
+        console->PrintLine("mkdir: invalid path");
+        return true;
+    }
+    if (StrEqual(resolved, "/")) {
+        console->PrintLine("mkdir: already exists: /");
+        return true;
+    }
+    if (DirectoryExists(resolved)) {
+        console->Print("mkdir: already exists: ");
+        console->PrintLine(resolved);
+        return true;
+    }
+    char parent[96];
+    if (!GetParentPath(resolved, parent, sizeof(parent))) {
+        console->PrintLine("mkdir: invalid parent");
+        return true;
+    }
+    if (!DirectoryExists(parent)) {
+        console->Print("mkdir: parent missing: ");
+        console->PrintLine(parent);
+        return true;
+    }
+    if (!CreateDirectory(resolved)) {
+        console->PrintLine("mkdir: table full");
+        return true;
+    }
+    return true;
+}
+
+bool ExecuteTouchCommand(const char* command, int* pos_ptr) {
+    int& pos = *pos_ptr;
+    char name[64];
+    if (!NextToken(command, &pos, name, sizeof(name))) {
+        console->PrintLine("touch: filename required");
+        return true;
+    }
+    char extra[8];
+    if (NextToken(command, &pos, extra, sizeof(extra))) {
+        console->PrintLine("touch: too many arguments");
+        return true;
+    }
+    char resolved_path[96];
+    if (!ResolveFilePath(g_cwd, name, resolved_path, sizeof(resolved_path))) {
+        console->PrintLine("touch: invalid path");
+        return true;
+    }
+    if (FindShellFileByAbsPath(resolved_path) != nullptr) {
+        return true;
+    }
+    if (FindBootFileByPath(g_cwd, name) != nullptr) {
+        console->PrintLine("touch: read-only boot file exists");
+        return true;
+    }
+    if (CreateShellFile(resolved_path) == nullptr) {
+        console->PrintLine("touch: file table full");
+        return true;
+    }
+    return true;
+}
+
+bool ExecuteWriteAppendCommand(const char* cmd, const char* command, int* pos_ptr) {
+    int& pos = *pos_ptr;
+    char name[64];
+    if (!NextToken(command, &pos, name, sizeof(name))) {
+        console->Print(StrEqual(cmd, "write") ? "write: filename required\n" : "append: filename required\n");
+        return true;
+    }
+    const char* text = RestOfLine(command, pos);
+    char resolved_path[96];
+    if (!ResolveFilePath(g_cwd, name, resolved_path, sizeof(resolved_path))) {
+        console->Print(StrEqual(cmd, "write") ? "write: invalid path\n" : "append: invalid path\n");
+        return true;
+    }
+    if (FindBootFileByPath(g_cwd, name) != nullptr) {
+        console->Print(StrEqual(cmd, "write") ? "write: boot file is read-only\n" : "append: boot file is read-only\n");
+        return true;
+    }
+    ShellFile* file = FindShellFileByAbsPathMutable(resolved_path);
+    if (file == nullptr) {
+        file = CreateShellFile(resolved_path);
+        if (file == nullptr) {
+            console->PrintLine("write: file table full");
+            return true;
+        }
+    }
+
+    const int text_len = StrLength(text);
+    if (StrEqual(cmd, "write")) {
+        const int max_write = static_cast<int>(sizeof(file->data));
+        int copy_len = (text_len < max_write) ? text_len : max_write;
+        for (int i = 0; i < copy_len; ++i) {
+            file->data[i] = static_cast<uint8_t>(text[i]);
+        }
+        file->size = static_cast<uint64_t>(copy_len);
+        if (copy_len < text_len) {
+            console->PrintLine("write: truncated");
+        }
+        return true;
+    }
+
+    const int max_size = static_cast<int>(sizeof(file->data));
+    int cur_size = static_cast<int>(file->size);
+    if (cur_size >= max_size) {
+        console->PrintLine("append: file full");
+        return true;
+    }
+    int writable = max_size - cur_size;
+    int copy_len = (text_len < writable) ? text_len : writable;
+    for (int i = 0; i < copy_len; ++i) {
+        file->data[cur_size + i] = static_cast<uint8_t>(text[i]);
+    }
+    file->size = static_cast<uint64_t>(cur_size + copy_len);
+    if (copy_len < text_len) {
+        console->PrintLine("append: truncated");
+    }
+    return true;
+}
+
 void ExecuteCommand(const char* command) {
     if (command[0] == '\0') {
         return;
@@ -2358,152 +2511,22 @@ void ExecuteCommand(const char* command) {
     }
 
     if (StrEqual(cmd, "cd")) {
-        InitializeDirectories();
-        if (rest[0] == '\0') {
-            CopyString(g_cwd, "/", sizeof(g_cwd));
-            return;
-        }
-        char resolved[96];
-        if (!ResolvePath(g_cwd, rest, resolved, sizeof(resolved))) {
-            console->PrintLine("cd: invalid path");
-            return;
-        }
-        if (!DirectoryExists(resolved)) {
-            console->Print("cd: no such directory: ");
-            console->PrintLine(rest);
-            return;
-        }
-        CopyString(g_cwd, resolved, sizeof(g_cwd));
+        ExecuteCdCommand(rest);
         return;
     }
 
     if (StrEqual(cmd, "mkdir")) {
-        InitializeDirectories();
-        char name[64];
-        if (!NextToken(command, &pos, name, sizeof(name))) {
-            console->PrintLine("mkdir: directory required");
-            return;
-        }
-        char extra[8];
-        if (NextToken(command, &pos, extra, sizeof(extra))) {
-            console->PrintLine("mkdir: too many arguments");
-            return;
-        }
-        char resolved[96];
-        if (!ResolvePath(g_cwd, name, resolved, sizeof(resolved))) {
-            console->PrintLine("mkdir: invalid path");
-            return;
-        }
-        if (StrEqual(resolved, "/")) {
-            console->PrintLine("mkdir: already exists: /");
-            return;
-        }
-        if (DirectoryExists(resolved)) {
-            console->Print("mkdir: already exists: ");
-            console->PrintLine(resolved);
-            return;
-        }
-        char parent[96];
-        if (!GetParentPath(resolved, parent, sizeof(parent))) {
-            console->PrintLine("mkdir: invalid parent");
-            return;
-        }
-        if (!DirectoryExists(parent)) {
-            console->Print("mkdir: parent missing: ");
-            console->PrintLine(parent);
-            return;
-        }
-        if (!CreateDirectory(resolved)) {
-            console->PrintLine("mkdir: table full");
-            return;
-        }
+        ExecuteMkdirCommand(command, &pos);
         return;
     }
 
     if (StrEqual(cmd, "touch")) {
-        char name[64];
-        if (!NextToken(command, &pos, name, sizeof(name))) {
-            console->PrintLine("touch: filename required");
-            return;
-        }
-        char extra[8];
-        if (NextToken(command, &pos, extra, sizeof(extra))) {
-            console->PrintLine("touch: too many arguments");
-            return;
-        }
-        char resolved_path[96];
-        if (!ResolveFilePath(g_cwd, name, resolved_path, sizeof(resolved_path))) {
-            console->PrintLine("touch: invalid path");
-            return;
-        }
-        if (FindShellFileByAbsPath(resolved_path) != nullptr) {
-            return;
-        }
-        if (FindBootFileByPath(g_cwd, name) != nullptr) {
-            console->PrintLine("touch: read-only boot file exists");
-            return;
-        }
-        if (CreateShellFile(resolved_path) == nullptr) {
-            console->PrintLine("touch: file table full");
-            return;
-        }
+        ExecuteTouchCommand(command, &pos);
         return;
     }
 
     if (StrEqual(cmd, "write") || StrEqual(cmd, "append")) {
-        char name[64];
-        if (!NextToken(command, &pos, name, sizeof(name))) {
-            console->Print(StrEqual(cmd, "write") ? "write: filename required\n" : "append: filename required\n");
-            return;
-        }
-        const char* text = RestOfLine(command, pos);
-        char resolved_path[96];
-        if (!ResolveFilePath(g_cwd, name, resolved_path, sizeof(resolved_path))) {
-            console->Print(StrEqual(cmd, "write") ? "write: invalid path\n" : "append: invalid path\n");
-            return;
-        }
-        if (FindBootFileByPath(g_cwd, name) != nullptr) {
-            console->Print(StrEqual(cmd, "write") ? "write: boot file is read-only\n" : "append: boot file is read-only\n");
-            return;
-        }
-        ShellFile* file = FindShellFileByAbsPathMutable(resolved_path);
-        if (file == nullptr) {
-            file = CreateShellFile(resolved_path);
-            if (file == nullptr) {
-                console->PrintLine("write: file table full");
-                return;
-            }
-        }
-
-        const int text_len = StrLength(text);
-        if (StrEqual(cmd, "write")) {
-            const int max_write = static_cast<int>(sizeof(file->data));
-            int copy_len = (text_len < max_write) ? text_len : max_write;
-            for (int i = 0; i < copy_len; ++i) {
-                file->data[i] = static_cast<uint8_t>(text[i]);
-            }
-            file->size = static_cast<uint64_t>(copy_len);
-            if (copy_len < text_len) {
-                console->PrintLine("write: truncated");
-            }
-            return;
-        }
-
-        const int max_size = static_cast<int>(sizeof(file->data));
-        int cur_size = static_cast<int>(file->size);
-        if (cur_size >= max_size) {
-            console->PrintLine("append: file full");
-            return;
-        }
-        int writable = max_size - cur_size;
-        int copy_len = (text_len < writable) ? text_len : writable;
-        for (int i = 0; i < copy_len; ++i) {
-            file->data[cur_size + i] = static_cast<uint8_t>(text[i]);
-        }
-        file->size = static_cast<uint64_t>(cur_size + copy_len);
-        if (copy_len < text_len) {
-            console->PrintLine("append: truncated");
-        }
+        ExecuteWriteAppendCommand(cmd, command, &pos);
         return;
     }
 
