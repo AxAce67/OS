@@ -143,7 +143,7 @@ uint32_t g_xhci_hid_auto_consecutive_failures = 0;
 uint64_t g_xhci_hid_auto_fail_count = 0;
 uint64_t g_xhci_hid_auto_recover_count = 0;
 uint64_t g_xhci_hid_next_recover_tick = 0;
-const bool kAutoStartXHCIHID = true;
+bool g_boot_mouse_auto_enabled = true;
 const uint32_t kAutoStartHIDLen = 8;
 const uint16_t kAutoStartHIDMps = 8;
 const uint8_t kAutoStartHIDInterval = 4;
@@ -2496,6 +2496,28 @@ void ExecuteCommand(const char* command) {
         char key[32];
         if (!NextToken(command, &pos, key, sizeof(key))) {
             PrintPairs("vars:", g_vars, static_cast<int>(sizeof(g_vars) / sizeof(g_vars[0])));
+            console->Print("mouse.auto=");
+            console->PrintLine(g_boot_mouse_auto_enabled ? "on" : "off");
+            return;
+        }
+        if (StrEqual(key, "mouse.auto")) {
+            const char* v = RestOfLine(command, pos);
+            if (v[0] == '\0') {
+                console->Print("mouse.auto=");
+                console->PrintLine(g_boot_mouse_auto_enabled ? "on" : "off");
+                return;
+            }
+            if (StrEqual(v, "on")) {
+                g_boot_mouse_auto_enabled = true;
+                console->PrintLine("mouse.auto=on");
+                return;
+            }
+            if (StrEqual(v, "off")) {
+                g_boot_mouse_auto_enabled = false;
+                console->PrintLine("mouse.auto=off");
+                return;
+            }
+            console->PrintLine("set mouse.auto: use on/off");
             return;
         }
         ShellPair* p = EnsurePair(g_vars, static_cast<int>(sizeof(g_vars) / sizeof(g_vars[0])), key);
@@ -2993,7 +3015,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             console->PrintHex(g_xhci_caps.rts_off, 8);
             console->Print("\n");
 
-            if (kAutoStartXHCIHID) {
+            if (g_boot_mouse_auto_enabled) {
                 ResetHIDDecodeLearning();
                 if (StartXHCIAutoMouse(kAutoStartHIDLen, kAutoStartHIDMps, kAutoStartHIDInterval)) {
                     console->Print("xHCI HID auto-start: ok (slot=");
