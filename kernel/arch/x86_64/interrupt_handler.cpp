@@ -156,3 +156,21 @@ void InitializeInterruptHandlers() {
                            14,
                            0);
 }
+
+void EnqueueAbsolutePointerEvent(int32_t x, int32_t y, int32_t wheel) {
+    if (main_queue == nullptr) {
+        return;
+    }
+    Message msg;
+    msg.type = Message::Type::kInterruptMouse;
+    msg.pointer_mode = Message::PointerMode::kAbsolute;
+    msg.dx = 0;
+    msg.dy = 0;
+    msg.x = x;
+    msg.y = y;
+    msg.wheel = wheel;
+    msg.keycode = 0;
+    if (!main_queue->Push(msg)) {
+        ++g_mouse_dropped_events;
+    }
+}

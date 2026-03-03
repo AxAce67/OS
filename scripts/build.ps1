@@ -121,10 +121,19 @@ if (Test-Path $ovmf) {
     if (-Not (Test-Path "OVMF.fd")) {
         Copy-Item $ovmf -Destination "OVMF.fd"
     }
-    & $qemu -m 512M -pflash "OVMF.fd" -drive "format=raw,file=fat:rw:disk"
+    & $qemu -m 512M `
+        -display "gtk,show-menubar=off" `
+        -device qemu-xhci `
+        -device usb-tablet `
+        -pflash "OVMF.fd" `
+        -drive "format=raw,file=fat:rw:disk"
 }
 else {
     Write-Host "Warning: OVMF.fd (UEFI BIOS) not found. QEMU might boot in Legacy BIOS mode." -ForegroundColor Yellow
     # 警告を出しつつFATディレクトリを指定して通常起動
-    & $qemu -m 512M -drive "format=raw,file=fat:rw:disk"
+    & $qemu -m 512M `
+        -display "gtk,show-menubar=off" `
+        -device qemu-xhci `
+        -device usb-tablet `
+        -drive "format=raw,file=fat:rw:disk"
 }
