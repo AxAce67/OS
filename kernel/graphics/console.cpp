@@ -32,6 +32,9 @@ void Console::Print(const char* s) {
             if (cursor_column_ >= kColumns) {
                 Newline();
             }
+            // 文字セルを背景色で消してから文字を描く。
+            // これをしないと space 描画時に既存ピクセルが残って重なって見える。
+            window_->FillRectangle(8 * cursor_column_, 16 * cursor_row_, 8, 16, {bg_r_, bg_g_, bg_b_});
             window_->DrawChar(8 * cursor_column_, 16 * cursor_row_, *s, {fg_r_, fg_g_, fg_b_});
             buffer_[cursor_row_][cursor_column_] = *s;
             ++cursor_column_;
@@ -90,6 +93,40 @@ void Console::PrintDec(int64_t value) {
     }
     buf[pos] = '\0';
     Print(buf);
+}
+
+void Console::Clear() {
+    window_->FillRectangle(0, 0, window_->Width(), window_->Height(), {bg_r_, bg_g_, bg_b_});
+    memset(buffer_, 0, sizeof(buffer_));
+    cursor_row_ = 0;
+    cursor_column_ = 0;
+}
+
+bool Console::Backspace() {
+    if (cursor_column_ == 0) {
+        return false;
+    }
+    --cursor_column_;
+    buffer_[cursor_row_][cursor_column_] = '\0';
+    window_->FillRectangle(8 * cursor_column_, 16 * cursor_row_, 8, 16, {bg_r_, bg_g_, bg_b_});
+    return true;
+}
+
+int Console::CursorRow() const {
+    return cursor_row_;
+}
+
+int Console::CursorColumn() const {
+    return cursor_column_;
+}
+
+void Console::SetCursorPosition(int row, int column) {
+    if (row < 0) row = 0;
+    if (row >= kRows) row = kRows - 1;
+    if (column < 0) column = 0;
+    if (column >= kColumns) column = kColumns - 1;
+    cursor_row_ = row;
+    cursor_column_ = column;
 }
 
 void Console::Newline() {
