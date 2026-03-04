@@ -961,6 +961,90 @@ inline bool ProcessMouseConsoleSelectionAtPointer(
     return true;
 }
 
+template <class TScrollUp, class TScrollDown, class TRefreshConsole>
+inline bool HandleMouseWheelScroll(int32_t wheel,
+                                   TScrollUp&& scroll_up,
+                                   TScrollDown&& scroll_down,
+                                   TRefreshConsole&& refresh_console);
+
+template <class TApplyWindowFocus,
+          class TClearSelection,
+          class TEnsureLiveConsole,
+          class TRenderInputLine,
+          class TRefreshInputLine,
+          class TScrollUp,
+          class TScrollDown,
+          class TRefreshConsole>
+inline void HandleMouseMessageRuntime(
+    const Message& msg,
+    uint64_t now_tick,
+    int active_window,
+    const RuntimeMouseMessageContext& context,
+    const RuntimeMouseWindowGeometry& geometry,
+    const RuntimeConsoleGridMetrics& console_metrics,
+    const RuntimeMouseConsoleSelectionRefs& selection_refs,
+    bool has_selection,
+    TApplyWindowFocus&& apply_window_focus,
+    TClearSelection&& clear_selection,
+    TEnsureLiveConsole&& ensure_live_console,
+    TRenderInputLine&& render_input_line,
+    TRefreshInputLine&& refresh_input_line,
+    TScrollUp&& scroll_up,
+    TScrollDown&& scroll_down,
+    TRefreshConsole&& refresh_console) {
+    const auto button_transition = UpdateMouseButtonsAndCounters(
+        msg.buttons,
+        context.button_counters);
+    const uint8_t prev_buttons = button_transition.prev_buttons;
+    const uint8_t now_buttons = button_transition.now_buttons;
+    const uint8_t pressed = button_transition.pressed_buttons;
+
+    if (UpdatePointerPositionFromMouseMessage(
+            msg,
+            now_tick,
+            context.pointer_update) == RuntimeMousePointerUpdateResult::kIgnoredRelative) {
+        return;
+    }
+    if (context.pointer_update.pointer_logical_x == nullptr ||
+        context.pointer_update.pointer_logical_y == nullptr) {
+        return;
+    }
+    const int pointer_x = *context.pointer_update.pointer_logical_x;
+    const int pointer_y = *context.pointer_update.pointer_logical_y;
+
+    if (ProcessMouseWindowFocusAndDrag(pointer_x,
+                                       pointer_y,
+                                       active_window,
+                                       prev_buttons,
+                                       now_buttons,
+                                       pressed,
+                                       geometry,
+                                       context.drag_refs,
+                                       context.drag_stop_refs,
+                                       context.pending_drag_refs,
+                                       apply_window_focus,
+                                       clear_selection)) {
+        return;
+    }
+    if (!ProcessMouseConsoleSelectionAtPointer(pointer_x,
+                                               pointer_y,
+                                               pressed,
+                                               now_buttons,
+                                               console_metrics,
+                                               selection_refs,
+                                               has_selection,
+                                               clear_selection,
+                                               ensure_live_console,
+                                               render_input_line,
+                                               refresh_input_line)) {
+        return;
+    }
+    HandleMouseWheelScroll(msg.wheel,
+                           scroll_up,
+                           scroll_down,
+                           refresh_console);
+}
+
 template <class TQueueCount, class TQueuePeek, class TQueuePop>
 inline void CoalesceMouseInterruptMessage(Message* msg,
                                           TQueueCount&& queue_count,

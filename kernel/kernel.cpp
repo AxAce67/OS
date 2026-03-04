@@ -2855,126 +2855,90 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 &drag_visual_dirty,
             },
         };
-        const auto button_transition = input::UpdateMouseButtonsAndCounters(
-            msg.buttons,
-            mouse_context.button_counters);
-        const uint8_t prev_buttons = button_transition.prev_buttons;
-        const uint8_t now_buttons = button_transition.now_buttons;
-        const uint8_t pressed = button_transition.pressed_buttons;
-        if (input::UpdatePointerPositionFromMouseMessage(
-                msg,
-                CurrentTick(),
-                mouse_context.pointer_update) == input::RuntimeMousePointerUpdateResult::kIgnoredRelative) {
-            return;  // USB absolute pointer is active; ignore noisy PS/2 relative moves.
-        }
-        const int pointer_x = pointer_logical_x;
-        const int pointer_y = pointer_logical_y;
-        {
-            auto ApplyWindowFocus = [&](int which) {
-                if (which == active_window) {
-                    return;
-                }
-                const int term_frame_x0 = term_frame_layer->GetX();
-                const int term_frame_y0 = term_frame_layer->GetY();
-                const int info_frame_x0 = info_frame_layer->GetX();
-                const int info_frame_y0 = info_frame_layer->GetY();
-                active_window = which;
-                if (which == 0) {
-                    layer_manager->UpDown(info_frame_layer, 2);
-                    layer_manager->UpDown(info_content_layer, 3);
-                    layer_manager->UpDown(term_frame_layer, 4);
-                    layer_manager->UpDown(term_console_layer, 5);
-                    DrawFrameTitle(term_frame_window, term_frame_border, term_title_h, term_frame_w, "Terminal", true);
-                    term_frame_window->FillRectangle(term_frame_w - 20, 6, 12, 12, {175, 68, 68});
-                    DrawFrameTitle(info_frame_window, info_frame_border, info_title_h, info_frame_w, "System", false);
-                    info_frame_window->FillRectangle(info_frame_w - 20, 6, 12, 12, {104, 108, 126});
-                } else {
-                    layer_manager->UpDown(term_frame_layer, 2);
-                    layer_manager->UpDown(term_console_layer, 3);
-                    layer_manager->UpDown(info_frame_layer, 4);
-                    layer_manager->UpDown(info_content_layer, 5);
-                    DrawFrameTitle(term_frame_window, term_frame_border, term_title_h, term_frame_w, "Terminal", false);
-                    term_frame_window->FillRectangle(term_frame_w - 20, 6, 12, 12, {130, 74, 74});
-                    DrawFrameTitle(info_frame_window, info_frame_border, info_title_h, info_frame_w, "System", true);
-                    info_frame_window->FillRectangle(info_frame_w - 20, 6, 12, 12, {104, 108, 126});
-                }
-                (void)term_frame_x0;
-                (void)term_frame_y0;
-                (void)info_frame_x0;
-                (void)info_frame_y0;
-                focus_visual_dirty = true;
-            };
-            if (input::ProcessMouseWindowFocusAndDrag(
-                pointer_x,
-                pointer_y,
-                active_window,
-                prev_buttons,
-                now_buttons,
-                pressed,
-                input::RuntimeMouseWindowGeometry{
-                    term_frame_layer->GetX(),
-                    term_frame_layer->GetY(),
-                    term_frame_w,
-                    term_frame_h,
-                    term_title_h,
-                    info_frame_layer->GetX(),
-                    info_frame_layer->GetY(),
-                    info_frame_w,
-                    info_frame_h,
-                    info_title_h,
-                    screen_w - term_frame_w,
-                    screen_h - taskbar_h - term_frame_h,
-                    screen_w - info_frame_w,
-                    screen_h - taskbar_h - info_frame_h,
-                    term_frame_layer->GetX(),
-                    term_frame_layer->GetY(),
-                    info_frame_layer->GetX(),
-                    info_frame_layer->GetY(),
-                },
-                mouse_context.drag_refs,
-                mouse_context.drag_stop_refs,
-                mouse_context.pending_drag_refs,
-                ApplyWindowFocus,
-                ClearSelection)) {
+        auto ApplyWindowFocus = [&](int which) {
+            if (which == active_window) {
                 return;
             }
-
-            const int console_x = term_console_layer->GetX();
-            const int console_y = term_console_layer->GetY();
-            if (!input::ProcessMouseConsoleSelectionAtPointer(
-                pointer_x,
-                pointer_y,
-                pressed,
-                now_buttons,
-                input::RuntimeConsoleGridMetrics{
-                    console_x,
-                    console_y,
-                    term_content_w,
-                    term_content_h,
-                    Console::kMarginX,
-                    Console::kMarginY,
-                    Console::kCellWidth,
-                    Console::kCellHeight,
-                },
-                input::RuntimeMouseConsoleSelectionRefs{
-                    &selecting_with_mouse,
-                    &selection_anchor,
-                    &selection_end,
-                    &cursor_pos,
-                    input_row,
-                    input_col,
-                    command_len,
-                },
-                input::HasSelection(selection_anchor, selection_end),
-                ClearSelection,
-                EnsureLiveConsole,
-                RenderInputLine,
-                RefreshInputLine)) {
-                return;
+            const int term_frame_x0 = term_frame_layer->GetX();
+            const int term_frame_y0 = term_frame_layer->GetY();
+            const int info_frame_x0 = info_frame_layer->GetX();
+            const int info_frame_y0 = info_frame_layer->GetY();
+            active_window = which;
+            if (which == 0) {
+                layer_manager->UpDown(info_frame_layer, 2);
+                layer_manager->UpDown(info_content_layer, 3);
+                layer_manager->UpDown(term_frame_layer, 4);
+                layer_manager->UpDown(term_console_layer, 5);
+                DrawFrameTitle(term_frame_window, term_frame_border, term_title_h, term_frame_w, "Terminal", true);
+                term_frame_window->FillRectangle(term_frame_w - 20, 6, 12, 12, {175, 68, 68});
+                DrawFrameTitle(info_frame_window, info_frame_border, info_title_h, info_frame_w, "System", false);
+                info_frame_window->FillRectangle(info_frame_w - 20, 6, 12, 12, {104, 108, 126});
+            } else {
+                layer_manager->UpDown(term_frame_layer, 2);
+                layer_manager->UpDown(term_console_layer, 3);
+                layer_manager->UpDown(info_frame_layer, 4);
+                layer_manager->UpDown(info_content_layer, 5);
+                DrawFrameTitle(term_frame_window, term_frame_border, term_title_h, term_frame_w, "Terminal", false);
+                term_frame_window->FillRectangle(term_frame_w - 20, 6, 12, 12, {130, 74, 74});
+                DrawFrameTitle(info_frame_window, info_frame_border, info_title_h, info_frame_w, "System", true);
+                info_frame_window->FillRectangle(info_frame_w - 20, 6, 12, 12, {104, 108, 126});
             }
-        }
-        input::HandleMouseWheelScroll(
-            msg.wheel,
+            (void)term_frame_x0;
+            (void)term_frame_y0;
+            (void)info_frame_x0;
+            (void)info_frame_y0;
+            focus_visual_dirty = true;
+        };
+        input::HandleMouseMessageRuntime(
+            msg,
+            CurrentTick(),
+            active_window,
+            mouse_context,
+            input::RuntimeMouseWindowGeometry{
+                term_frame_layer->GetX(),
+                term_frame_layer->GetY(),
+                term_frame_w,
+                term_frame_h,
+                term_title_h,
+                info_frame_layer->GetX(),
+                info_frame_layer->GetY(),
+                info_frame_w,
+                info_frame_h,
+                info_title_h,
+                screen_w - term_frame_w,
+                screen_h - taskbar_h - term_frame_h,
+                screen_w - info_frame_w,
+                screen_h - taskbar_h - info_frame_h,
+                term_frame_layer->GetX(),
+                term_frame_layer->GetY(),
+                info_frame_layer->GetX(),
+                info_frame_layer->GetY(),
+            },
+            input::RuntimeConsoleGridMetrics{
+                term_console_layer->GetX(),
+                term_console_layer->GetY(),
+                term_content_w,
+                term_content_h,
+                Console::kMarginX,
+                Console::kMarginY,
+                Console::kCellWidth,
+                Console::kCellHeight,
+            },
+            input::RuntimeMouseConsoleSelectionRefs{
+                &selecting_with_mouse,
+                &selection_anchor,
+                &selection_end,
+                &cursor_pos,
+                input_row,
+                input_col,
+                command_len,
+            },
+            input::HasSelection(selection_anchor, selection_end),
+            ApplyWindowFocus,
+            ClearSelection,
+            EnsureLiveConsole,
+            RenderInputLine,
+            RefreshInputLine,
             [&](int lines) { console->ScrollUp(lines); },
             [&](int lines) { console->ScrollDown(lines); },
             RefreshConsole);
