@@ -3055,6 +3055,38 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         decltype(RepaintPromptAndInput)>;
     using ExtendedExecBundle = input::RuntimeExtendedExecBundleT<InputActionOwner>;
     using RegularExecBundle = input::RuntimeRegularExecBundleT<InputActionOwner, RegularShortcutOwner>;
+    struct RuntimeFlowBundles {
+        ExtendedExecBundle extended;
+        RegularExecBundle regular;
+    };
+    auto BuildRuntimeFlowBundles = [&](RuntimeFlowBundles* bundles) {
+        if (bundles == nullptr) {
+            return;
+        }
+        input::BuildExtendedExecBundle(&bundles->extended,
+                                       console,
+                                       &RefreshConsole,
+                                       &BrowseHistoryUp,
+                                       &BrowseHistoryDown,
+                                       &DeleteAtCursor);
+        input::BuildRegularExecBundle(&bundles->regular,
+                                      console,
+                                      &RefreshConsole,
+                                      &CycleImeCandidate,
+                                      &BrowseHistoryUp,
+                                      &BrowseHistoryDown,
+                                      &BackspaceAtCursor,
+                                      &DeleteAtCursor,
+                                      &HandleTabCompletion,
+                                      &DeleteRangeAt,
+                                      &ClearImeCandidate,
+                                      &input_row,
+                                      &input_col,
+                                      &PrintPrompt,
+                                      &ClearSelection,
+                                      &command_history,
+                                      &RepaintPromptAndInput);
+    };
 
     auto RenderAndRefreshInput = [&]() {
         RenderInputLine();
@@ -3089,14 +3121,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 &exec_plan)) {
             return false;
         }
-        ExtendedExecBundle exec_bundle{};
-        input::BuildExtendedExecBundle(&exec_bundle,
-                                       console,
-                                       &RefreshConsole,
-                                       &BrowseHistoryUp,
-                                       &BrowseHistoryDown,
-                                       &DeleteAtCursor);
-        const auto action_context = input::BuildExtendedActionContext(&exec_bundle.owner);
+        RuntimeFlowBundles bundles{};
+        BuildRuntimeFlowBundles(&bundles);
+        const auto action_context = input::BuildExtendedActionContext(&bundles.extended.owner);
         const auto chain_result =
             input::ExecuteExtendedExecChain(exec_plan, action_context, &cursor_pos, command_len);
         if (chain_result == input::ExecChainResult::kHandledNeedsRender) {
@@ -3131,26 +3158,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 &exec_plan)) {
             return false;
         }
-        RegularExecBundle exec_bundle{};
-        input::BuildRegularExecBundle(&exec_bundle,
-                                      console,
-                                      &RefreshConsole,
-                                      &CycleImeCandidate,
-                                      &BrowseHistoryUp,
-                                      &BrowseHistoryDown,
-                                      &BackspaceAtCursor,
-                                      &DeleteAtCursor,
-                                      &HandleTabCompletion,
-                                      &DeleteRangeAt,
-                                      &ClearImeCandidate,
-                                      &input_row,
-                                      &input_col,
-                                      &PrintPrompt,
-                                      &ClearSelection,
-                                      &command_history,
-                                      &RepaintPromptAndInput);
-        const auto action_context = input::BuildRegularActionContext(&exec_bundle.action_owner);
-        const auto ime_context = input::BuildRegularImeContext(&exec_bundle.shortcut_owner,
+        RuntimeFlowBundles bundles{};
+        BuildRuntimeFlowBundles(&bundles);
+        const auto action_context = input::BuildRegularActionContext(&bundles.regular.action_owner);
+        const auto ime_context = input::BuildRegularImeContext(&bundles.regular.shortcut_owner,
                                                                ime_candidate_entry,
                                                                ime_candidate_start,
                                                                ime_candidate_len,
@@ -3158,7 +3169,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                                                static_cast<int>(sizeof(ime_romaji_buffer)),
                                                                &ime_romaji_len,
                                                                StrLength);
-        const auto clear_context = input::BuildRegularClearContext(&exec_bundle.shortcut_owner,
+        const auto clear_context = input::BuildRegularClearContext(&bundles.regular.shortcut_owner,
                                                                    command_buffer,
                                                                    static_cast<int>(sizeof(command_buffer)),
                                                                    &command_len,
@@ -3167,7 +3178,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                                                    ime_romaji_buffer,
                                                                    static_cast<int>(sizeof(ime_romaji_buffer)),
                                                                    &ime_romaji_len);
-        const auto mode_context = input::BuildRegularModeContext(&exec_bundle.shortcut_owner,
+        const auto mode_context = input::BuildRegularModeContext(&bundles.regular.shortcut_owner,
                                                                  exec_plan.mode_action,
                                                                  &g_ime_enabled,
                                                                  &g_jp_layout);
