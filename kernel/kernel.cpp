@@ -83,6 +83,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "input/key_handler.hpp"
 #include "input/key_handler_exec.hpp"
 #include "input/runtime_input_flow.hpp"
+#include "input/input_runtime_bridge.hpp"
 #include "input/key_flow.hpp"
 #include "input/line_editor.hpp"
 #include "input/line_ops.hpp"
@@ -2852,44 +2853,34 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         focus_visual_dirty = true;
     };
     auto BuildMouseRuntimeContext = [&](input::RuntimeMouseMessageContext* out_context) {
-        input::BuildRuntimeMouseMessageContext(
+        input::bridge::BuildMouseRuntimeContext(
             out_context,
-            input::RuntimeMouseButtonCounterRefs{
-                &g_mouse_buttons_current,
-                &g_mouse_left_press_count,
-                &g_mouse_right_press_count,
-                &g_mouse_middle_press_count,
-            },
-            input::RuntimeMousePointerUpdateRefs{
-                &pointer_logical_x,
-                &pointer_logical_y,
-                screen_w,
-                screen_h,
-                g_xhci_hid_auto_enabled,
-                &g_last_absolute_mouse_tick,
-                &pointer_visual_dirty,
-                &last_pointer_move_tick,
-            },
-            input::RuntimeMouseDragRefs{
-                &dragging_window,
-                &drag_offset_x,
-                &drag_offset_y,
-            },
-            input::RuntimeMouseDragStopRefs{
-                &selecting_with_mouse,
-                &dragging_window,
-            },
-            input::RuntimePendingDragRefs{
-                &drag_pending_window,
-                &drag_pending_x,
-                &drag_pending_y,
-                &drag_pending_move,
-                &drag_visual_dirty,
-            }
-        );
+            &g_mouse_buttons_current,
+            &g_mouse_left_press_count,
+            &g_mouse_right_press_count,
+            &g_mouse_middle_press_count,
+            &pointer_logical_x,
+            &pointer_logical_y,
+            screen_w,
+            screen_h,
+            g_xhci_hid_auto_enabled,
+            &g_last_absolute_mouse_tick,
+            &pointer_visual_dirty,
+            &last_pointer_move_tick,
+            &dragging_window,
+            &drag_offset_x,
+            &drag_offset_y,
+            &selecting_with_mouse,
+            &drag_pending_window,
+            &drag_pending_x,
+            &drag_pending_y,
+            &drag_pending_move,
+            &drag_visual_dirty);
     };
     auto BuildMouseWindowGeometry = [&]() {
-        return input::BuildRuntimeMouseWindowGeometry(
+        input::RuntimeMouseWindowGeometry geometry{};
+        input::bridge::BuildMouseWindowGeometry(
+            &geometry,
             term_frame_layer->GetX(),
             term_frame_layer->GetY(),
             term_frame_w,
@@ -2907,11 +2898,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             term_frame_layer->GetX(),
             term_frame_layer->GetY(),
             info_frame_layer->GetX(),
-            info_frame_layer->GetY()
-        );
+            info_frame_layer->GetY());
+        return geometry;
     };
     auto BuildConsoleGridMetrics = [&]() {
-        return input::BuildRuntimeConsoleGridMetrics(
+        input::RuntimeConsoleGridMetrics metrics{};
+        input::bridge::BuildConsoleGridMetrics(
+            &metrics,
             term_console_layer->GetX(),
             term_console_layer->GetY(),
             term_content_w,
@@ -2919,19 +2912,21 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             Console::kMarginX,
             Console::kMarginY,
             Console::kCellWidth,
-            Console::kCellHeight
-        );
+            Console::kCellHeight);
+        return metrics;
     };
     auto BuildMouseSelectionRefs = [&]() {
-        return input::BuildRuntimeMouseConsoleSelectionRefs(
+        input::RuntimeMouseConsoleSelectionRefs refs{};
+        input::bridge::BuildMouseSelectionRefs(
+            &refs,
             &selecting_with_mouse,
             &selection_anchor,
             &selection_end,
             &cursor_pos,
             input_row,
             input_col,
-            command_len
-        );
+            command_len);
+        return refs;
     };
     auto ScrollConsoleUp = [&](int lines) { console->ScrollUp(lines); };
     auto ScrollConsoleDown = [&](int lines) { console->ScrollDown(lines); };
@@ -3100,29 +3095,34 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         });
     };
     auto BuildKeyboardDecodeRefs = [&]() {
-        return input::RuntimeKeyboardDecodeRefs{
+        input::RuntimeKeyboardDecodeRefs refs{};
+        input::bridge::BuildKeyboardDecodeRefs(
+            &refs,
             &g_keyboard_irq_count,
             &g_keyboard_last_raw,
             &g_keyboard_last_key,
             &g_keyboard_last_extended,
             &g_keyboard_last_released,
             &e0_prefix,
-            &keyboard_mods,
-        };
+            &keyboard_mods);
+        return refs;
     };
     auto BuildKeyboardImeProcessContext = [&]() {
-        return input::RuntimeImeProcessContextT<ImeCandidateEntry>{
+        input::RuntimeImeProcessContextT<ImeCandidateEntry> context{};
+        input::bridge::BuildKeyboardImeProcessContext(
+            &context,
             ime_romaji_buffer,
             static_cast<int>(sizeof(ime_romaji_buffer)),
             &ime_romaji_len,
-            &ime_candidate_entry,
-        };
+            &ime_candidate_entry);
+        return context;
     };
     auto BuildKeyboardRuntimeContext = [&](input::RuntimeKeyboardMessageContextT<ImeCandidateEntry>* out_context) {
-        input::BuildRuntimeKeyboardMessageContext<ImeCandidateEntry>(
+        input::bridge::BuildKeyboardRuntimeContext<ImeCandidateEntry>(
             out_context,
             BuildKeyboardDecodeRefs(),
-            input::RuntimeKeyDownRefs{key_down_extended, key_down_normal},
+            key_down_extended,
+            key_down_normal,
             g_key_repeat_enabled,
             g_jp_layout,
             g_ime_enabled,
@@ -3134,14 +3134,18 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         );
     };
     auto BuildEnterCommandRefs = [&]() {
-        return input::RuntimeEnterCommandRefs{
+        input::RuntimeEnterCommandRefs refs{};
+        input::bridge::BuildEnterCommandRefs(
+            &refs,
             command_buffer,
             static_cast<int>(sizeof(command_buffer)),
-            &command_len,
-        };
+            &command_len);
+        return refs;
     };
     auto BuildCommandResetRefs = [&]() {
-        return input::RuntimeCommandInputStateRefs{
+        input::RuntimeCommandInputStateRefs refs{};
+        input::bridge::BuildCommandResetRefs(
+            &refs,
             command_buffer,
             static_cast<int>(sizeof(command_buffer)),
             &command_len,
@@ -3149,8 +3153,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             &rendered_len,
             ime_romaji_buffer,
             static_cast<int>(sizeof(ime_romaji_buffer)),
-            &ime_romaji_len,
-        };
+            &ime_romaji_len);
+        return refs;
     };
     auto ResolveImeCandidateEntryFromRomaji = [&](const char* romaji,
                                                    int romaji_len,
