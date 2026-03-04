@@ -3135,6 +3135,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             if (exec_plan.clear_selection) {
                 ClearSelection();
             }
+            struct RegularNeutralCtx {
+                int* cursor_pos;
+                int command_len;
+            } neutral_ctx{&cursor_pos, command_len};
+            const input::RegularNeutralCallbacks neutral_callbacks{
+                [](void* ctx, int target) {
+                    auto* c = reinterpret_cast<RegularNeutralCtx*>(ctx);
+                    input::SetCursorValue(c->cursor_pos, target);
+                },
+            };
             switch (exec_plan.kind) {
             case input::RegularExecKind::kApplyImeModeAndRepaint: {
                 const auto mode = input::ApplyImeModeAction(exec_plan.mode_action, g_ime_enabled, g_jp_layout);
@@ -3181,16 +3191,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RenderInputLine();
                 RefreshInputLine();
                 return true;
-            case input::RegularExecKind::kMoveCursorStart:
-                input::SetCursorValue(&cursor_pos, 0);
-                RenderInputLine();
-                RefreshInputLine();
-                return true;
-            case input::RegularExecKind::kMoveCursorEnd:
-                input::SetCursorValue(&cursor_pos, command_len);
-                RenderInputLine();
-                RefreshInputLine();
-                return true;
             case input::RegularExecKind::kHistoryUpWithCandidate:
                 if (input::ShouldBrowseHistoryAfterCycle(CycleImeCandidate(-1))) {
                     BrowseHistoryUp();
@@ -3211,6 +3211,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 HandleTabCompletion();
                 return true;
             default:
+                if (input::ExecuteRegularNeutralAction(exec_plan.kind,
+                                                       neutral_ctx.command_len,
+                                                       neutral_callbacks,
+                                                       &neutral_ctx)) {
+                    RenderInputLine();
+                    RefreshInputLine();
+                    return true;
+                }
                 break;
             }
         }

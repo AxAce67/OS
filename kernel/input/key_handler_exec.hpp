@@ -29,4 +29,13 @@ void SetCursorValue(int* cursor_pos, int target);
 
 bool ShouldBrowseHistoryAfterCycle(bool cycle_succeeded);
 
+struct RegularNeutralCallbacks {
+    void (*set_cursor_value)(void* ctx, int target);
+};
+
+bool ExecuteRegularNeutralAction(RegularExecKind kind,
+                                 int command_len,
+                                 const RegularNeutralCallbacks& callbacks,
+                                 void* ctx);
+
 }  // namespace input
