@@ -3179,6 +3179,154 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return ExecuteRegularChainWithContexts(bundles, exec_plan, refs);
         });
     };
+    auto HandleKeyboardMessage = [&](const Message& msg) {
+        ++g_keyboard_irq_count;
+        g_keyboard_last_raw = msg.keycode;
+        KeyEvent key_event{};
+        if (!DecodePS2Set1KeyEvent(msg.keycode, &e0_prefix, &keyboard_mods, &key_event)) {
+            return;
+        }
+        g_keyboard_last_key = key_event.keycode;
+        g_keyboard_last_extended = key_event.extended;
+        g_keyboard_last_released = key_event.released;
+        if (key_event.kind == KeyEventKind::kModifier) {
+            return;
+        }
+        const input::RuntimeKeyDownRefs key_down_refs{key_down_extended, key_down_normal};
+        if (input::TryConsumeReleasedKey(key_event, key_down_refs)) {
+            return;
+        }
+        const uint8_t key = key_event.keycode;
+        if (!input::ShouldProcessAfterExtendedKey(key_event, key, HandleExtendedKey)) {
+            return;
+        }
+        if (input::ShouldSkipRepeatedKeyDown(key_event, g_key_repeat_enabled, key_down_refs)) {
+            return;
+        }
+        input::MarkKeyDownIfTrackable(key_event, key_down_refs);
+        if (HandleRegularKeyShortcut(key)) {
+            return;
+        }
+
+        char ch = KeycodeToAsciiByLayout(key,
+                                         key_event.shift,
+                                         key_event.caps_lock,
+                                         key_event.num_lock,
+                                         g_jp_layout);
+        if (ch == 0) {
+            return;
+        }
+
+        EnsureLiveConsole();
+        bool full_refresh = false;
+        const input::ImeCharDecision ime_decision =
+            input::DecideImeCharHandling(ch,
+                                         g_ime_enabled,
+                                         g_jp_layout,
+                                         g_has_halfwidth_kana_font,
+                                         ime_candidate_active,
+                                         ime_candidate_entry,
+                                         ime_romaji_len,
+                                         ToLowerAscii);
+        if (ime_decision.ime_path) {
+            if (input::TryHandleImeCandidateCycle(
+                    ime_decision.cycle_candidate,
+                    [&]() { return input::AdvanceImeCandidateIndex(ime_candidate_entry, &ime_candidate_index); },
+                    ReplaceImeCandidateText)) {
+                return;
+            }
+            input::ApplyImeCommitSideEffects(
+                ime_decision.commit_candidate,
+                CommitImeCandidateLearning,
+                ClearImeCandidate);
+            if (input::TryHandleImeAppendAlpha(
+                    ime_decision.append_alpha,
+                    ime_decision.lower_alpha,
+                    ime_romaji_buffer,
+                    static_cast<int>(sizeof(ime_romaji_buffer)),
+                    &ime_romaji_len,
+                    FlushImeRomaji,
+                    RenderInputLine,
+                    RefreshInputLine)) {
+                return;
+            }
+            if (input::TryStartImeCandidateFromRomaji(
+                    ime_decision.try_start_candidate,
+                    ime_romaji_buffer,
+                    &ime_romaji_len,
+                    &ime_candidate_entry,
+                    [&](const char* romaji, int romaji_len, char* keybuf, int keybuf_capacity) {
+                        return input::ResolveCandidateEntryFromRomaji(
+                            romaji,
+                            romaji_len,
+                            keybuf,
+                            keybuf_capacity,
+                            ToLowerAscii,
+                            FindImeCandidateEntry);
+                    },
+                    TryBuildPrefixCandidateEntry,
+                    [](const ImeCandidateEntry* entry) { return entry != nullptr && entry->count > 0; },
+                    [&]() { return input::HasSelection(selection_anchor, selection_end); },
+                    DeleteSelection,
+                    [&](const ImeCandidateEntry* entry) {
+                        input::StartImeCandidateSession(
+                            entry, cursor_pos, ime_candidate_source_keys,
+                            FindBestImeCandidateIndex(entry),
+                            &ime_candidate_index, &ime_candidate_start, &ime_candidate_len,
+                            &ime_candidate_active,
+                            CopyString);
+                    },
+                    ReplaceImeCandidateText)) {
+                return;
+            }
+            input::FinalizeImeRomajiIfNeeded(ime_decision.finalize_romaji, FlushImeRomaji);
+        }
+        if (ch == '\n') {
+            console->SetCursorPosition(input_row, input_col + command_len);
+            console->Print("\n");
+            command_buffer[command_len] = '\0';
+            if (command_len > 0) {
+                command_history.Add(command_buffer);
+            }
+            input::ExecuteShellCommandOrHistory(
+                command_buffer,
+                StrEqual,
+                [&]() { PrintHistory(command_history); },
+                [&]() {
+                    command_history.Clear();
+                    console->PrintLine("history cleared");
+                },
+                [&]() { ExecuteCommand(command_buffer); });
+            const input::RuntimeCommandInputStateRefs reset_refs{
+                command_buffer,
+                static_cast<int>(sizeof(command_buffer)),
+                &command_len,
+                &cursor_pos,
+                &rendered_len,
+                ime_romaji_buffer,
+                static_cast<int>(sizeof(ime_romaji_buffer)),
+                &ime_romaji_len,
+            };
+            input::ResetAfterCommandExecution(
+                reset_refs,
+                ClearImeCandidate,
+                ClearSelection,
+                [&]() { command_history.ResetNavigation(); },
+                PrintPrompt,
+                [&]() {
+                    input_row = console->CursorRow();
+                    input_col = console->CursorColumn();
+                    console->SetCursorPosition(input_row, input_col);
+                });
+            full_refresh = true;
+        } else if (IsPrintableAscii(ch)) {
+            DeleteSelection();
+            if (InsertByteAtCursor(static_cast<uint8_t>(ch))) {
+                RenderInputLine();
+            }
+        }
+        input::RefreshAfterKeyboardCharInput(full_refresh, RefreshConsole, RefreshInputLine);
+    };
 
     while (1) {
         // 処理すべきイベントがあるか、割り込みを禁止(cli)した上で安全にチェックする（競合対策）
@@ -3256,153 +3404,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             case Message::Type::kInterruptMouse:
                 HandleMouseMessage(msg);
                 break;
-            case Message::Type::kInterruptKeyboard: {
-                ++g_keyboard_irq_count;
-                g_keyboard_last_raw = msg.keycode;
-                KeyEvent key_event{};
-                if (!DecodePS2Set1KeyEvent(msg.keycode, &e0_prefix, &keyboard_mods, &key_event)) {
-                    break;
-                }
-                g_keyboard_last_key = key_event.keycode;
-                g_keyboard_last_extended = key_event.extended;
-                g_keyboard_last_released = key_event.released;
-                if (key_event.kind == KeyEventKind::kModifier) {
-                    break;
-                }
-                const input::RuntimeKeyDownRefs key_down_refs{key_down_extended, key_down_normal};
-                if (input::TryConsumeReleasedKey(key_event, key_down_refs)) {
-                    break;
-                }
-                const uint8_t key = key_event.keycode;
-                if (!input::ShouldProcessAfterExtendedKey(key_event, key, HandleExtendedKey)) {
-                    break;
-                }
-                if (input::ShouldSkipRepeatedKeyDown(key_event, g_key_repeat_enabled, key_down_refs)) {
-                    break;
-                }
-                input::MarkKeyDownIfTrackable(key_event, key_down_refs);
-                if (HandleRegularKeyShortcut(key)) {
-                    break;
-                }
-
-                char ch = KeycodeToAsciiByLayout(key,
-                                                 key_event.shift,
-                                                 key_event.caps_lock,
-                                                 key_event.num_lock,
-                                                 g_jp_layout);
-                if (ch != 0) {
-                    EnsureLiveConsole();
-                    bool full_refresh = false;
-                    const input::ImeCharDecision ime_decision =
-                        input::DecideImeCharHandling(ch,
-                                                     g_ime_enabled,
-                                                     g_jp_layout,
-                                                     g_has_halfwidth_kana_font,
-                                                     ime_candidate_active,
-                                                     ime_candidate_entry,
-                                                     ime_romaji_len,
-                                                     ToLowerAscii);
-                    if (ime_decision.ime_path) {
-                        if (input::TryHandleImeCandidateCycle(
-                                ime_decision.cycle_candidate,
-                                [&]() { return input::AdvanceImeCandidateIndex(ime_candidate_entry, &ime_candidate_index); },
-                                ReplaceImeCandidateText)) {
-                            break;
-                        }
-                        input::ApplyImeCommitSideEffects(
-                            ime_decision.commit_candidate,
-                            CommitImeCandidateLearning,
-                            ClearImeCandidate);
-                        if (input::TryHandleImeAppendAlpha(
-                                ime_decision.append_alpha,
-                                ime_decision.lower_alpha,
-                                ime_romaji_buffer,
-                                static_cast<int>(sizeof(ime_romaji_buffer)),
-                                &ime_romaji_len,
-                                FlushImeRomaji,
-                                RenderInputLine,
-                                RefreshInputLine)) {
-                            break;
-                        }
-                        if (input::TryStartImeCandidateFromRomaji(
-                                ime_decision.try_start_candidate,
-                                ime_romaji_buffer,
-                                &ime_romaji_len,
-                                &ime_candidate_entry,
-                                [&](const char* romaji, int romaji_len, char* keybuf, int keybuf_capacity) {
-                                    return input::ResolveCandidateEntryFromRomaji(
-                                        romaji,
-                                        romaji_len,
-                                        keybuf,
-                                        keybuf_capacity,
-                                        ToLowerAscii,
-                                        FindImeCandidateEntry);
-                                },
-                                TryBuildPrefixCandidateEntry,
-                                [](const ImeCandidateEntry* entry) { return entry != nullptr && entry->count > 0; },
-                                [&]() { return input::HasSelection(selection_anchor, selection_end); },
-                                DeleteSelection,
-                                [&](const ImeCandidateEntry* entry) {
-                                    input::StartImeCandidateSession(
-                                        entry, cursor_pos, ime_candidate_source_keys,
-                                        FindBestImeCandidateIndex(entry),
-                                        &ime_candidate_index, &ime_candidate_start, &ime_candidate_len,
-                                        &ime_candidate_active,
-                                        CopyString);
-                                },
-                                ReplaceImeCandidateText)) {
-                            break;
-                        }
-                        input::FinalizeImeRomajiIfNeeded(ime_decision.finalize_romaji, FlushImeRomaji);
-                    }
-                    if (ch == '\n') {
-                        console->SetCursorPosition(input_row, input_col + command_len);
-                        console->Print("\n");
-                        command_buffer[command_len] = '\0';
-                        if (command_len > 0) {
-                            command_history.Add(command_buffer);
-                        }
-                        input::ExecuteShellCommandOrHistory(
-                            command_buffer,
-                            StrEqual,
-                            [&]() { PrintHistory(command_history); },
-                            [&]() {
-                                command_history.Clear();
-                                console->PrintLine("history cleared");
-                            },
-                            [&]() { ExecuteCommand(command_buffer); });
-                        const input::RuntimeCommandInputStateRefs reset_refs{
-                            command_buffer,
-                            static_cast<int>(sizeof(command_buffer)),
-                            &command_len,
-                            &cursor_pos,
-                            &rendered_len,
-                            ime_romaji_buffer,
-                            static_cast<int>(sizeof(ime_romaji_buffer)),
-                            &ime_romaji_len,
-                        };
-                        input::ResetAfterCommandExecution(
-                            reset_refs,
-                            ClearImeCandidate,
-                            ClearSelection,
-                            [&]() { command_history.ResetNavigation(); },
-                            PrintPrompt,
-                            [&]() {
-                                input_row = console->CursorRow();
-                                input_col = console->CursorColumn();
-                                console->SetCursorPosition(input_row, input_col);
-                            });
-                        full_refresh = true;
-                    } else if (IsPrintableAscii(ch)) {
-                        DeleteSelection();
-                        if (InsertByteAtCursor(static_cast<uint8_t>(ch))) {
-                            RenderInputLine();
-                        }
-                    }
-                    input::RefreshAfterKeyboardCharInput(full_refresh, RefreshConsole, RefreshInputLine);
-                }
+            case Message::Type::kInterruptKeyboard:
+                HandleKeyboardMessage(msg);
                 break;
-            }
             default:
                 break;
         }
