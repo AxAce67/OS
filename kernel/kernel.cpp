@@ -3082,6 +3082,48 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RenderInputLine();
         RefreshInputLine();
     };
+    auto ApplyExtendedKeySideEffects = [&](const input::ExtendedExecPlan& plan) {
+        input::ApplyExtendedPlanSideEffects(
+            plan,
+            [&]() { FlushImeRomaji(true); },
+            [&]() { ClearImeCandidate(); },
+            [&]() { EnsureLiveConsole(); },
+            [&]() { ClearSelection(); });
+    };
+    auto ApplyRegularKeySideEffects = [&](const input::RegularExecPlan& plan) {
+        input::ApplyRegularPlanSideEffects(
+            plan,
+            [&]() { FlushImeRomaji(true); },
+            [&]() { EnsureLiveConsole(); },
+            [&]() { ClearSelection(); });
+    };
+    auto PrepareExtendedKeyPlan = [&](uint8_t key,
+                                      bool has_candidate_nav,
+                                      input::ExtendedExecPlan* out_plan) {
+        return input::TryPrepareExtendedExecPlan(
+            key,
+            g_ime_enabled,
+            ime_romaji_len,
+            ime_candidate_active,
+            has_candidate_nav,
+            ApplyExtendedKeySideEffects,
+            out_plan);
+    };
+    auto PrepareRegularKeyPlan = [&](uint8_t key,
+                                     input::RegularExecPlan* out_plan) {
+        return input::TryPrepareRegularExecPlan(
+            key,
+            IsCtrlPressed(keyboard_mods),
+            keyboard_mods.num_lock,
+            g_ime_enabled,
+            ime_romaji_len,
+            ime_candidate_active,
+            ime_candidate_entry != nullptr,
+            [&]() { CommitImeCandidateLearning(); },
+            [&]() { ClearImeCandidate(); },
+            ApplyRegularKeySideEffects,
+            out_plan);
+    };
     auto HandleExtendedKey = [&](uint8_t key) -> bool {
         const input::CandidateNav nav =
             input::DecideCandidateNavOnExtendedKey(key, ime_candidate_active, ime_candidate_entry);
@@ -3094,21 +3136,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return CycleImeCandidate(1);
         }
         input::ExtendedExecPlan exec_plan{};
-        if (!input::TryPrepareExtendedExecPlan(
-                key,
-                g_ime_enabled,
-                ime_romaji_len,
-                ime_candidate_active,
-                nav != input::CandidateNav::kNone,
-                [&](const input::ExtendedExecPlan& plan) {
-                    input::ApplyExtendedPlanSideEffects(
-                        plan,
-                        [&]() { FlushImeRomaji(true); },
-                        [&]() { ClearImeCandidate(); },
-                        [&]() { EnsureLiveConsole(); },
-                        [&]() { ClearSelection(); });
-                },
-                &exec_plan)) {
+        if (!PrepareExtendedKeyPlan(key, nav != input::CandidateNav::kNone, &exec_plan)) {
             return false;
         }
         auto bundles = AcquireRuntimeFlowBundles();
@@ -3123,24 +3151,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
         input::RegularExecPlan exec_plan{};
-        if (!input::TryPrepareRegularExecPlan(
-                key,
-                IsCtrlPressed(keyboard_mods),
-                keyboard_mods.num_lock,
-                g_ime_enabled,
-                ime_romaji_len,
-                ime_candidate_active,
-                ime_candidate_entry != nullptr,
-                [&]() { CommitImeCandidateLearning(); },
-                [&]() { ClearImeCandidate(); },
-                [&](const input::RegularExecPlan& plan) {
-                    input::ApplyRegularPlanSideEffects(
-                        plan,
-                        [&]() { FlushImeRomaji(true); },
-                        [&]() { EnsureLiveConsole(); },
-                        [&]() { ClearSelection(); });
-                },
-                &exec_plan)) {
+        if (!PrepareRegularKeyPlan(key, &exec_plan)) {
             return false;
         }
         auto bundles = AcquireRuntimeFlowBundles();
