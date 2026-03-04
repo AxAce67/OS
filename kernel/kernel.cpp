@@ -3419,7 +3419,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     EnsureLiveConsole();
                     bool full_refresh = false;
                     if (g_ime_enabled && g_jp_layout && g_has_halfwidth_kana_font) {
-                        if (ch == ' ' && ime_candidate_active && ime_candidate_entry != nullptr) {
+                        if (input::ShouldCycleActiveCandidateOnSpace(ch, ime_candidate_active, ime_candidate_entry)) {
                             if (input::AdvanceImeCandidateIndex(ime_candidate_entry, &ime_candidate_index)) {
                                 ReplaceImeCandidateText();
                                 break;
@@ -3444,11 +3444,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         }
                         if (ch == ' ' && ime_romaji_len > 0) {
                             char keybuf[32];
-                            for (int i = 0; i < ime_romaji_len && i + 1 < static_cast<int>(sizeof(keybuf)); ++i) {
-                                keybuf[i] = ToLowerAscii(ime_romaji_buffer[i]);
-                                keybuf[i + 1] = '\0';
-                            }
-                            const ImeCandidateEntry* entry = FindImeCandidateEntry(keybuf);
+                            const ImeCandidateEntry* entry = input::ResolveCandidateEntryFromRomaji(
+                                ime_romaji_buffer, ime_romaji_len,
+                                keybuf, static_cast<int>(sizeof(keybuf)),
+                                ToLowerAscii,
+                                FindImeCandidateEntry);
                             if (entry == nullptr) {
                                 entry = TryBuildPrefixCandidateEntry(keybuf);
                             }

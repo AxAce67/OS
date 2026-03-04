@@ -56,4 +56,33 @@ bool AdvanceImeCandidateIndex(const ImeCandidateEntry* entry, int* index) {
     return true;
 }
 
+bool ShouldCycleActiveCandidateOnSpace(char ch,
+                                       bool candidate_active,
+                                       const ImeCandidateEntry* entry) {
+    return ch == ' ' && candidate_active && entry != nullptr && entry->count > 0;
+}
+
+const ImeCandidateEntry* ResolveCandidateEntryFromRomaji(
+    const char* romaji_buffer,
+    int romaji_len,
+    char* out_key,
+    int out_key_len,
+    char (*to_lower_ascii)(char),
+    const ImeCandidateEntry* (*find_exact)(const char*)) {
+    if (romaji_buffer == nullptr || out_key == nullptr || out_key_len <= 0 ||
+        to_lower_ascii == nullptr || find_exact == nullptr ||
+        romaji_len <= 0) {
+        return nullptr;
+    }
+    int w = 0;
+    for (int i = 0; i < romaji_len && w + 1 < out_key_len; ++i) {
+        out_key[w++] = to_lower_ascii(romaji_buffer[i]);
+    }
+    out_key[w] = '\0';
+    if (w <= 0) {
+        return nullptr;
+    }
+    return find_exact(out_key);
+}
+
 }  // namespace input

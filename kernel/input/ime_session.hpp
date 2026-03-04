@@ -21,4 +21,16 @@ bool StartImeCandidateSession(const ImeCandidateEntry* entry,
 
 bool AdvanceImeCandidateIndex(const ImeCandidateEntry* entry, int* index);
 
+bool ShouldCycleActiveCandidateOnSpace(char ch,
+                                       bool candidate_active,
+                                       const ImeCandidateEntry* entry);
+
+const ImeCandidateEntry* ResolveCandidateEntryFromRomaji(
+    const char* romaji_buffer,
+    int romaji_len,
+    char* out_key,
+    int out_key_len,
+    char (*to_lower_ascii)(char),
+    const ImeCandidateEntry* (*find_exact)(const char*));
+
 }  // namespace input
