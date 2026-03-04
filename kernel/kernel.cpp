@@ -3260,6 +3260,55 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             ClearSelection();
         }
     };
+    auto ExecuteRegularShortcutExecs = [&](const input::RegularExecPlan& exec_plan,
+                                           const input::RegularActionContext& action_context,
+                                           RegularShortcutOwner* shortcut_owner,
+                                           auto&& render_and_refresh_input) -> bool {
+        const auto ime_context = BuildRegularImeContext(shortcut_owner,
+                                                        ime_candidate_entry,
+                                                        ime_candidate_start,
+                                                        ime_candidate_len,
+                                                        ime_romaji_buffer,
+                                                        static_cast<int>(sizeof(ime_romaji_buffer)),
+                                                        &ime_romaji_len);
+        const auto ime_exec_result =
+            input::ExecuteRegularImeActionWithContext(exec_plan.kind, ime_context, &cursor_pos);
+        if (ime_exec_result == input::RegularImeExecResult::kFailed) {
+            return false;
+        }
+        if (ime_exec_result == input::RegularImeExecResult::kHandledNeedsRender) {
+            render_and_refresh_input();
+            return true;
+        }
+        const auto clear_context = BuildRegularClearContext(shortcut_owner,
+                                                            command_buffer,
+                                                            static_cast<int>(sizeof(command_buffer)),
+                                                            &command_len,
+                                                            &cursor_pos,
+                                                            &rendered_len,
+                                                            ime_romaji_buffer,
+                                                            static_cast<int>(sizeof(ime_romaji_buffer)),
+                                                            &ime_romaji_len);
+        if (input::ExecuteRegularClearActionWithContext(exec_plan.kind, clear_context)) {
+            render_and_refresh_input();
+            return true;
+        }
+        const auto mode_context = BuildRegularModeContext(shortcut_owner,
+                                                          exec_plan.mode_action,
+                                                          &g_ime_enabled,
+                                                          &g_jp_layout);
+        if (input::ExecuteRegularModeActionWithContext(exec_plan.kind, mode_context)) {
+            return true;
+        }
+        if (input::ExecuteRegularActionWithContext(exec_plan.kind, action_context)) {
+            return true;
+        }
+        if (input::ExecuteRegularNeutralAction(exec_plan.kind, &cursor_pos, command_len)) {
+            render_and_refresh_input();
+            return true;
+        }
+        return false;
+    };
 
     auto HandleExtendedKey = [&](uint8_t key) -> bool {
         const input::CandidateNav nav =
@@ -3317,53 +3366,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             auto action_owner = BuildRegularInputActionOwner();
             const auto action_context = BuildRegularActionContext(&action_owner);
             auto shortcut_owner = BuildRegularShortcutOwner();
-            auto ExecuteRegularShortcutExecs = [&]() -> bool {
-                const auto ime_context = BuildRegularImeContext(&shortcut_owner,
-                                                                ime_candidate_entry,
-                                                                ime_candidate_start,
-                                                                ime_candidate_len,
-                                                                ime_romaji_buffer,
-                                                                static_cast<int>(sizeof(ime_romaji_buffer)),
-                                                                &ime_romaji_len);
-                const auto ime_exec_result =
-                    input::ExecuteRegularImeActionWithContext(exec_plan.kind, ime_context, &cursor_pos);
-                if (ime_exec_result == input::RegularImeExecResult::kFailed) {
-                    return false;
-                }
-                if (ime_exec_result == input::RegularImeExecResult::kHandledNeedsRender) {
-                    RenderAndRefreshInput();
-                    return true;
-                }
-                const auto clear_context = BuildRegularClearContext(&shortcut_owner,
-                                                                    command_buffer,
-                                                                    static_cast<int>(sizeof(command_buffer)),
-                                                                    &command_len,
-                                                                    &cursor_pos,
-                                                                    &rendered_len,
-                                                                    ime_romaji_buffer,
-                                                                    static_cast<int>(sizeof(ime_romaji_buffer)),
-                                                                    &ime_romaji_len);
-                if (input::ExecuteRegularClearActionWithContext(exec_plan.kind, clear_context)) {
-                    RenderAndRefreshInput();
-                    return true;
-                }
-                const auto mode_context = BuildRegularModeContext(&shortcut_owner,
-                                                                  exec_plan.mode_action,
-                                                                  &g_ime_enabled,
-                                                                  &g_jp_layout);
-                if (input::ExecuteRegularModeActionWithContext(exec_plan.kind, mode_context)) {
-                    return true;
-                }
-                if (input::ExecuteRegularActionWithContext(exec_plan.kind, action_context)) {
-                    return true;
-                }
-                if (input::ExecuteRegularNeutralAction(exec_plan.kind, &cursor_pos, command_len)) {
-                    RenderAndRefreshInput();
-                    return true;
-                }
-                return false;
-            };
-            if (ExecuteRegularShortcutExecs()) {
+            if (ExecuteRegularShortcutExecs(exec_plan,
+                                            action_context,
+                                            &shortcut_owner,
+                                            RenderAndRefreshInput)) {
                 return true;
             }
         }
