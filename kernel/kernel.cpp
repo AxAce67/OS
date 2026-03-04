@@ -2445,6 +2445,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (prefix == nullptr || prefix[0] == '\0') {
             return nullptr;
         }
+        const int prefix_len = StrLength(prefix);
         CopyString(ime_prefix_candidate_key, prefix, static_cast<int>(sizeof(ime_prefix_candidate_key)));
         ime_prefix_candidate_view.key = ime_prefix_candidate_key;
         ime_prefix_candidate_view.count = 0;
@@ -2482,14 +2483,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 ++ime_prefix_candidate_view.count;
             }
         };
+        int max_key_len = prefix_len;
         for (int i = 0; i < static_cast<int>(sizeof(g_ime_user_candidate_views) / sizeof(g_ime_user_candidate_views[0])); ++i) {
             const ImeCandidateEntry* e = &g_ime_user_candidate_views[i];
             if (e->key == nullptr || !StrStartsWith(e->key, prefix)) {
                 continue;
             }
-            append_unique_candidates(e);
-            if (ime_prefix_candidate_view.count >= 4) {
-                return &ime_prefix_candidate_view;
+            const int key_len = StrLength(e->key);
+            if (key_len > max_key_len) {
+                max_key_len = key_len;
             }
         }
         for (int i = 0; i < static_cast<int>(sizeof(kImeCandidateTable) / sizeof(kImeCandidateTable[0])); ++i) {
@@ -2497,9 +2499,37 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             if (!StrStartsWith(e->key, prefix)) {
                 continue;
             }
-            append_unique_candidates(e);
-            if (ime_prefix_candidate_view.count >= 4) {
-                break;
+            const int key_len = StrLength(e->key);
+            if (key_len > max_key_len) {
+                max_key_len = key_len;
+            }
+        }
+        for (int target_len = max_key_len; target_len >= prefix_len; --target_len) {
+            for (int i = 0; i < static_cast<int>(sizeof(g_ime_user_candidate_views) / sizeof(g_ime_user_candidate_views[0])); ++i) {
+                const ImeCandidateEntry* e = &g_ime_user_candidate_views[i];
+                if (e->key == nullptr || !StrStartsWith(e->key, prefix)) {
+                    continue;
+                }
+                if (StrLength(e->key) != target_len) {
+                    continue;
+                }
+                append_unique_candidates(e);
+                if (ime_prefix_candidate_view.count >= 4) {
+                    return &ime_prefix_candidate_view;
+                }
+            }
+            for (int i = 0; i < static_cast<int>(sizeof(kImeCandidateTable) / sizeof(kImeCandidateTable[0])); ++i) {
+                const ImeCandidateEntry* e = &kImeCandidateTable[i];
+                if (!StrStartsWith(e->key, prefix)) {
+                    continue;
+                }
+                if (StrLength(e->key) != target_len) {
+                    continue;
+                }
+                append_unique_candidates(e);
+                if (ime_prefix_candidate_view.count >= 4) {
+                    return &ime_prefix_candidate_view;
+                }
             }
         }
         if (ime_prefix_candidate_view.count <= 0) {
