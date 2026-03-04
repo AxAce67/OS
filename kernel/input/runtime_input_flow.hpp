@@ -168,7 +168,7 @@ struct RuntimeCommandInputStateRefs {
 struct RuntimeEnterCommandRefs {
     char* command_buffer;
     int command_capacity;
-    int command_len;
+    int* command_len;
 };
 
 struct RuntimeCharTranslationResult {
@@ -189,6 +189,20 @@ struct RuntimeImeProcessContextT {
     int romaji_capacity;
     int* romaji_len;
     const TCandidateEntry** candidate_entry;
+};
+
+template <class TCandidateEntry>
+struct RuntimeKeyboardMessageContextT {
+    RuntimeKeyboardDecodeRefs decode_refs;
+    RuntimeKeyDownRefs key_down_refs;
+    bool key_repeat_enabled;
+    bool jp_layout;
+    bool ime_enabled;
+    bool has_halfwidth_kana_font;
+    bool ime_candidate_active;
+    const TCandidateEntry* ime_candidate_entry;
+    int ime_romaji_len;
+    RuntimeImeProcessContextT<TCandidateEntry> ime_process_context;
 };
 
 inline bool TryConsumeReleasedKey(const KeyEvent& key_event,
@@ -234,6 +248,17 @@ template <class THandleExtendedKey>
 inline bool ShouldProcessAfterExtendedKey(const KeyEvent& key_event,
                                           uint8_t key,
                                           THandleExtendedKey&& handle_extended_key);
+
+template <class TRefreshConsole, class TRefreshInputLine>
+inline void RefreshAfterKeyboardCharInput(bool full_refresh,
+                                          TRefreshConsole&& refresh_console,
+                                          TRefreshInputLine&& refresh_input_line);
+
+template <class TIsPrintable, class TOnEnter, class TOnPrintable>
+inline bool ProcessKeyboardCharAction(char ch,
+                                      TIsPrintable&& is_printable,
+                                      TOnEnter&& on_enter,
+                                      TOnPrintable&& on_printable);
 
 template <class THandleExtendedKey>
 inline bool PrepareKeyboardEventForDispatch(const KeyEvent& key_event,
@@ -290,6 +315,115 @@ inline RuntimeCharTranslationResult TranslateKeyEventToAscii(const KeyEvent& key
                                      key_event.num_lock,
                                      jp_layout);
     return RuntimeCharTranslationResult{ch != 0, ch};
+}
+
+template <class TCandidateEntry,
+          class THandleExtendedKey,
+          class THandleRegularShortcut,
+          class TKeycodeToAscii,
+          class TEnsureLiveConsole,
+          class TToLowerAscii,
+          class TAdvanceCandidate,
+          class TReplaceCandidateText,
+          class TCommitLearning,
+          class TClearCandidate,
+          class TFlushRomaji,
+          class TRenderInputLine,
+          class TRefreshInputLine,
+          class TResolveEntry,
+          class TBuildPrefixEntry,
+          class TIsEntryUsable,
+          class THasSelection,
+          class TDeleteSelection,
+          class TStartSession,
+          class TIsPrintable,
+          class TOnEnter,
+          class TOnPrintable,
+          class TRefreshConsole>
+inline void HandleKeyboardMessageRuntime(
+    uint8_t raw_scancode,
+    const RuntimeKeyboardMessageContextT<TCandidateEntry>& context,
+    THandleExtendedKey&& handle_extended_key,
+    THandleRegularShortcut&& handle_regular_shortcut,
+    TKeycodeToAscii&& keycode_to_ascii,
+    TEnsureLiveConsole&& ensure_live_console,
+    TToLowerAscii&& to_lower_ascii,
+    TAdvanceCandidate&& advance_candidate,
+    TReplaceCandidateText&& replace_candidate_text,
+    TCommitLearning&& commit_learning,
+    TClearCandidate&& clear_candidate,
+    TFlushRomaji&& flush_romaji,
+    TRenderInputLine&& render_input_line,
+    TRefreshInputLine&& refresh_input_line,
+    TResolveEntry&& resolve_entry,
+    TBuildPrefixEntry&& build_prefix_entry,
+    TIsEntryUsable&& is_entry_usable,
+    THasSelection&& has_selection,
+    TDeleteSelection&& delete_selection,
+    TStartSession&& start_session,
+    TIsPrintable&& is_printable,
+    TOnEnter&& on_enter,
+    TOnPrintable&& on_printable,
+    TRefreshConsole&& refresh_console) {
+    KeyEvent key_event{};
+    if (!DecodeKeyboardMessageAndTrack(raw_scancode, context.decode_refs, &key_event)) {
+        return;
+    }
+    if (!PrepareKeyboardEventForDispatch(
+            key_event,
+            context.key_repeat_enabled,
+            context.key_down_refs,
+            handle_extended_key)) {
+        return;
+    }
+    const uint8_t key = key_event.keycode;
+    if (handle_regular_shortcut(key)) {
+        return;
+    }
+
+    const auto translated = TranslateKeyEventToAscii(key_event,
+                                                     context.jp_layout,
+                                                     keycode_to_ascii);
+    if (!translated.has_char) {
+        return;
+    }
+    const char ch = translated.ch;
+
+    ensure_live_console();
+    bool full_refresh = false;
+    const ImeCharDecision ime_decision =
+        DecideImeCharHandling(ch,
+                              context.ime_enabled,
+                              context.jp_layout,
+                              context.has_halfwidth_kana_font,
+                              context.ime_candidate_active,
+                              context.ime_candidate_entry,
+                              context.ime_romaji_len,
+                              to_lower_ascii);
+    if (ProcessImeDecisionPath(ime_decision,
+                               context.ime_process_context,
+                               advance_candidate,
+                               replace_candidate_text,
+                               commit_learning,
+                               clear_candidate,
+                               flush_romaji,
+                               render_input_line,
+                               refresh_input_line,
+                               resolve_entry,
+                               build_prefix_entry,
+                               is_entry_usable,
+                               has_selection,
+                               delete_selection,
+                               start_session)) {
+        return;
+    }
+    full_refresh = ProcessKeyboardCharAction(ch,
+                                             is_printable,
+                                             on_enter,
+                                             on_printable);
+    RefreshAfterKeyboardCharInput(full_refresh,
+                                  refresh_console,
+                                  refresh_input_line);
 }
 
 template <class THandleExtendedKey>
@@ -399,14 +533,17 @@ inline void ProcessEnterCommandAction(const RuntimeEnterCommandRefs& enter_refs,
     if (enter_refs.command_buffer == nullptr || enter_refs.command_capacity <= 0) {
         return;
     }
-    if (enter_refs.command_len < 0 || enter_refs.command_len >= enter_refs.command_capacity) {
+    if (enter_refs.command_len == nullptr) {
+        return;
+    }
+    if (*enter_refs.command_len < 0 || *enter_refs.command_len >= enter_refs.command_capacity) {
         return;
     }
 
     set_input_cursor_to_line_end();
     print_new_line();
-    enter_refs.command_buffer[enter_refs.command_len] = '\0';
-    if (enter_refs.command_len > 0) {
+    enter_refs.command_buffer[*enter_refs.command_len] = '\0';
+    if (*enter_refs.command_len > 0) {
         add_history(enter_refs.command_buffer);
     }
     ExecuteShellCommandOrHistory(enter_refs.command_buffer,
