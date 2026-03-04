@@ -97,6 +97,9 @@ if ($LASTEXITCODE -ne 0) { Write-Host "Shell FS Compile Error!" -ForegroundColor
 & $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/cmd_xhci.cpp -o shell_cmd_xhci.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Shell xHCI Compile Error!" -ForegroundColor Red; exit 1 }
 
+& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/tab_completion.cpp -o shell_tab_completion.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Shell TabCompletion Compile Error!" -ForegroundColor Red; exit 1 }
+
 & $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/key_event.cpp -o input_key_event.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input KeyEvent Compile Error!" -ForegroundColor Red; exit 1 }
 
@@ -150,7 +153,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "UI System Monitor Compile Error!" -Foregr
 if ($LASTEXITCODE -ne 0) { Write-Host "Kernel Compile Error!" -ForegroundColor Red; exit 1 }
 
 # ELFファイルとしてリンク
-& $ld_lld -m elf_x86_64 -z norelro --image-base 0x100000 --entry KernelMain -o kernel.elf kernel.o console.o mouse.o interrupt.o pic.o ps2.o pci.o xhci.o shell_commands.o shell_text.o shell_cmd_dispatch.o shell_cmd_core.o shell_cmd_fs.o shell_cmd_xhci.o input_key_event.o input_key_layout.o input_hid_keyboard.o input_history.o input_line_ops.o input_selection.o input_line_render.o input_line_editor.o interrupt_handler.o font.o memory.o paging.o apic.o timer.o window.o layer.o ui_system_monitor.o
+& $ld_lld -m elf_x86_64 -z norelro --image-base 0x100000 --entry KernelMain -o kernel.elf kernel.o console.o mouse.o interrupt.o pic.o ps2.o pci.o xhci.o shell_commands.o shell_text.o shell_cmd_dispatch.o shell_cmd_core.o shell_cmd_fs.o shell_cmd_xhci.o shell_tab_completion.o input_key_event.o input_key_layout.o input_hid_keyboard.o input_history.o input_line_ops.o input_selection.o input_line_render.o input_line_editor.o interrupt_handler.o font.o memory.o paging.o apic.o timer.o window.o layer.o ui_system_monitor.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Kernel Link Error!" -ForegroundColor Red; exit 1 }
 
 Write-Host "Build Success! -> main.efi & kernel.elf" -ForegroundColor Green

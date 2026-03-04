@@ -91,6 +91,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "shell/context.hpp"
 #include "shell/cmd_dispatch.hpp"
 #include "shell/cmd_xhci.hpp"
+#include "shell/tab_completion.hpp"
 #include "shell/text.hpp"
 #include "ui/system_monitor.hpp"
 
@@ -2619,126 +2620,40 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleTabCompletion = [&]() {
-        if (command_len == 0 || cursor_pos != command_len) {
+        shell::TabCompletionContext context{};
+        context.command_buffer = command_buffer;
+        context.command_len = command_len;
+        context.cursor_pos = cursor_pos;
+        context.cwd = g_cwd;
+        context.boot_info = g_boot_info;
+        context.dirs = g_dirs;
+        context.dir_count = static_cast<int>(sizeof(g_dirs) / sizeof(g_dirs[0]));
+        context.files = g_files;
+        context.file_count = static_cast<int>(sizeof(g_files) / sizeof(g_files[0]));
+        context.builtin_commands = kBuiltInCommands;
+        context.builtin_command_count = kBuiltInCommandCount;
+        context.str_equal = StrEqual;
+        context.str_starts_with = StrStartsWith;
+        context.contains_char = ContainsChar;
+        context.str_length = StrLength;
+        context.copy_string = CopyString;
+        context.get_parent_path = GetParentPath;
+        context.get_base_name = GetBaseName;
+        context.build_boot_file_absolute_path = BuildBootFileAbsolutePath;
+        context.find_shell_file_by_abs_path = FindShellFileByAbsPath;
+
+        shell::TabCompletionResult result{};
+        shell::ComputeTabCompletion(context, &result);
+        if (result.action == shell::TabCompletionAction::kReplaceLine) {
+            ReplaceInputLine(result.replacement);
             return;
         }
-        int token_start = cursor_pos;
-        while (token_start > 0 && command_buffer[token_start - 1] != ' ') {
-            --token_start;
-        }
-        char token[64];
-        int tw = 0;
-        for (int i = token_start; i < cursor_pos && tw + 1 < static_cast<int>(sizeof(token)); ++i) {
-            token[tw++] = command_buffer[i];
-        }
-        token[tw] = '\0';
-
-        const bool first_token = (token_start == 0);
-        int match_count = 0;
-        const char* single_match = nullptr;
-
-        char candidates[128][64];
-        auto AddCandidate = [&](const char* name) {
-            for (int i = 0; i < match_count; ++i) {
-                if (StrEqual(candidates[i], name)) {
-                    return;
-                }
-            }
-            if (match_count >= static_cast<int>(sizeof(candidates) / sizeof(candidates[0]))) {
-                return;
-            }
-            CopyString(candidates[match_count], name, sizeof(candidates[match_count]));
-            ++match_count;
-        };
-
-        if (first_token) {
-            for (int i = 0; i < kBuiltInCommandCount; ++i) {
-                if (StrStartsWith(kBuiltInCommands[i], token)) {
-                    AddCandidate(kBuiltInCommands[i]);
-                }
-            }
-        } else {
-            if (ContainsChar(token, '/')) {
-                return;
-            }
-            for (int i = 0; i < static_cast<int>(sizeof(g_dirs) / sizeof(g_dirs[0])); ++i) {
-                if (!g_dirs[i].used || StrEqual(g_dirs[i].path, "/")) {
-                    continue;
-                }
-                char parent[96];
-                if (!GetParentPath(g_dirs[i].path, parent, sizeof(parent)) || !StrEqual(parent, g_cwd)) {
-                    continue;
-                }
-                char base[64];
-                GetBaseName(g_dirs[i].path, base, sizeof(base));
-                if (!StrStartsWith(base, token)) {
-                    continue;
-                }
-                char dname[64];
-                CopyString(dname, base, sizeof(dname));
-                int n = StrLength(dname);
-                if (n + 1 < static_cast<int>(sizeof(dname))) {
-                    dname[n] = '/';
-                    dname[n + 1] = '\0';
-                }
-                AddCandidate(dname);
-            }
-            for (int i = 0; i < static_cast<int>(sizeof(g_files) / sizeof(g_files[0])); ++i) {
-                if (!g_files[i].used) {
-                    continue;
-                }
-                char parent[96];
-                if (!GetParentPath(g_files[i].path, parent, sizeof(parent)) || !StrEqual(parent, g_cwd)) {
-                    continue;
-                }
-                char base[64];
-                GetBaseName(g_files[i].path, base, sizeof(base));
-                if (StrStartsWith(base, token)) {
-                    AddCandidate(base);
-                }
-            }
-            if (g_boot_info != nullptr && g_boot_info->boot_fs != nullptr) {
-                const BootFileSystem* fs = g_boot_info->boot_fs;
-                for (uint32_t i = 0; i < fs->file_count; ++i) {
-                    char abs_file_path[96];
-                    BuildBootFileAbsolutePath(fs->files[i].name, abs_file_path, sizeof(abs_file_path));
-                    if (FindShellFileByAbsPath(abs_file_path) != nullptr) {
-                        continue;
-                    }
-                    char parent[96];
-                    if (!GetParentPath(abs_file_path, parent, sizeof(parent)) || !StrEqual(parent, g_cwd)) {
-                        continue;
-                    }
-                    char base[64];
-                    GetBaseName(abs_file_path, base, sizeof(base));
-                    if (StrStartsWith(base, token)) {
-                        AddCandidate(base);
-                    }
-                }
-            }
-        }
-
-        if (match_count == 0) {
+        if (result.action != shell::TabCompletionAction::kShowCandidates) {
             return;
         }
-        if (match_count == 1) {
-            single_match = candidates[0];
-            char replaced[128];
-            int w = 0;
-            for (int i = 0; i < token_start && w + 1 < static_cast<int>(sizeof(replaced)); ++i) {
-                replaced[w++] = command_buffer[i];
-            }
-            for (int i = 0; single_match[i] != '\0' && w + 1 < static_cast<int>(sizeof(replaced)); ++i) {
-                replaced[w++] = single_match[i];
-            }
-            replaced[w] = '\0';
-            ReplaceInputLine(replaced);
-            return;
-        }
-
         console->Print("\n");
-        for (int i = 0; i < match_count; ++i) {
-            console->Print(candidates[i]);
+        for (int i = 0; i < result.candidate_count; ++i) {
+            console->Print(result.candidates[i]);
             console->Print(" ");
         }
         console->Print("\n");
