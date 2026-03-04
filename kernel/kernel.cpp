@@ -579,6 +579,13 @@ struct ImeUserCandidateEntry {
     int count;
 };
 
+struct ImeCandidateLearnEntry {
+    bool used;
+    char key[32];
+    char cand[32];
+    uint16_t score;
+};
+
 const RomajiKanaEntry kRomajiKanaTable[] = {
     {"kya", {0xB7, 0xAC, 0x00}, 2}, {"kyu", {0xB7, 0xAD, 0x00}, 2}, {"kyo", {0xB7, 0xAE, 0x00}, 2},
     {"sya", {0xBC, 0xAC, 0x00}, 2}, {"syu", {0xBC, 0xAD, 0x00}, 2}, {"syo", {0xBC, 0xAE, 0x00}, 2},
@@ -649,6 +656,7 @@ const ImeCandidateEntry kImeCandidateTable[] = {
 ImeUserCandidateEntry g_ime_user_candidates[16];
 ImeCandidateEntry g_ime_user_candidate_views[16];
 int g_ime_user_candidate_count = 0;
+ImeCandidateLearnEntry g_ime_learn_entries[64];
 
 void InitImeUserCandidates() {
     g_ime_user_candidate_count = 0;
@@ -665,6 +673,68 @@ void InitImeUserCandidates() {
             g_ime_user_candidates[i].candidates[j][0] = '\0';
         }
     }
+}
+
+void InitImeLearning() {
+    for (int i = 0; i < static_cast<int>(sizeof(g_ime_learn_entries) / sizeof(g_ime_learn_entries[0])); ++i) {
+        g_ime_learn_entries[i].used = false;
+        g_ime_learn_entries[i].key[0] = '\0';
+        g_ime_learn_entries[i].cand[0] = '\0';
+        g_ime_learn_entries[i].score = 0;
+    }
+}
+
+uint16_t GetImeLearningScore(const char* key, const char* cand) {
+    if (key == nullptr || cand == nullptr || key[0] == '\0' || cand[0] == '\0') {
+        return 0;
+    }
+    for (int i = 0; i < static_cast<int>(sizeof(g_ime_learn_entries) / sizeof(g_ime_learn_entries[0])); ++i) {
+        if (!g_ime_learn_entries[i].used) {
+            continue;
+        }
+        if (StrEqual(g_ime_learn_entries[i].key, key) && StrEqual(g_ime_learn_entries[i].cand, cand)) {
+            return g_ime_learn_entries[i].score;
+        }
+    }
+    return 0;
+}
+
+void RecordImeLearning(const char* key, const char* cand) {
+    if (key == nullptr || cand == nullptr || key[0] == '\0' || cand[0] == '\0') {
+        return;
+    }
+    int free_slot = -1;
+    int min_slot = -1;
+    uint16_t min_score = 0xFFFF;
+    for (int i = 0; i < static_cast<int>(sizeof(g_ime_learn_entries) / sizeof(g_ime_learn_entries[0])); ++i) {
+        if (!g_ime_learn_entries[i].used) {
+            if (free_slot < 0) {
+                free_slot = i;
+            }
+            continue;
+        }
+        if (StrEqual(g_ime_learn_entries[i].key, key) && StrEqual(g_ime_learn_entries[i].cand, cand)) {
+            if (g_ime_learn_entries[i].score < 0xFFFF) {
+                ++g_ime_learn_entries[i].score;
+            }
+            return;
+        }
+        if (g_ime_learn_entries[i].score < min_score) {
+            min_score = g_ime_learn_entries[i].score;
+            min_slot = i;
+        }
+    }
+    int slot = free_slot;
+    if (slot < 0) {
+        slot = min_slot;
+    }
+    if (slot < 0) {
+        return;
+    }
+    g_ime_learn_entries[slot].used = true;
+    CopyString(g_ime_learn_entries[slot].key, key, static_cast<int>(sizeof(g_ime_learn_entries[slot].key)));
+    CopyString(g_ime_learn_entries[slot].cand, cand, static_cast<int>(sizeof(g_ime_learn_entries[slot].cand)));
+    g_ime_learn_entries[slot].score = 1;
 }
 
 char ToLowerAscii(char c);
@@ -1895,6 +1965,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     InitializeLAPICTimer();
 
     g_has_halfwidth_kana_font = HasHalfwidthKanaFont();
+    InitImeLearning();
     LoadImeDictionaryFromBootFS();
 
     console->Print("Waiting for hardware interrupts (Keyboard/Mouse/LAPIC Timer)...\n");
@@ -1944,6 +2015,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     const char* ime_prefix_candidate_ptrs[4] = {nullptr, nullptr, nullptr, nullptr};
     char ime_prefix_candidate_key[32];
     char ime_prefix_candidate_texts[4][32];
+    char ime_candidate_source_keys[4][32];
     bool e0_prefix = false;
     bool key_down_normal[128];
     bool key_down_extended[128];
@@ -2059,6 +2131,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             ime_prefix_candidate_view.candidates[i] = nullptr;
         }
         ime_prefix_candidate_key[0] = '\0';
+        for (int i = 0; i < 4; ++i) {
+            ime_candidate_source_keys[i][0] = '\0';
+        }
     };
 
     auto ReplaceInputLine = [&](const char* text) {
@@ -2425,6 +2500,40 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RenderInputLine();
         RefreshInputLine();
     };
+    auto CommitImeCandidateLearning = [&]() {
+        if (!ime_candidate_active || ime_candidate_entry == nullptr ||
+            ime_candidate_index < 0 || ime_candidate_index >= ime_candidate_entry->count) {
+            return;
+        }
+        const char* cand = ime_candidate_entry->candidates[ime_candidate_index];
+        if (cand == nullptr || cand[0] == '\0') {
+            return;
+        }
+        const char* key = nullptr;
+        if (ime_candidate_index < 4 && ime_candidate_source_keys[ime_candidate_index][0] != '\0') {
+            key = ime_candidate_source_keys[ime_candidate_index];
+        } else {
+            key = ime_candidate_entry->key;
+        }
+        RecordImeLearning(key, cand);
+    };
+    auto FindBestImeCandidateIndex = [&](const ImeCandidateEntry* entry) -> int {
+        if (entry == nullptr || entry->count <= 0) {
+            return 0;
+        }
+        int best_idx = 0;
+        uint16_t best_score = 0;
+        for (int i = 0; i < entry->count && i < 4; ++i) {
+            const char* cand = entry->candidates[i];
+            const char* key = (ime_candidate_source_keys[i][0] != '\0') ? ime_candidate_source_keys[i] : entry->key;
+            const uint16_t score = GetImeLearningScore(key, cand);
+            if (score > best_score) {
+                best_score = score;
+                best_idx = i;
+            }
+        }
+        return best_idx;
+    };
     auto CycleImeCandidate = [&](int delta) -> bool {
         if (!ime_candidate_active || ime_candidate_entry == nullptr || ime_candidate_entry->count <= 0) {
             return false;
@@ -2480,6 +2589,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 CopyString(ime_prefix_candidate_texts[dst_index], cand, static_cast<int>(sizeof(ime_prefix_candidate_texts[dst_index])));
                 ime_prefix_candidate_ptrs[dst_index] = ime_prefix_candidate_texts[dst_index];
                 ime_prefix_candidate_view.candidates[dst_index] = ime_prefix_candidate_ptrs[dst_index];
+                CopyString(ime_candidate_source_keys[dst_index], src->key, static_cast<int>(sizeof(ime_candidate_source_keys[dst_index])));
                 ++ime_prefix_candidate_view.count;
             }
         };
@@ -2534,6 +2644,22 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         if (ime_prefix_candidate_view.count <= 0) {
             return nullptr;
+        }
+        for (int i = 0; i + 1 < ime_prefix_candidate_view.count; ++i) {
+            for (int j = i + 1; j < ime_prefix_candidate_view.count; ++j) {
+                const uint16_t score_i = GetImeLearningScore(ime_candidate_source_keys[i], ime_prefix_candidate_view.candidates[i]);
+                const uint16_t score_j = GetImeLearningScore(ime_candidate_source_keys[j], ime_prefix_candidate_view.candidates[j]);
+                if (score_j <= score_i) {
+                    continue;
+                }
+                const char* tmp_ptr = ime_prefix_candidate_view.candidates[i];
+                ime_prefix_candidate_view.candidates[i] = ime_prefix_candidate_view.candidates[j];
+                ime_prefix_candidate_view.candidates[j] = tmp_ptr;
+                char tmp_key[32];
+                CopyString(tmp_key, ime_candidate_source_keys[i], static_cast<int>(sizeof(tmp_key)));
+                CopyString(ime_candidate_source_keys[i], ime_candidate_source_keys[j], static_cast<int>(sizeof(ime_candidate_source_keys[i])));
+                CopyString(ime_candidate_source_keys[j], tmp_key, static_cast<int>(sizeof(ime_candidate_source_keys[j])));
+            }
         }
         return &ime_prefix_candidate_view;
     };
@@ -2739,7 +2865,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
-        if (ime_candidate_active && key != 0x39) {
+        if (ime_candidate_active && key != 0x39 && key != 0x01) {
+            CommitImeCandidateLearning();
             ClearImeCandidate();
         }
         if (key == 0x01) { // Esc
@@ -3005,6 +3132,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             break;
                         }
                         if (ime_candidate_active && ch != ' ') {
+                            CommitImeCandidateLearning();
                             ClearImeCandidate();
                         }
                         char lower = ToLowerAscii(ch);
@@ -3036,7 +3164,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                 }
                                 ime_candidate_entry = entry;
                                 ime_candidate_active = true;
-                                ime_candidate_index = 0;
+                                for (int i = 0; i < 4; ++i) {
+                                    ime_candidate_source_keys[i][0] = '\0';
+                                }
+                                for (int i = 0; i < entry->count && i < 4; ++i) {
+                                    CopyString(ime_candidate_source_keys[i], entry->key, static_cast<int>(sizeof(ime_candidate_source_keys[i])));
+                                }
+                                ime_candidate_index = FindBestImeCandidateIndex(entry);
                                 ime_candidate_start = cursor_pos;
                                 ime_candidate_len = 0;
                                 ime_romaji_len = 0;
