@@ -2956,9 +2956,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
 
             const int console_x = term_console_layer->GetX();
             const int console_y = term_console_layer->GetY();
-            const auto console_hit = input::ComputeConsoleCellHit(
+            if (!input::ProcessMouseConsoleSelectionAtPointer(
                 pointer_x,
                 pointer_y,
+                pressed,
+                now_buttons,
                 input::RuntimeConsoleGridMetrics{
                     console_x,
                     console_y,
@@ -2968,47 +2970,23 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     Console::kMarginY,
                     Console::kCellWidth,
                     Console::kCellHeight,
-                });
-            if (!console_hit.in_console) {
-                if (input::ShouldClearSelectionOnOutsideConsoleClick(console_hit.in_console, pressed)) {
-                    ClearSelection();
-                }
+                },
+                input::RuntimeMouseConsoleSelectionRefs{
+                    &selecting_with_mouse,
+                    &selection_anchor,
+                    &selection_end,
+                    &cursor_pos,
+                    input_row,
+                    input_col,
+                    command_len,
+                },
+                input::HasSelection(selection_anchor, selection_end),
+                ClearSelection,
+                EnsureLiveConsole,
+                RenderInputLine,
+                RefreshInputLine)) {
                 return;
             }
-            const int click_col = console_hit.click_col;
-            const int click_row = console_hit.click_row;
-            const input::RuntimeMouseConsoleSelectionRefs selection_refs{
-                &selecting_with_mouse,
-                &selection_anchor,
-                &selection_end,
-                &cursor_pos,
-                input_row,
-                input_col,
-                command_len,
-            };
-            input::BeginMouseConsoleSelectionIfPressed(
-                pressed,
-                click_row,
-                click_col,
-                selection_refs,
-                ClearSelection);
-            input::UpdateMouseConsoleSelectionDrag(
-                now_buttons,
-                click_row,
-                click_col,
-                selection_refs,
-                EnsureLiveConsole,
-                RenderInputLine,
-                RefreshInputLine);
-            input::ApplyMouseConsoleClickCursorIfNeeded(
-                pressed,
-                click_row,
-                click_col,
-                input::HasSelection(selection_anchor, selection_end),
-                selection_refs,
-                EnsureLiveConsole,
-                RenderInputLine,
-                RefreshInputLine);
         }
         input::HandleMouseWheelScroll(
             msg.wheel,

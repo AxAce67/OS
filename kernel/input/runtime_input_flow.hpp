@@ -281,6 +281,14 @@ struct RuntimeMouseConsoleSelectionRefs {
     int command_len;
 };
 
+struct RuntimeMouseMessageContext {
+    RuntimeMouseButtonCounterRefs button_counters;
+    RuntimeMousePointerUpdateRefs pointer_update;
+    RuntimeMouseDragRefs drag_refs;
+    RuntimeMouseDragStopRefs drag_stop_refs;
+    RuntimePendingDragRefs pending_drag_refs;
+};
+
 template <class TCandidateEntry>
 struct RuntimeImeCandidateStartRefsT {
     char* romaji_buffer;
@@ -804,6 +812,53 @@ inline void ApplyMouseConsoleClickCursorIfNeeded(uint8_t pressed_buttons,
     ensure_live_console();
     render_input_line();
     refresh_input_line();
+}
+
+template <class TClearSelection,
+          class TEnsureLiveConsole,
+          class TRenderInputLine,
+          class TRefreshInputLine>
+inline bool ProcessMouseConsoleSelectionAtPointer(
+    int pointer_x,
+    int pointer_y,
+    uint8_t pressed_buttons,
+    uint8_t now_buttons,
+    const RuntimeConsoleGridMetrics& metrics,
+    const RuntimeMouseConsoleSelectionRefs& refs,
+    bool has_selection,
+    TClearSelection&& clear_selection,
+    TEnsureLiveConsole&& ensure_live_console,
+    TRenderInputLine&& render_input_line,
+    TRefreshInputLine&& refresh_input_line) {
+    const auto console_hit = ComputeConsoleCellHit(pointer_x, pointer_y, metrics);
+    if (!console_hit.in_console) {
+        if (ShouldClearSelectionOnOutsideConsoleClick(console_hit.in_console, pressed_buttons)) {
+            clear_selection();
+        }
+        return false;
+    }
+
+    BeginMouseConsoleSelectionIfPressed(pressed_buttons,
+                                        console_hit.click_row,
+                                        console_hit.click_col,
+                                        refs,
+                                        clear_selection);
+    UpdateMouseConsoleSelectionDrag(now_buttons,
+                                    console_hit.click_row,
+                                    console_hit.click_col,
+                                    refs,
+                                    ensure_live_console,
+                                    render_input_line,
+                                    refresh_input_line);
+    ApplyMouseConsoleClickCursorIfNeeded(pressed_buttons,
+                                         console_hit.click_row,
+                                         console_hit.click_col,
+                                         has_selection,
+                                         refs,
+                                         ensure_live_console,
+                                         render_input_line,
+                                         refresh_input_line);
+    return true;
 }
 
 template <class TQueueCount, class TQueuePeek, class TQueuePop>
