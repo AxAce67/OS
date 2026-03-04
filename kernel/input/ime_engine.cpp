@@ -210,4 +210,38 @@ ImeFlushResult FlushImeRomaji(
     return result;
 }
 
+const char* ResolveImeLearningKey(const ImeCandidateEntry* entry,
+                                  int candidate_index,
+                                  const char source_keys[][32]) {
+    if (entry == nullptr || candidate_index < 0 || candidate_index >= entry->count) {
+        return nullptr;
+    }
+    if (candidate_index < 4 && source_keys != nullptr && source_keys[candidate_index][0] != '\0') {
+        return source_keys[candidate_index];
+    }
+    return entry->key;
+}
+
+const char* ResolveImeCandidateInsertText(const char* candidate,
+                                          char* out_kana,
+                                          int out_kana_len,
+                                          bool (*is_ascii_romaji_token)(const char*),
+                                          int (*convert_romaji_string_to_half_kana)(
+                                              const char*, char*, int)) {
+    if (candidate == nullptr || candidate[0] == '\0') {
+        return candidate;
+    }
+    if (out_kana == nullptr || out_kana_len <= 0 ||
+        is_ascii_romaji_token == nullptr || convert_romaji_string_to_half_kana == nullptr) {
+        return candidate;
+    }
+    if (!is_ascii_romaji_token(candidate)) {
+        return candidate;
+    }
+    if (convert_romaji_string_to_half_kana(candidate, out_kana, out_kana_len) > 0) {
+        return out_kana;
+    }
+    return candidate;
+}
+
 }  // namespace input

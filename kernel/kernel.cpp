@@ -2698,12 +2698,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         const char* cand = ime_candidate_entry->candidates[ime_candidate_index];
         char cand_kana[64];
-        const char* insert_text = cand;
-        if (IsAsciiRomajiToken(cand)) {
-            if (ConvertRomajiStringToHalfKana(cand, cand_kana, static_cast<int>(sizeof(cand_kana))) > 0) {
-                insert_text = cand_kana;
-            }
-        }
+        const char* insert_text = input::ResolveImeCandidateInsertText(
+            cand, cand_kana, static_cast<int>(sizeof(cand_kana)),
+            IsAsciiRomajiToken, ConvertRomajiStringToHalfKana);
         cursor_pos = ime_candidate_start;
         DeleteRangeAt(ime_candidate_start, ime_candidate_len);
         cursor_pos = ime_candidate_start;
@@ -2721,11 +2718,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (cand == nullptr || cand[0] == '\0') {
             return;
         }
-        const char* key = nullptr;
-        if (ime_candidate_index < 4 && ime_candidate_source_keys[ime_candidate_index][0] != '\0') {
-            key = ime_candidate_source_keys[ime_candidate_index];
-        } else {
-            key = ime_candidate_entry->key;
+        const char* key = input::ResolveImeLearningKey(ime_candidate_entry,
+                                                       ime_candidate_index,
+                                                       ime_candidate_source_keys);
+        if (key == nullptr || key[0] == '\0') {
+            return;
         }
         RecordImeLearning(key, cand);
     };

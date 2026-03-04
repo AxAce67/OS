@@ -41,4 +41,15 @@ ImeFlushResult FlushImeRomaji(
     bool (*convert_head_to_kana)(const char* romaji, int romaji_len, bool finalize,
                                  int* consume, uint8_t* kana_bytes, int* kana_len));
 
+const char* ResolveImeLearningKey(const ImeCandidateEntry* entry,
+                                  int candidate_index,
+                                  const char source_keys[][32]);
+
+const char* ResolveImeCandidateInsertText(const char* candidate,
+                                          char* out_kana,
+                                          int out_kana_len,
+                                          bool (*is_ascii_romaji_token)(const char*),
+                                          int (*convert_romaji_string_to_half_kana)(
+                                              const char*, char*, int));
+
 }  // namespace input
