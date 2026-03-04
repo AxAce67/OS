@@ -3232,6 +3232,26 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             },
             RefreshConsole);
     };
+    auto QueueCount = [&]() { return main_queue != nullptr ? main_queue->Count() : 0; };
+    auto QueuePeekMessage = [&](Message* out_next) {
+        if (main_queue == nullptr || out_next == nullptr) {
+            return false;
+        }
+        return main_queue->Peek(*out_next);
+    };
+    auto QueuePopMessage = [&](Message* out_next) {
+        if (main_queue == nullptr || out_next == nullptr) {
+            return false;
+        }
+        return main_queue->Pop(*out_next);
+    };
+    auto CoalesceMouseInterrupt = [&](Message* msg) {
+        input::CoalesceMouseInterruptMessage(
+            msg,
+            QueueCount,
+            QueuePeekMessage,
+            QueuePopMessage);
+    };
 
     while (1) {
         // 処理すべきイベントがあるか、割り込みを禁止(cli)した上で安全にチェックする（競合対策）
@@ -3249,21 +3269,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         // キューにデータが入っていたら、メッセージを1つ取り出す
         Message msg;
         main_queue->Pop(msg);
-        input::CoalesceMouseInterruptMessage(
-            &msg,
-            [&]() { return main_queue != nullptr ? main_queue->Count() : 0; },
-            [&](Message* out_next) {
-                if (main_queue == nullptr || out_next == nullptr) {
-                    return false;
-                }
-                return main_queue->Peek(*out_next);
-            },
-            [&](Message* out_next) {
-                if (main_queue == nullptr || out_next == nullptr) {
-                    return false;
-                }
-                return main_queue->Pop(*out_next);
-            });
+        CoalesceMouseInterrupt(&msg);
         
         // 取り出し終わったら割り込みを再開する
         __asm__ volatile("sti");
