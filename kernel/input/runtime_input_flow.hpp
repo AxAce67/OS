@@ -106,6 +106,24 @@ struct RuntimeFlowBundlesT {
     TRegularExecBundle regular;
 };
 
+template <class TImeCandidateEntry>
+struct RuntimeExecInputRefsT {
+    const TImeCandidateEntry* ime_candidate_entry;
+    int ime_candidate_start;
+    int ime_candidate_len;
+    char* ime_romaji_buffer;
+    int ime_romaji_capacity;
+    int* ime_romaji_len;
+    char* command_buffer;
+    int command_capacity;
+    int* command_len;
+    int* cursor_pos;
+    int* rendered_len;
+    bool* ime_enabled;
+    bool* jp_layout;
+    int (*str_length)(const char*);
+};
+
 ExecChainResult ExecuteRegularExecChain(const RegularExecPlan& plan,
                                         const RegularImeActionContext& ime_context,
                                         const RegularClearContext& clear_context,

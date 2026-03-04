@@ -3056,6 +3056,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     using ExtendedExecBundle = input::RuntimeExtendedExecBundleT<InputActionOwner>;
     using RegularExecBundle = input::RuntimeRegularExecBundleT<InputActionOwner, RegularShortcutOwner>;
     using RuntimeFlowBundles = input::RuntimeFlowBundlesT<ExtendedExecBundle, RegularExecBundle>;
+    using RuntimeExecInputRefs = input::RuntimeExecInputRefsT<ImeCandidateEntry>;
     auto AcquireRuntimeFlowBundles = [&]() {
         RuntimeFlowBundles bundles{};
         input::BuildRuntimeFlowBundles(&bundles,
@@ -3094,22 +3095,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                                 const input::ExtendedExecPlan& exec_plan) {
         const auto action_context = input::BuildExtendedActionContext(&bundles->extended.owner);
         return input::ExecuteExtendedExecChain(exec_plan, action_context, &cursor_pos, command_len);
-    };
-    struct RuntimeExecInputRefs {
-        const ImeCandidateEntry* ime_candidate_entry;
-        int ime_candidate_start;
-        int ime_candidate_len;
-        char* ime_romaji_buffer;
-        int ime_romaji_capacity;
-        int* ime_romaji_len;
-        char* command_buffer;
-        int command_capacity;
-        int* command_len;
-        int* cursor_pos;
-        int* rendered_len;
-        bool* ime_enabled;
-        bool* jp_layout;
-        int (*str_length)(const char*);
     };
     auto ExecuteRegularChainWithContexts = [&](RuntimeFlowBundles* bundles,
                                                const input::RegularExecPlan& exec_plan,
