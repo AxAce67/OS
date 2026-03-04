@@ -3041,13 +3041,28 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if ((pressed & 0x04) != 0) { ++g_mouse_middle_press_count; }
         g_mouse_buttons_current = now_buttons;
 
+        int pointer_x = 0;
+        int pointer_y = 0;
         if (msg.pointer_mode == Message::PointerMode::kAbsolute) {
             g_last_absolute_mouse_tick = CurrentTick();
             mouse_cursor->SetPosition(msg.x, msg.y);
+            pointer_x = msg.x;
+            pointer_y = msg.y;
+        } else {
+            if (g_xhci_hid_auto_enabled &&
+                (CurrentTick() - g_last_absolute_mouse_tick) < 1000) {
+                return;  // USB absolute pointer is active; ignore noisy PS/2 relative moves.
+            }
+            mouse_cursor->Move(msg.dx, msg.dy);
+            pointer_x = mouse_cursor->X();
+            pointer_y = mouse_cursor->Y();
+        }
+
+        {
             const int frame_x = term_frame_layer->GetX();
             const int frame_y = term_frame_layer->GetY();
-            const int local_frame_x = msg.x - frame_x;
-            const int local_frame_y = msg.y - frame_y;
+            const int local_frame_x = pointer_x - frame_x;
+            const int local_frame_y = pointer_y - frame_y;
             const bool on_term_title =
                 local_frame_x >= 0 && local_frame_x < term_frame_w &&
                 local_frame_y >= 0 && local_frame_y < term_title_h;
@@ -3056,8 +3071,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 local_frame_y >= 0 && local_frame_y < term_frame_h;
             const int info_x = info_frame_layer->GetX();
             const int info_y = info_frame_layer->GetY();
-            const int local_info_x = msg.x - info_x;
-            const int local_info_y = msg.y - info_y;
+            const int local_info_x = pointer_x - info_x;
+            const int local_info_y = pointer_y - info_y;
             const bool on_info_title =
                 local_info_x >= 0 && local_info_x < info_frame_w &&
                 local_info_y >= 0 && local_info_y < info_title_h;
@@ -3114,8 +3129,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             }
             if ((now_buttons & 0x01) != 0 && dragging_window >= 0) {
                 if (dragging_window == 0) {
-                    int new_frame_x = msg.x - drag_offset_x;
-                    int new_frame_y = msg.y - drag_offset_y;
+                    int new_frame_x = pointer_x - drag_offset_x;
+                    int new_frame_y = pointer_y - drag_offset_y;
                     if (new_frame_x < 0) new_frame_x = 0;
                     if (new_frame_y < 0) new_frame_y = 0;
                     if (new_frame_x > screen_w - term_frame_w) new_frame_x = screen_w - term_frame_w;
@@ -3126,8 +3141,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         layer_manager->Draw();
                     }
                 } else {
-                    int new_info_x = msg.x - drag_offset_x;
-                    int new_info_y = msg.y - drag_offset_y;
+                    int new_info_x = pointer_x - drag_offset_x;
+                    int new_info_y = pointer_y - drag_offset_y;
                     if (new_info_x < 0) new_info_x = 0;
                     if (new_info_y < 0) new_info_y = 0;
                     if (new_info_x > screen_w - info_frame_w) new_info_x = screen_w - info_frame_w;
@@ -3144,16 +3159,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             const int console_x = term_console_layer->GetX();
             const int console_y = term_console_layer->GetY();
             const bool in_terminal_console =
-                msg.x >= console_x && msg.x < console_x + term_content_w &&
-                msg.y >= console_y && msg.y < console_y + term_content_h;
+                pointer_x >= console_x && pointer_x < console_x + term_content_w &&
+                pointer_y >= console_y && pointer_y < console_y + term_content_h;
             if (!in_terminal_console) {
                 if ((pressed & 0x01) != 0) {
                     ClearSelection();
                 }
                 return;
             }
-            const int click_col = (msg.x - console_x - Console::kMarginX) / Console::kCellWidth;
-            const int click_row = (msg.y - console_y - Console::kMarginY) / Console::kCellHeight;
+            const int click_col = (pointer_x - console_x - Console::kMarginX) / Console::kCellWidth;
+            const int click_row = (pointer_y - console_y - Console::kMarginY) / Console::kCellHeight;
             if ((pressed & 0x01) != 0) {
                 selecting_with_mouse = true;
                 if (click_row == input_row && click_col >= input_col) {
@@ -3190,12 +3205,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     RefreshInputLine();
                 }
             }
-        } else {
-            if (g_xhci_hid_auto_enabled &&
-                (CurrentTick() - g_last_absolute_mouse_tick) < 1000) {
-                return;  // USB absolute pointer is active; ignore noisy PS/2 relative moves.
-            }
-            mouse_cursor->Move(msg.dx, msg.dy);
         }
         if (msg.wheel > 0) {
             console->ScrollUp(msg.wheel * 3);

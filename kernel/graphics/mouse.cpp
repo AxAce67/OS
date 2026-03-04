@@ -99,3 +99,11 @@ void MouseCursor::SetPosition(int x, int y) {
     layer_manager_->Draw(old_x, old_y, w, h);
     layer_manager_->Draw(final_x, final_y, w, h);
 }
+
+int MouseCursor::X() const {
+    return layer_->GetX();
+}
+
+int MouseCursor::Y() const {
+    return layer_->GetY();
+}

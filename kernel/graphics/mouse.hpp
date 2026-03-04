@@ -13,6 +13,8 @@ public:
     MouseCursor(unsigned int initial_x, unsigned int initial_y, LayerManager* layer_manager);
     void Move(int dx, int dy);
     void SetPosition(int x, int y);
+    int X() const;
+    int Y() const;
 
 private:
     LayerManager* layer_manager_;
