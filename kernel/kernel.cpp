@@ -2925,12 +2925,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     now_buttons,
                 })) {
                 if (dragging_window == 0) {
-                    int new_frame_x = pointer_x - drag_offset_x;
-                    int new_frame_y = pointer_y - drag_offset_y;
-                    if (new_frame_x < 0) new_frame_x = 0;
-                    if (new_frame_y < 0) new_frame_y = 0;
-                    if (new_frame_x > screen_w - term_frame_w) new_frame_x = screen_w - term_frame_w;
-                    if (new_frame_y > screen_h - taskbar_h - term_frame_h) new_frame_y = screen_h - taskbar_h - term_frame_h;
+                    const auto new_pos = input::ComputeClampedDragPosition(
+                        pointer_x,
+                        pointer_y,
+                        drag_offset_x,
+                        drag_offset_y,
+                        screen_w - term_frame_w,
+                        screen_h - taskbar_h - term_frame_h);
+                    const int new_frame_x = new_pos.x;
+                    const int new_frame_y = new_pos.y;
                     if (new_frame_x != term_frame_layer->GetX() || new_frame_y != term_frame_layer->GetY() ||
                         (drag_pending_move && drag_pending_window == 0 &&
                          (drag_pending_x != new_frame_x || drag_pending_y != new_frame_y))) {
@@ -2941,12 +2944,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         drag_visual_dirty = true;
                     }
                 } else {
-                    int new_info_x = pointer_x - drag_offset_x;
-                    int new_info_y = pointer_y - drag_offset_y;
-                    if (new_info_x < 0) new_info_x = 0;
-                    if (new_info_y < 0) new_info_y = 0;
-                    if (new_info_x > screen_w - info_frame_w) new_info_x = screen_w - info_frame_w;
-                    if (new_info_y > screen_h - taskbar_h - info_frame_h) new_info_y = screen_h - taskbar_h - info_frame_h;
+                    const auto new_pos = input::ComputeClampedDragPosition(
+                        pointer_x,
+                        pointer_y,
+                        drag_offset_x,
+                        drag_offset_y,
+                        screen_w - info_frame_w,
+                        screen_h - taskbar_h - info_frame_h);
+                    const int new_info_x = new_pos.x;
+                    const int new_info_y = new_pos.y;
                     if (new_info_x != info_frame_layer->GetX() || new_info_y != info_frame_layer->GetY() ||
                         (drag_pending_move && drag_pending_window == 1 &&
                          (drag_pending_x != new_info_x || drag_pending_y != new_info_y))) {

@@ -219,6 +219,11 @@ struct RuntimeWindowHitTestResult {
     bool on_title;
 };
 
+struct RuntimeDragClampedPosition {
+    int x;
+    int y;
+};
+
 template <class TCandidateEntry>
 struct RuntimeImeCandidateStartRefsT {
     char* romaji_buffer;
@@ -468,6 +473,21 @@ inline int DecideMouseHitWindow(int active_window,
         return 0;
     }
     return -1;
+}
+
+inline RuntimeDragClampedPosition ComputeClampedDragPosition(int pointer_x,
+                                                             int pointer_y,
+                                                             int drag_offset_x,
+                                                             int drag_offset_y,
+                                                             int max_x,
+                                                             int max_y) {
+    int x = pointer_x - drag_offset_x;
+    int y = pointer_y - drag_offset_y;
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x > max_x) x = max_x;
+    if (y > max_y) y = max_y;
+    return RuntimeDragClampedPosition{x, y};
 }
 
 template <class TQueueCount, class TQueuePeek, class TQueuePop>
