@@ -71,4 +71,65 @@ ImeModeState ApplyImeModeAction(RegularShortcutAction action,
     }
 }
 
+RegularExecPlan BuildRegularExecPlan(RegularShortcutAction action,
+                                     bool ime_enabled,
+                                     int ime_romaji_len) {
+    RegularExecPlan p{};
+    p.handled = false;
+    p.flush_romaji = false;
+    p.ensure_live_console = false;
+    p.clear_selection = false;
+    p.kind = RegularExecKind::kNone;
+
+    switch (action) {
+    case RegularShortcutAction::kCtrlA:
+    case RegularShortcutAction::kHomeFallback:
+        p.handled = true;
+        p.flush_romaji = ime_enabled && ime_romaji_len > 0;
+        p.ensure_live_console = true;
+        p.clear_selection = true;
+        p.kind = RegularExecKind::kMoveCursorStart;
+        return p;
+    case RegularShortcutAction::kCtrlE:
+    case RegularShortcutAction::kEndFallback:
+        p.handled = true;
+        p.flush_romaji = ime_enabled && ime_romaji_len > 0;
+        p.ensure_live_console = true;
+        p.clear_selection = true;
+        p.kind = RegularExecKind::kMoveCursorEnd;
+        return p;
+    case RegularShortcutAction::kUpFallback:
+        p.handled = true;
+        p.flush_romaji = ime_enabled && ime_romaji_len > 0;
+        p.ensure_live_console = true;
+        p.kind = RegularExecKind::kHistoryUpWithCandidate;
+        return p;
+    case RegularShortcutAction::kDownFallback:
+        p.handled = true;
+        p.flush_romaji = ime_enabled && ime_romaji_len > 0;
+        p.ensure_live_console = true;
+        p.kind = RegularExecKind::kHistoryDownWithCandidate;
+        return p;
+    case RegularShortcutAction::kBackspace:
+        p.handled = true;
+        p.ensure_live_console = true;
+        p.kind = RegularExecKind::kBackspace;
+        return p;
+    case RegularShortcutAction::kDelete:
+        p.handled = true;
+        p.flush_romaji = ime_enabled && ime_romaji_len > 0;
+        p.ensure_live_console = true;
+        p.kind = RegularExecKind::kDelete;
+        return p;
+    case RegularShortcutAction::kTab:
+        p.handled = true;
+        p.flush_romaji = ime_enabled && ime_romaji_len > 0;
+        p.ensure_live_console = true;
+        p.kind = RegularExecKind::kTab;
+        return p;
+    default:
+        return p;
+    }
+}
+
 }  // namespace input

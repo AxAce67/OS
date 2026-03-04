@@ -3148,28 +3148,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             RepaintPromptAndInput();
             return true;
         }
-        if (action == input::RegularShortcutAction::kCtrlA) {
-            if (input::ShouldFlushRomajiForCursorShortcut(g_ime_enabled, ime_romaji_len)) {
-                FlushImeRomaji(true);
-            }
-            EnsureLiveConsole();
-            ClearSelection();
-            cursor_pos = 0;
-            RenderInputLine();
-            RefreshInputLine();
-            return true;
-        }
-        if (action == input::RegularShortcutAction::kCtrlE) {
-            if (input::ShouldFlushRomajiForCursorShortcut(g_ime_enabled, ime_romaji_len)) {
-                FlushImeRomaji(true);
-            }
-            EnsureLiveConsole();
-            ClearSelection();
-            cursor_pos = command_len;
-            RenderInputLine();
-            RefreshInputLine();
-            return true;
-        }
         if (action == input::RegularShortcutAction::kCtrlL) {
             if (g_ime_enabled && ime_romaji_len > 0) {
                 FlushImeRomaji(true);
@@ -3191,70 +3169,52 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             RefreshInputLine();
             return true;
         }
-        if (action == input::RegularShortcutAction::kHomeFallback) {
-            if (input::ShouldFlushRomajiForCursorShortcut(g_ime_enabled, ime_romaji_len)) {
+        const auto exec_plan = input::BuildRegularExecPlan(action, g_ime_enabled, ime_romaji_len);
+        if (exec_plan.handled) {
+            if (exec_plan.flush_romaji) {
                 FlushImeRomaji(true);
             }
-            EnsureLiveConsole();
-            ClearSelection();
-            cursor_pos = 0;
-            RenderInputLine();
-            RefreshInputLine();
-            return true;
-        }
-        if (action == input::RegularShortcutAction::kUpFallback) {
-            if (g_ime_enabled && ime_romaji_len > 0) {
-                FlushImeRomaji(true);
+            if (exec_plan.ensure_live_console) {
+                EnsureLiveConsole();
             }
-            EnsureLiveConsole();
-            if (CycleImeCandidate(-1)) {
+            if (exec_plan.clear_selection) {
+                ClearSelection();
+            }
+            switch (exec_plan.kind) {
+            case input::RegularExecKind::kMoveCursorStart:
+                cursor_pos = 0;
+                RenderInputLine();
+                RefreshInputLine();
                 return true;
-            }
-            BrowseHistoryUp();
-            return true;
-        }
-        if (action == input::RegularShortcutAction::kEndFallback) {
-            if (input::ShouldFlushRomajiForCursorShortcut(g_ime_enabled, ime_romaji_len)) {
-                FlushImeRomaji(true);
-            }
-            EnsureLiveConsole();
-            ClearSelection();
-            cursor_pos = command_len;
-            RenderInputLine();
-            RefreshInputLine();
-            return true;
-        }
-        if (action == input::RegularShortcutAction::kDownFallback) {
-            if (g_ime_enabled && ime_romaji_len > 0) {
-                FlushImeRomaji(true);
-            }
-            EnsureLiveConsole();
-            if (CycleImeCandidate(1)) {
+            case input::RegularExecKind::kMoveCursorEnd:
+                cursor_pos = command_len;
+                RenderInputLine();
+                RefreshInputLine();
                 return true;
-            }
-            BrowseHistoryDown();
-            return true;
-        }
-        if (action == input::RegularShortcutAction::kBackspace ||
-            action == input::RegularShortcutAction::kDelete) {
-            if (action == input::RegularShortcutAction::kDelete && g_ime_enabled && ime_romaji_len > 0) {
-                FlushImeRomaji(true);
-            }
-            EnsureLiveConsole();
-            if (action == input::RegularShortcutAction::kBackspace) {
+            case input::RegularExecKind::kHistoryUpWithCandidate:
+                if (CycleImeCandidate(-1)) {
+                    return true;
+                }
+                BrowseHistoryUp();
+                return true;
+            case input::RegularExecKind::kHistoryDownWithCandidate:
+                if (CycleImeCandidate(1)) {
+                    return true;
+                }
+                BrowseHistoryDown();
+                return true;
+            case input::RegularExecKind::kBackspace:
                 BackspaceAtCursor();
-            } else {
+                return true;
+            case input::RegularExecKind::kDelete:
                 DeleteAtCursor();
+                return true;
+            case input::RegularExecKind::kTab:
+                HandleTabCompletion();
+                return true;
+            default:
+                break;
             }
-            return true;
-        }
-        if (action == input::RegularShortcutAction::kTab) {
-            if (g_ime_enabled && ime_romaji_len > 0) {
-                FlushImeRomaji(true);
-            }
-            EnsureLiveConsole();
-            HandleTabCompletion();
-            return true;
         }
         if (action == input::RegularShortcutAction::kHankakuZenkaku) {
             FlushImeRomaji(true);
