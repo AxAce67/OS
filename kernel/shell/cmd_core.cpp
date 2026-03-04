@@ -3,6 +3,7 @@
 #include "memory.hpp"
 #include "timer.hpp"
 #include "arch/x86_64/interrupt_handler.hpp"
+#include "boot_info.h"
 #include "shell/context.hpp"
 #include "shell/text.hpp"
 
@@ -17,6 +18,7 @@ extern bool g_has_halfwidth_kana_font;
 extern ShellPair g_vars[16];
 extern ShellPair g_aliases[16];
 extern char g_cwd[96];
+extern ShellFile g_files[64];
 extern uint8_t g_mouse_buttons_current;
 extern uint64_t g_mouse_left_press_count;
 extern uint64_t g_mouse_right_press_count;
@@ -30,13 +32,22 @@ extern bool g_keyboard_last_released;
 ShellPair* EnsurePair(ShellPair* pairs, int count, const char* key);
 void PrintPairs(const char* label, ShellPair* pairs, int count);
 void Reboot();
+bool ResolveFilePath(const char* cwd, const char* input, char* out, int out_len);
+const ShellFile* FindShellFileByPath(const char* cwd, const char* input_path);
+const BootFileEntry* FindBootFileByPath(const char* cwd, const char* input_path);
+ShellFile* FindShellFileByAbsPathMutable(const char* abs_path);
+ShellFile* CreateShellFile(const char* abs_path);
+int CountImeLearningEntries();
+void ClearImeLearning();
+int ImportImeLearningFromBuffer(const uint8_t* data, int size, bool clear_before);
+int ExportImeLearningToBuffer(char* out, int out_len);
 
 bool ExecuteHelpCommand() {
     console->PrintLine("help: core  help clear tick time mem uptime echo reboot");
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
     console->PrintLine("help: misc  history clearhistory inputstat about");
-    console->PrintLine("help: cfg   repeat layout ime set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll xhcihidstat xhciauto xhciautostart mouseabs usbports");
+    console->PrintLine("help: cfg   repeat layout ime(on/off/toggle/stat/save/import/export/resetlearn) set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll xhcihidstat xhciauto xhciautostart mouseabs usbports");
     return true;
 }
 
@@ -85,6 +96,115 @@ bool ExecuteLayoutCommand(const char* rest) {
 }
 
 bool ExecuteImeCommand(const char* rest) {
+    if (StrEqual(rest, "stat")) {
+        console->Print("ime=");
+        console->Print(g_ime_enabled ? "on" : "off");
+        console->Print(" layout=");
+        console->Print(g_jp_layout ? "jp" : "us");
+        console->Print(" dic=");
+        console->PrintDec(g_ime_user_candidate_count);
+        console->Print(" learn=");
+        console->PrintDec(CountImeLearningEntries());
+        console->Print("\n");
+        return true;
+    }
+    if (StrEqual(rest, "resetlearn")) {
+        ClearImeLearning();
+        console->PrintLine("ime.learn reset");
+        return true;
+    }
+    if (StrEqual(rest, "export")) {
+        char out[2048];
+        ExportImeLearningToBuffer(out, static_cast<int>(sizeof(out)));
+        console->Print(out);
+        return true;
+    }
+    if (StrStartsWith(rest, "save")) {
+        int pos = 0;
+        char sub[16];
+        NextToken(rest, &pos, sub, sizeof(sub)); // "save"
+        char name[64];
+        if (!NextToken(rest, &pos, name, sizeof(name))) {
+            CopyString(name, "/ime.learn.out", sizeof(name));
+        }
+        char extra[8];
+        if (NextToken(rest, &pos, extra, sizeof(extra))) {
+            console->PrintLine("ime save: too many arguments");
+            return true;
+        }
+        char resolved[96];
+        if (!ResolveFilePath(g_cwd, name, resolved, sizeof(resolved))) {
+            console->PrintLine("ime save: invalid path");
+            return true;
+        }
+        if (FindBootFileByPath(g_cwd, name) != nullptr) {
+            console->PrintLine("ime save: boot file is read-only");
+            return true;
+        }
+        ShellFile* file = FindShellFileByAbsPathMutable(resolved);
+        if (file == nullptr) {
+            file = CreateShellFile(resolved);
+        }
+        if (file == nullptr) {
+            console->PrintLine("ime save: file table full");
+            return true;
+        }
+        char out[2048];
+        const int written = ExportImeLearningToBuffer(out, static_cast<int>(sizeof(out)));
+        int copy_len = written;
+        if (copy_len > static_cast<int>(sizeof(file->data))) {
+            copy_len = static_cast<int>(sizeof(file->data));
+        }
+        for (int i = 0; i < copy_len; ++i) {
+            file->data[i] = static_cast<uint8_t>(out[i]);
+        }
+        file->size = static_cast<uint64_t>(copy_len);
+        console->Print("ime save: ");
+        console->Print(resolved);
+        if (copy_len < written) {
+            console->PrintLine(" (truncated)");
+        } else {
+            console->PrintLine(" (ok)");
+        }
+        return true;
+    }
+    if (StrStartsWith(rest, "import")) {
+        int pos = 0;
+        char sub[16];
+        NextToken(rest, &pos, sub, sizeof(sub)); // "import"
+        char name[64];
+        const ShellFile* src_user = nullptr;
+        const BootFileEntry* src_boot = nullptr;
+        if (NextToken(rest, &pos, name, sizeof(name))) {
+            src_user = FindShellFileByPath(g_cwd, name);
+            if (src_user == nullptr) {
+                src_boot = FindBootFileByPath(g_cwd, name);
+            }
+        } else {
+            src_user = FindShellFileByPath("/", "/ime.learn");
+            if (src_user == nullptr) {
+                src_boot = FindBootFileByPath("/", "/ime.learn");
+            }
+        }
+        if (src_user == nullptr && src_boot == nullptr) {
+            console->PrintLine("ime import: source not found");
+            return true;
+        }
+        int imported = 0;
+        if (src_user != nullptr) {
+            const int n = (src_user->size > 0x7FFFFFFFu) ? 0x7FFFFFFF : static_cast<int>(src_user->size);
+            imported = ImportImeLearningFromBuffer(src_user->data, n, false);
+        } else {
+            const int n = (src_boot->size > 0x7FFFFFFFu) ? 0x7FFFFFFF : static_cast<int>(src_boot->size);
+            imported = ImportImeLearningFromBuffer(src_boot->data, n, false);
+        }
+        console->Print("ime import: +");
+        console->PrintDec(imported);
+        console->Print(" entries, total=");
+        console->PrintDec(CountImeLearningEntries());
+        console->Print("\n");
+        return true;
+    }
     if (rest[0] == '\0') {
         console->Print("ime=");
         console->PrintLine(g_ime_enabled ? "on" : "off");
@@ -273,6 +393,8 @@ bool ExecuteInputStatCommand() {
     console->Print(g_has_halfwidth_kana_font ? "halfkana" : "ascii");
     console->Print(" ime.dic=");
     console->PrintDec(g_ime_user_candidate_count);
+    console->Print(" ime.learn=");
+    console->PrintDec(CountImeLearningEntries());
     console->Print(" hid.kbd=");
     console->Print(g_xhci_hid_decode_keyboard ? "on" : "off");
     console->Print("\n");

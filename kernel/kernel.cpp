@@ -657,6 +657,19 @@ ImeUserCandidateEntry g_ime_user_candidates[16];
 ImeCandidateEntry g_ime_user_candidate_views[16];
 int g_ime_user_candidate_count = 0;
 ImeCandidateLearnEntry g_ime_learn_entries[64];
+char ToLowerAscii(char c);
+const BootFileEntry* FindBootFileByName(const char* name);
+void ToLowerAsciiString(const char* src, char* dst, int dst_len);
+
+int CountImeLearningEntries() {
+    int count = 0;
+    for (int i = 0; i < static_cast<int>(sizeof(g_ime_learn_entries) / sizeof(g_ime_learn_entries[0])); ++i) {
+        if (g_ime_learn_entries[i].used) {
+            ++count;
+        }
+    }
+    return count;
+}
 
 void InitImeUserCandidates() {
     g_ime_user_candidate_count = 0;
@@ -682,6 +695,10 @@ void InitImeLearning() {
         g_ime_learn_entries[i].cand[0] = '\0';
         g_ime_learn_entries[i].score = 0;
     }
+}
+
+void ClearImeLearning() {
+    InitImeLearning();
 }
 
 uint16_t GetImeLearningScore(const char* key, const char* cand) {
@@ -735,6 +752,191 @@ void RecordImeLearning(const char* key, const char* cand) {
     CopyString(g_ime_learn_entries[slot].key, key, static_cast<int>(sizeof(g_ime_learn_entries[slot].key)));
     CopyString(g_ime_learn_entries[slot].cand, cand, static_cast<int>(sizeof(g_ime_learn_entries[slot].cand)));
     g_ime_learn_entries[slot].score = 1;
+}
+
+void UpsertImeLearningScore(const char* key, const char* cand, uint16_t score) {
+    if (score == 0 || key == nullptr || cand == nullptr || key[0] == '\0' || cand[0] == '\0') {
+        return;
+    }
+    int free_slot = -1;
+    int min_slot = -1;
+    uint16_t min_score = 0xFFFF;
+    for (int i = 0; i < static_cast<int>(sizeof(g_ime_learn_entries) / sizeof(g_ime_learn_entries[0])); ++i) {
+        if (!g_ime_learn_entries[i].used) {
+            if (free_slot < 0) {
+                free_slot = i;
+            }
+            continue;
+        }
+        if (StrEqual(g_ime_learn_entries[i].key, key) && StrEqual(g_ime_learn_entries[i].cand, cand)) {
+            g_ime_learn_entries[i].score = score;
+            return;
+        }
+        if (g_ime_learn_entries[i].score < min_score) {
+            min_score = g_ime_learn_entries[i].score;
+            min_slot = i;
+        }
+    }
+    int slot = (free_slot >= 0) ? free_slot : min_slot;
+    if (slot < 0) {
+        return;
+    }
+    g_ime_learn_entries[slot].used = true;
+    CopyString(g_ime_learn_entries[slot].key, key, static_cast<int>(sizeof(g_ime_learn_entries[slot].key)));
+    CopyString(g_ime_learn_entries[slot].cand, cand, static_cast<int>(sizeof(g_ime_learn_entries[slot].cand)));
+    g_ime_learn_entries[slot].score = score;
+}
+
+int ParseUnsignedDecimal(const char* s) {
+    int value = 0;
+    if (s == nullptr || s[0] == '\0') {
+        return -1;
+    }
+    for (int i = 0; s[i] != '\0'; ++i) {
+        if (s[i] < '0' || s[i] > '9') {
+            return -1;
+        }
+        value = value * 10 + (s[i] - '0');
+        if (value > 65535) {
+            return -1;
+        }
+    }
+    return value;
+}
+
+int ImportImeLearningFromBuffer(const uint8_t* data, int size, bool clear_before) {
+    if (data == nullptr || size <= 0) {
+        return 0;
+    }
+    if (clear_before) {
+        ClearImeLearning();
+    }
+    int pos = 0;
+    int imported = 0;
+    while (pos < size) {
+        while (pos < size && (data[pos] == '\r' || data[pos] == '\n')) {
+            ++pos;
+        }
+        if (pos >= size) {
+            break;
+        }
+        if (data[pos] == '#') {
+            while (pos < size && data[pos] != '\n') {
+                ++pos;
+            }
+            continue;
+        }
+
+        char key[32];
+        char cand[32];
+        char score_buf[8];
+        int key_len = 0;
+        int cand_len = 0;
+        int score_len = 0;
+
+        while (pos < size && data[pos] != ':' && data[pos] != '\n' && key_len + 1 < static_cast<int>(sizeof(key))) {
+            key[key_len++] = static_cast<char>(data[pos++]);
+        }
+        key[key_len] = '\0';
+        if (pos >= size || data[pos] != ':') {
+            while (pos < size && data[pos] != '\n') {
+                ++pos;
+            }
+            continue;
+        }
+        ++pos; // ':'
+        while (pos < size && data[pos] != ':' && data[pos] != '\n' && cand_len + 1 < static_cast<int>(sizeof(cand))) {
+            cand[cand_len++] = static_cast<char>(data[pos++]);
+        }
+        cand[cand_len] = '\0';
+        if (pos >= size || data[pos] != ':') {
+            while (pos < size && data[pos] != '\n') {
+                ++pos;
+            }
+            continue;
+        }
+        ++pos; // ':'
+        while (pos < size && data[pos] != '\n' && data[pos] != '\r' &&
+               score_len + 1 < static_cast<int>(sizeof(score_buf))) {
+            score_buf[score_len++] = static_cast<char>(data[pos++]);
+        }
+        score_buf[score_len] = '\0';
+        while (pos < size && data[pos] != '\n') {
+            ++pos;
+        }
+
+        ToLowerAsciiString(key, key, static_cast<int>(sizeof(key)));
+        ToLowerAsciiString(cand, cand, static_cast<int>(sizeof(cand)));
+        const int parsed = ParseUnsignedDecimal(score_buf);
+        if (key[0] == '\0' || cand[0] == '\0' || parsed <= 0) {
+            continue;
+        }
+        UpsertImeLearningScore(key, cand, static_cast<uint16_t>(parsed));
+        ++imported;
+    }
+    return imported;
+}
+
+int ExportImeLearningToBuffer(char* out, int out_len) {
+    if (out == nullptr || out_len <= 0) {
+        return 0;
+    }
+    int w = 0;
+    auto append_char = [&](char c) -> bool {
+        if (w + 1 >= out_len) {
+            return false;
+        }
+        out[w++] = c;
+        return true;
+    };
+    auto append_cstr = [&](const char* s) -> bool {
+        for (int i = 0; s[i] != '\0'; ++i) {
+            if (!append_char(s[i])) {
+                return false;
+            }
+        }
+        return true;
+    };
+    auto append_u16 = [&](uint16_t v) -> bool {
+        char rev[6];
+        int n = 0;
+        do {
+            rev[n++] = static_cast<char>('0' + (v % 10));
+            v = static_cast<uint16_t>(v / 10);
+        } while (v != 0 && n < static_cast<int>(sizeof(rev)));
+        for (int i = n - 1; i >= 0; --i) {
+            if (!append_char(rev[i])) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    append_cstr("# ime learning cache\n");
+    for (int i = 0; i < static_cast<int>(sizeof(g_ime_learn_entries) / sizeof(g_ime_learn_entries[0])); ++i) {
+        if (!g_ime_learn_entries[i].used) {
+            continue;
+        }
+        if (!append_cstr(g_ime_learn_entries[i].key) ||
+            !append_char(':') ||
+            !append_cstr(g_ime_learn_entries[i].cand) ||
+            !append_char(':') ||
+            !append_u16(g_ime_learn_entries[i].score) ||
+            !append_char('\n')) {
+            break;
+        }
+    }
+    out[w] = '\0';
+    return w;
+}
+
+int LoadImeLearningFromBootFS() {
+    const BootFileEntry* file = FindBootFileByName("ime.learn");
+    if (file == nullptr || file->data == nullptr || file->size == 0) {
+        return 0;
+    }
+    const int n = (file->size > 0x7FFFFFFFu) ? 0x7FFFFFFF : static_cast<int>(file->size);
+    return ImportImeLearningFromBuffer(file->data, n, false);
 }
 
 char ToLowerAscii(char c);
@@ -1967,6 +2169,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     g_has_halfwidth_kana_font = HasHalfwidthKanaFont();
     InitImeLearning();
     LoadImeDictionaryFromBootFS();
+    const int loaded_ime_learn = LoadImeLearningFromBootFS();
 
     console->Print("Waiting for hardware interrupts (Keyboard/Mouse/LAPIC Timer)...\n");
     console->Print("Input mode: layout=");
@@ -1977,6 +2180,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     console->Print(g_has_halfwidth_kana_font ? "halfkana" : "ascii-fallback");
     console->Print(" ime.dic=");
     console->PrintDec(g_ime_user_candidate_count);
+    console->Print(" ime.learn=");
+    console->PrintDec(CountImeLearningEntries());
+    console->Print(" (+");
+    console->PrintDec(loaded_ime_learn);
+    console->Print(")");
     console->Print("\n");
     PrintPrompt();
 

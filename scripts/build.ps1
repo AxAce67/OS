@@ -143,6 +143,9 @@ Copy-Item "kernel.elf" -Destination "disk\kernel.elf"           # カーネル�
 if (Test-Path "ime.dic") {
     Copy-Item "ime.dic" -Destination "disk\ime.dic"
 }
+if (Test-Path "ime.learn") {
+    Copy-Item "ime.learn" -Destination "disk\ime.learn"
+}
 
 if ($NoRun) {
     Write-Host "Build completed. (NoRun mode: QEMU launch skipped)" -ForegroundColor Green
