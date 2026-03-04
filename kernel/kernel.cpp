@@ -3215,6 +3215,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             pointer_logical_x = pointer_x;
             pointer_logical_y = pointer_y;
             pointer_visual_dirty = true;
+            // Cursor now uses direct-draw path; flush immediately for smoother motion.
+            FlushPointerVisual();
         }
         {
             const int frame_x = term_frame_layer->GetX();
@@ -3675,13 +3677,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 int merged = 0;
                 int total_dx = msg.dx;
                 int total_dy = msg.dy;
-                int max_merge = (msg.buttons == 0) ? 8 : 32;
+                int max_merge = (msg.buttons == 0) ? 2 : 32;
                 if (main_queue != nullptr) {
                     const int backlog = main_queue->Count();
                     if (backlog > 64) {
-                        max_merge = (msg.buttons == 0) ? 64 : 96;
+                        max_merge = (msg.buttons == 0) ? 16 : 96;
                     } else if (backlog > 24) {
-                        max_merge = (msg.buttons == 0) ? 32 : 64;
+                        max_merge = (msg.buttons == 0) ? 8 : 64;
                     }
                 }
                 while (merged < max_merge &&
