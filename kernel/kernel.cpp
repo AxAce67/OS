@@ -82,6 +82,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "input/ime_session.hpp"
 #include "input/key_handler.hpp"
 #include "input/key_handler_exec.hpp"
+#include "input/runtime_input_flow.hpp"
 #include "input/key_flow.hpp"
 #include "input/line_editor.hpp"
 #include "input/line_ops.hpp"
@@ -3272,14 +3273,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (out_plan == nullptr) {
             return false;
         }
-        const input::ExtendedKeyAction action = input::DecideExtendedKeyAction(key);
-        const auto plan = input::BuildExtendedExecPlan(
-            action, g_ime_enabled, ime_romaji_len, ime_candidate_active, has_candidate_nav);
-        if (!plan.handled) {
+        const auto prep = input::PrepareExtendedExecPlan(key,
+                                                         g_ime_enabled,
+                                                         ime_romaji_len,
+                                                         ime_candidate_active,
+                                                         has_candidate_nav);
+        if (!prep.handled) {
             return false;
         }
-        ApplyExtendedPlanSideEffects(plan);
-        *out_plan = plan;
+        ApplyExtendedPlanSideEffects(prep.plan);
+        *out_plan = prep.plan;
         return true;
     };
     auto TryPrepareRegularExecPlan = [&](uint8_t key,
@@ -3287,23 +3290,25 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (out_plan == nullptr) {
             return false;
         }
-        if (input::ShouldCommitActiveCandidateBeforeKey(ime_candidate_active, key)) {
+        const auto prep = input::PrepareRegularExecPlan(key,
+                                                        IsCtrlPressed(keyboard_mods),
+                                                        keyboard_mods.num_lock,
+                                                        g_ime_enabled,
+                                                        ime_romaji_len,
+                                                        ime_candidate_active,
+                                                        ime_candidate_entry != nullptr);
+        if (prep.should_commit_active_candidate) {
             CommitImeCandidateLearning();
             ClearImeCandidate();
         }
-        const input::RegularShortcutAction action =
-            input::DecideRegularShortcutAction(key, IsCtrlPressed(keyboard_mods), keyboard_mods.num_lock);
-        const auto plan =
-            input::BuildRegularExecPlan(action, g_ime_enabled, ime_romaji_len, ime_candidate_active);
-        if (!plan.handled) {
+        if (!prep.handled) {
             return false;
         }
-        if (plan.requires_active_candidate &&
-            (!ime_candidate_active || ime_candidate_entry == nullptr)) {
+        if (prep.missing_required_candidate) {
             return false;
         }
-        ApplyRegularPlanSideEffects(plan);
-        *out_plan = plan;
+        ApplyRegularPlanSideEffects(prep.plan);
+        *out_plan = prep.plan;
         return true;
     };
     auto RenderAndRefreshInput = [&]() {
