@@ -16,14 +16,6 @@ CandidateNav DecideCandidateNavOnExtendedKey(uint8_t key,
                                              bool candidate_active,
                                              const ImeCandidateEntry* entry);
 
-bool ShouldFlushRomajiBeforeExtendedKey(bool ime_enabled,
-                                        int romaji_len,
-                                        CandidateNav nav);
-
-bool ShouldClearCandidateBeforeExtendedKey(bool candidate_active,
-                                           CandidateNav nav);
-
 bool ShouldFlushRomajiForCursorShortcut(bool ime_enabled, int romaji_len);
 
 }  // namespace input
-

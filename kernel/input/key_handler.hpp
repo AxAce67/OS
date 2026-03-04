@@ -62,6 +62,28 @@ struct RegularExecPlan {
     RegularExecKind kind;
 };
 
+enum class ExtendedExecKind {
+    kNone = 0,
+    kPageUp,
+    kPageDown,
+    kDelete,
+    kMoveCursorLeft,
+    kMoveCursorRight,
+    kMoveCursorStart,
+    kMoveCursorEnd,
+    kHistoryUp,
+    kHistoryDown,
+};
+
+struct ExtendedExecPlan {
+    bool handled;
+    bool flush_romaji;
+    bool clear_candidate;
+    bool ensure_live_console;
+    bool clear_selection;
+    ExtendedExecKind kind;
+};
+
 RegularShortcutAction DecideRegularShortcutAction(uint8_t key,
                                                   bool ctrl_pressed,
                                                   bool num_lock);
@@ -75,5 +97,11 @@ ImeModeState ApplyImeModeAction(RegularShortcutAction action,
 RegularExecPlan BuildRegularExecPlan(RegularShortcutAction action,
                                      bool ime_enabled,
                                      int ime_romaji_len);
+
+ExtendedExecPlan BuildExtendedExecPlan(ExtendedKeyAction action,
+                                       bool ime_enabled,
+                                       int ime_romaji_len,
+                                       bool candidate_active,
+                                       bool has_candidate_nav);
 
 }  // namespace input

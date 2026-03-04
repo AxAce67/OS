@@ -3047,67 +3047,69 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             EnsureLiveConsole();
             return CycleImeCandidate(1);
         }
-        if (input::ShouldFlushRomajiBeforeExtendedKey(g_ime_enabled, ime_romaji_len, nav)) {
+        const input::ExtendedKeyAction action = input::DecideExtendedKeyAction(key);
+        const auto exec_plan = input::BuildExtendedExecPlan(
+            action, g_ime_enabled, ime_romaji_len, ime_candidate_active, nav != input::CandidateNav::kNone);
+        if (!exec_plan.handled) {
+            return false;
+        }
+        if (exec_plan.flush_romaji) {
             FlushImeRomaji(true);
         }
-        if (input::ShouldClearCandidateBeforeExtendedKey(ime_candidate_active, nav)) {
+        if (exec_plan.clear_candidate) {
             ClearImeCandidate();
         }
-        const input::ExtendedKeyAction action = input::DecideExtendedKeyAction(key);
-        if (action == input::ExtendedKeyAction::kPageUp) {
+        if (exec_plan.ensure_live_console) {
+            EnsureLiveConsole();
+        }
+        if (exec_plan.clear_selection) {
+            ClearSelection();
+        }
+        switch (exec_plan.kind) {
+        case input::ExtendedExecKind::kPageUp:
             console->ScrollUp(3);
             RefreshConsole();
             return true;
-        } else if (action == input::ExtendedKeyAction::kPageDown) {
+        case input::ExtendedExecKind::kPageDown:
             console->ScrollDown(3);
             RefreshConsole();
             return true;
-        } else if (action == input::ExtendedKeyAction::kDelete) {
-            EnsureLiveConsole();
+        case input::ExtendedExecKind::kDelete:
             DeleteAtCursor();
             return true;
-        } else if (action == input::ExtendedKeyAction::kLeft) {
-            EnsureLiveConsole();
+        case input::ExtendedExecKind::kMoveCursorLeft:
             if (cursor_pos > 0) {
-                ClearSelection();
                 --cursor_pos;
                 RenderInputLine();
                 RefreshInputLine();
             }
             return true;
-        } else if (action == input::ExtendedKeyAction::kRight) {
-            EnsureLiveConsole();
+        case input::ExtendedExecKind::kMoveCursorRight:
             if (cursor_pos < command_len) {
-                ClearSelection();
                 ++cursor_pos;
                 RenderInputLine();
                 RefreshInputLine();
             }
             return true;
-        } else if (action == input::ExtendedKeyAction::kHome) {
-            EnsureLiveConsole();
-            ClearSelection();
+        case input::ExtendedExecKind::kMoveCursorStart:
             cursor_pos = 0;
             RenderInputLine();
             RefreshInputLine();
             return true;
-        } else if (action == input::ExtendedKeyAction::kEnd) {
-            EnsureLiveConsole();
-            ClearSelection();
+        case input::ExtendedExecKind::kMoveCursorEnd:
             cursor_pos = command_len;
             RenderInputLine();
             RefreshInputLine();
             return true;
-        } else if (action == input::ExtendedKeyAction::kUp) {
-            EnsureLiveConsole();
+        case input::ExtendedExecKind::kHistoryUp:
             BrowseHistoryUp();
             return true;
-        } else if (action == input::ExtendedKeyAction::kDown) {
-            EnsureLiveConsole();
+        case input::ExtendedExecKind::kHistoryDown:
             BrowseHistoryDown();
             return true;
+        default:
+            return false;
         }
-        return false;
     };
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {

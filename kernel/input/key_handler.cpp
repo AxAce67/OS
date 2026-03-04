@@ -132,4 +132,79 @@ RegularExecPlan BuildRegularExecPlan(RegularShortcutAction action,
     }
 }
 
+ExtendedExecPlan BuildExtendedExecPlan(ExtendedKeyAction action,
+                                       bool ime_enabled,
+                                       int ime_romaji_len,
+                                       bool candidate_active,
+                                       bool has_candidate_nav) {
+    ExtendedExecPlan p{};
+    p.handled = false;
+    p.flush_romaji = false;
+    p.clear_candidate = false;
+    p.ensure_live_console = false;
+    p.clear_selection = false;
+    p.kind = ExtendedExecKind::kNone;
+
+    if (has_candidate_nav) {
+        return p;
+    }
+
+    p.flush_romaji = ime_enabled && ime_romaji_len > 0;
+    p.clear_candidate = candidate_active;
+
+    switch (action) {
+    case ExtendedKeyAction::kPageUp:
+        p.handled = true;
+        p.flush_romaji = false;
+        p.clear_candidate = false;
+        p.kind = ExtendedExecKind::kPageUp;
+        return p;
+    case ExtendedKeyAction::kPageDown:
+        p.handled = true;
+        p.flush_romaji = false;
+        p.clear_candidate = false;
+        p.kind = ExtendedExecKind::kPageDown;
+        return p;
+    case ExtendedKeyAction::kDelete:
+        p.handled = true;
+        p.ensure_live_console = true;
+        p.kind = ExtendedExecKind::kDelete;
+        return p;
+    case ExtendedKeyAction::kLeft:
+        p.handled = true;
+        p.ensure_live_console = true;
+        p.kind = ExtendedExecKind::kMoveCursorLeft;
+        return p;
+    case ExtendedKeyAction::kRight:
+        p.handled = true;
+        p.ensure_live_console = true;
+        p.kind = ExtendedExecKind::kMoveCursorRight;
+        return p;
+    case ExtendedKeyAction::kHome:
+        p.handled = true;
+        p.ensure_live_console = true;
+        p.clear_selection = true;
+        p.kind = ExtendedExecKind::kMoveCursorStart;
+        return p;
+    case ExtendedKeyAction::kEnd:
+        p.handled = true;
+        p.ensure_live_console = true;
+        p.clear_selection = true;
+        p.kind = ExtendedExecKind::kMoveCursorEnd;
+        return p;
+    case ExtendedKeyAction::kUp:
+        p.handled = true;
+        p.ensure_live_console = true;
+        p.kind = ExtendedExecKind::kHistoryUp;
+        return p;
+    case ExtendedKeyAction::kDown:
+        p.handled = true;
+        p.ensure_live_console = true;
+        p.kind = ExtendedExecKind::kHistoryDown;
+        return p;
+    default:
+        return p;
+    }
+}
+
 }  // namespace input

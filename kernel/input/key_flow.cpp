@@ -17,26 +17,8 @@ CandidateNav DecideCandidateNavOnExtendedKey(uint8_t key,
     return CandidateNav::kNone;
 }
 
-bool ShouldFlushRomajiBeforeExtendedKey(bool ime_enabled,
-                                        int romaji_len,
-                                        CandidateNav nav) {
-    if (nav != CandidateNav::kNone) {
-        return false;
-    }
-    return ime_enabled && romaji_len > 0;
-}
-
-bool ShouldClearCandidateBeforeExtendedKey(bool candidate_active,
-                                           CandidateNav nav) {
-    if (nav != CandidateNav::kNone) {
-        return false;
-    }
-    return candidate_active;
-}
-
 bool ShouldFlushRomajiForCursorShortcut(bool ime_enabled, int romaji_len) {
     return ime_enabled && romaji_len > 0;
 }
 
 }  // namespace input
-
