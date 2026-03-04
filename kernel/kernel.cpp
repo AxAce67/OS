@@ -3118,13 +3118,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     auto HandleExtendedKey = [&](uint8_t key) -> bool {
         const input::CandidateNav nav =
             input::DecideCandidateNavOnExtendedKey(key, ime_candidate_active, ime_candidate_entry);
-        if (nav == input::CandidateNav::kPrev) {
-            EnsureLiveConsole();
-            return CycleImeCandidate(-1);
-        }
-        if (nav == input::CandidateNav::kNext) {
-            EnsureLiveConsole();
-            return CycleImeCandidate(1);
+        if (input::TryHandleCandidateNav(
+                nav,
+                EnsureLiveConsole,
+                [&](int direction) { return CycleImeCandidate(direction); })) {
+            return true;
         }
         input::ExtendedExecPlan exec_plan{};
         if (input::PrepareExtendedExecPlanStatus(

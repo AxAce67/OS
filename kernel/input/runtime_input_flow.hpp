@@ -5,6 +5,7 @@
 #include "input/history.hpp"
 #include "input/key_handler.hpp"
 #include "input/key_handler_exec.hpp"
+#include "input/key_flow.hpp"
 
 class Console;
 
@@ -261,6 +262,21 @@ inline PlanPrepareStatus PrepareExtendedExecPlanStatus(uint8_t key,
                                       out_plan)
                ? PlanPrepareStatus::kReady
                : PlanPrepareStatus::kNotReady;
+}
+
+template <class TEnsureLiveConsole, class TCycleCandidate>
+inline bool TryHandleCandidateNav(CandidateNav nav,
+                                  TEnsureLiveConsole&& ensure_live_console,
+                                  TCycleCandidate&& cycle_candidate) {
+    if (nav == CandidateNav::kPrev) {
+        ensure_live_console();
+        return cycle_candidate(-1);
+    }
+    if (nav == CandidateNav::kNext) {
+        ensure_live_console();
+        return cycle_candidate(1);
+    }
+    return false;
 }
 
 template <class TOnCommitActiveCandidate, class TApplySideEffects>
