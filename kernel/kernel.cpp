@@ -3303,25 +3303,25 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                                      ime_romaji_len,
                                                      ToLowerAscii);
                     if (ime_decision.ime_path) {
-                        if (ime_decision.cycle_candidate) {
-                            if (input::AdvanceImeCandidateIndex(ime_candidate_entry, &ime_candidate_index)) {
-                                ReplaceImeCandidateText();
-                                break;
-                            }
+                        if (input::TryHandleImeCandidateCycle(
+                                ime_decision.cycle_candidate,
+                                [&]() { return input::AdvanceImeCandidateIndex(ime_candidate_entry, &ime_candidate_index); },
+                                ReplaceImeCandidateText)) {
+                            break;
                         }
-                        if (ime_decision.commit_candidate) {
-                            CommitImeCandidateLearning();
-                            ClearImeCandidate();
-                        }
-                        if (ime_decision.append_alpha) {
-                            if (ime_romaji_len + 1 < static_cast<int>(sizeof(ime_romaji_buffer))) {
-                                ime_romaji_buffer[ime_romaji_len++] = ime_decision.lower_alpha;
-                                ime_romaji_buffer[ime_romaji_len] = '\0';
-                                if (!FlushImeRomaji(false)) {
-                                    RenderInputLine();
-                                    RefreshInputLine();
-                                }
-                            }
+                        input::ApplyImeCommitSideEffects(
+                            ime_decision.commit_candidate,
+                            CommitImeCandidateLearning,
+                            ClearImeCandidate);
+                        if (input::TryHandleImeAppendAlpha(
+                                ime_decision.append_alpha,
+                                ime_decision.lower_alpha,
+                                ime_romaji_buffer,
+                                static_cast<int>(sizeof(ime_romaji_buffer)),
+                                &ime_romaji_len,
+                                FlushImeRomaji,
+                                RenderInputLine,
+                                RefreshInputLine)) {
                             break;
                         }
                         if (ime_decision.try_start_candidate) {

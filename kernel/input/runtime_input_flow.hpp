@@ -338,6 +338,57 @@ inline bool TryHandleCandidateNav(CandidateNav nav,
     return false;
 }
 
+template <class TAdvanceCandidate, class TReplaceCandidateText>
+inline bool TryHandleImeCandidateCycle(bool cycle_candidate,
+                                       TAdvanceCandidate&& advance_candidate,
+                                       TReplaceCandidateText&& replace_candidate_text) {
+    if (!cycle_candidate) {
+        return false;
+    }
+    if (!advance_candidate()) {
+        return false;
+    }
+    replace_candidate_text();
+    return true;
+}
+
+template <class TCommitLearning, class TClearCandidate>
+inline void ApplyImeCommitSideEffects(bool commit_candidate,
+                                      TCommitLearning&& commit_learning,
+                                      TClearCandidate&& clear_candidate) {
+    if (!commit_candidate) {
+        return;
+    }
+    commit_learning();
+    clear_candidate();
+}
+
+template <class TFlushRomaji, class TRenderInputLine, class TRefreshInputLine>
+inline bool TryHandleImeAppendAlpha(bool append_alpha,
+                                    char lower_alpha,
+                                    char* romaji_buffer,
+                                    int romaji_capacity,
+                                    int* romaji_len,
+                                    TFlushRomaji&& flush_romaji,
+                                    TRenderInputLine&& render_input_line,
+                                    TRefreshInputLine&& refresh_input_line) {
+    if (!append_alpha) {
+        return false;
+    }
+    if (romaji_buffer == nullptr || romaji_len == nullptr || romaji_capacity <= 1) {
+        return true;
+    }
+    if (*romaji_len + 1 < romaji_capacity) {
+        romaji_buffer[(*romaji_len)++] = lower_alpha;
+        romaji_buffer[*romaji_len] = '\0';
+        if (!flush_romaji(false)) {
+            render_input_line();
+            refresh_input_line();
+        }
+    }
+    return true;
+}
+
 template <class TOnCommitActiveCandidate, class TApplySideEffects>
 inline bool TryPrepareRegularExecPlan(uint8_t key,
                                       bool ctrl_pressed,
