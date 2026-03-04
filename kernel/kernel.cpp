@@ -3232,8 +3232,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             pointer_logical_y = pointer_y;
             pointer_visual_dirty = true;
             last_pointer_move_tick = CurrentTick();
-            // Cursor now uses direct-draw path; flush immediately for smoother motion.
-            FlushPointerVisual();
+            // During drag, flush at frame tail after window redraw to avoid cursor overwrite flicker.
+            if (dragging_window < 0) {
+                FlushPointerVisual();
+            }
         }
         {
             const int frame_x = term_frame_layer->GetX();
@@ -3321,6 +3323,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 selecting_with_mouse = false;
                 if (drag_visual_dirty) {
                     FlushPendingDrag();
+                    mouse_cursor->Redraw();
                     drag_visual_dirty = false;
                 }
                 dragging_window = -1;
