@@ -3216,10 +3216,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             pointer_logical_y = pointer_y;
             pointer_visual_dirty = true;
         }
-        if (dragging_window < 0 && pointer_visual_dirty) {
-            // Cursor-only movement should prioritize visual continuity.
-            FlushPointerVisual();
-        }
         {
             const int frame_x = term_frame_layer->GetX();
             const int frame_y = term_frame_layer->GetY();
@@ -3679,13 +3675,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 int merged = 0;
                 int total_dx = msg.dx;
                 int total_dy = msg.dy;
-                int max_merge = (msg.buttons == 0) ? 2 : 32;
+                int max_merge = (msg.buttons == 0) ? 8 : 32;
                 if (main_queue != nullptr) {
                     const int backlog = main_queue->Count();
                     if (backlog > 64) {
-                        max_merge = (msg.buttons == 0) ? 8 : 64;
+                        max_merge = (msg.buttons == 0) ? 64 : 96;
                     } else if (backlog > 24) {
-                        max_merge = (msg.buttons == 0) ? 4 : 48;
+                        max_merge = (msg.buttons == 0) ? 32 : 64;
                     }
                 }
                 while (merged < max_merge &&
@@ -3912,8 +3908,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             last_drag_redraw_tick = now_tick;
         }
         if (pointer_visual_dirty && now_tick != last_pointer_redraw_tick) {
-            FlushPointerVisual();
-            last_pointer_redraw_tick = now_tick;
+            // Queue-aware flush: keep smoothness while avoiding overdraw under heavy input.
+            if (dragging_window >= 0 || (main_queue != nullptr && main_queue->Count() <= 8)) {
+                FlushPointerVisual();
+                last_pointer_redraw_tick = now_tick;
+            }
         }
         if (dragging_window < 0 && now_tick >= next_system_info_tick) {
             RefreshSystemInfo();
