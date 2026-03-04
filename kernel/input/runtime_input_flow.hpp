@@ -177,6 +177,35 @@ struct RuntimeCharTranslationResult {
     char ch;
 };
 
+struct RuntimeMouseButtonCounterRefs {
+    uint8_t* current_buttons;
+    uint64_t* left_press_count;
+    uint64_t* right_press_count;
+    uint64_t* middle_press_count;
+};
+
+struct RuntimeMouseButtonTransition {
+    uint8_t prev_buttons;
+    uint8_t now_buttons;
+    uint8_t pressed_buttons;
+};
+
+struct RuntimeMousePointerUpdateRefs {
+    int* pointer_logical_x;
+    int* pointer_logical_y;
+    int screen_w;
+    int screen_h;
+    bool xhci_hid_auto_enabled;
+    uint64_t* last_absolute_mouse_tick;
+    bool* pointer_visual_dirty;
+    uint64_t* last_pointer_move_tick;
+};
+
+enum class RuntimeMousePointerUpdateResult : uint8_t {
+    kHandled = 0,
+    kIgnoredRelative,
+};
+
 template <class TCandidateEntry>
 struct RuntimeImeCandidateStartRefsT {
     char* romaji_buffer;
@@ -316,6 +345,66 @@ inline RuntimeCharTranslationResult TranslateKeyEventToAscii(const KeyEvent& key
                                      key_event.num_lock,
                                      jp_layout);
     return RuntimeCharTranslationResult{ch != 0, ch};
+}
+
+inline RuntimeMouseButtonTransition UpdateMouseButtonsAndCounters(
+    uint8_t new_buttons,
+    const RuntimeMouseButtonCounterRefs& refs) {
+    const uint8_t prev_buttons = refs.current_buttons != nullptr ? *refs.current_buttons : 0;
+    const uint8_t pressed = static_cast<uint8_t>((~prev_buttons) & new_buttons);
+    if ((pressed & 0x01) != 0 && refs.left_press_count != nullptr) {
+        ++(*refs.left_press_count);
+    }
+    if ((pressed & 0x02) != 0 && refs.right_press_count != nullptr) {
+        ++(*refs.right_press_count);
+    }
+    if ((pressed & 0x04) != 0 && refs.middle_press_count != nullptr) {
+        ++(*refs.middle_press_count);
+    }
+    if (refs.current_buttons != nullptr) {
+        *refs.current_buttons = new_buttons;
+    }
+    return RuntimeMouseButtonTransition{prev_buttons, new_buttons, pressed};
+}
+
+inline RuntimeMousePointerUpdateResult UpdatePointerPositionFromMouseMessage(
+    const Message& msg,
+    uint64_t now_tick,
+    const RuntimeMousePointerUpdateRefs& refs) {
+    if (refs.pointer_logical_x == nullptr ||
+        refs.pointer_logical_y == nullptr ||
+        refs.last_absolute_mouse_tick == nullptr ||
+        refs.pointer_visual_dirty == nullptr ||
+        refs.last_pointer_move_tick == nullptr) {
+        return RuntimeMousePointerUpdateResult::kHandled;
+    }
+
+    int pointer_x = *refs.pointer_logical_x;
+    int pointer_y = *refs.pointer_logical_y;
+    if (msg.pointer_mode == Message::PointerMode::kAbsolute) {
+        *refs.last_absolute_mouse_tick = now_tick;
+        pointer_x = msg.x;
+        pointer_y = msg.y;
+    } else {
+        if (refs.xhci_hid_auto_enabled &&
+            (now_tick - *refs.last_absolute_mouse_tick) < 1000) {
+            return RuntimeMousePointerUpdateResult::kIgnoredRelative;
+        }
+        pointer_x += msg.dx;
+        pointer_y += msg.dy;
+    }
+
+    if (pointer_x < 0) pointer_x = 0;
+    if (pointer_y < 0) pointer_y = 0;
+    if (pointer_x >= refs.screen_w) pointer_x = refs.screen_w - 1;
+    if (pointer_y >= refs.screen_h) pointer_y = refs.screen_h - 1;
+    if (pointer_x != *refs.pointer_logical_x || pointer_y != *refs.pointer_logical_y) {
+        *refs.pointer_logical_x = pointer_x;
+        *refs.pointer_logical_y = pointer_y;
+        *refs.pointer_visual_dirty = true;
+        *refs.last_pointer_move_tick = now_tick;
+    }
+    return RuntimeMousePointerUpdateResult::kHandled;
 }
 
 template <class TQueueCount, class TQueuePeek, class TQueuePop>

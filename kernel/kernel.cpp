@@ -2821,38 +2821,34 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleMouseMessage = [&](const Message& msg) {
-        const uint8_t prev_buttons = g_mouse_buttons_current;
-        const uint8_t now_buttons = msg.buttons;
-        const uint8_t pressed = static_cast<uint8_t>((~prev_buttons) & now_buttons);
-        if ((pressed & 0x01) != 0) { ++g_mouse_left_press_count; }
-        if ((pressed & 0x02) != 0) { ++g_mouse_right_press_count; }
-        if ((pressed & 0x04) != 0) { ++g_mouse_middle_press_count; }
-        g_mouse_buttons_current = now_buttons;
-
-        int pointer_x = pointer_logical_x;
-        int pointer_y = pointer_logical_y;
-        if (msg.pointer_mode == Message::PointerMode::kAbsolute) {
-            g_last_absolute_mouse_tick = CurrentTick();
-            pointer_x = msg.x;
-            pointer_y = msg.y;
-        } else {
-            if (g_xhci_hid_auto_enabled &&
-                (CurrentTick() - g_last_absolute_mouse_tick) < 1000) {
-                return;  // USB absolute pointer is active; ignore noisy PS/2 relative moves.
-            }
-            pointer_x += msg.dx;
-            pointer_y += msg.dy;
+        const auto button_transition = input::UpdateMouseButtonsAndCounters(
+            msg.buttons,
+            input::RuntimeMouseButtonCounterRefs{
+                &g_mouse_buttons_current,
+                &g_mouse_left_press_count,
+                &g_mouse_right_press_count,
+                &g_mouse_middle_press_count,
+            });
+        const uint8_t prev_buttons = button_transition.prev_buttons;
+        const uint8_t now_buttons = button_transition.now_buttons;
+        const uint8_t pressed = button_transition.pressed_buttons;
+        if (input::UpdatePointerPositionFromMouseMessage(
+                msg,
+                CurrentTick(),
+                input::RuntimeMousePointerUpdateRefs{
+                    &pointer_logical_x,
+                    &pointer_logical_y,
+                    screen_w,
+                    screen_h,
+                    g_xhci_hid_auto_enabled,
+                    &g_last_absolute_mouse_tick,
+                    &pointer_visual_dirty,
+                    &last_pointer_move_tick,
+                }) == input::RuntimeMousePointerUpdateResult::kIgnoredRelative) {
+            return;  // USB absolute pointer is active; ignore noisy PS/2 relative moves.
         }
-        if (pointer_x < 0) pointer_x = 0;
-        if (pointer_y < 0) pointer_y = 0;
-        if (pointer_x >= screen_w) pointer_x = screen_w - 1;
-        if (pointer_y >= screen_h) pointer_y = screen_h - 1;
-        if (pointer_x != pointer_logical_x || pointer_y != pointer_logical_y) {
-            pointer_logical_x = pointer_x;
-            pointer_logical_y = pointer_y;
-            pointer_visual_dirty = true;
-            last_pointer_move_tick = CurrentTick();
-        }
+        const int pointer_x = pointer_logical_x;
+        const int pointer_y = pointer_logical_y;
         {
             const int frame_x = term_frame_layer->GetX();
             const int frame_y = term_frame_layer->GetY();
