@@ -377,6 +377,24 @@ inline void CoalesceMouseInterruptMessage(Message* msg,
     msg->y = last_y;
 }
 
+template <class TScrollUp, class TScrollDown, class TRefreshConsole>
+inline bool HandleMouseWheelScroll(int32_t wheel,
+                                   TScrollUp&& scroll_up,
+                                   TScrollDown&& scroll_down,
+                                   TRefreshConsole&& refresh_console) {
+    if (wheel > 0) {
+        scroll_up(wheel * 3);
+        refresh_console();
+        return true;
+    }
+    if (wheel < 0) {
+        scroll_down((-wheel) * 3);
+        refresh_console();
+        return true;
+    }
+    return false;
+}
+
 template <class TCandidateEntry,
           class THandleExtendedKey,
           class THandleRegularShortcut,

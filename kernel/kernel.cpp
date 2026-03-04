@@ -3029,13 +3029,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 }
             }
         }
-        if (msg.wheel > 0) {
-            console->ScrollUp(msg.wheel * 3);
-            RefreshConsole();
-        } else if (msg.wheel < 0) {
-            console->ScrollDown((-msg.wheel) * 3);
-            RefreshConsole();
-        }
+        input::HandleMouseWheelScroll(
+            msg.wheel,
+            [&](int lines) { console->ScrollUp(lines); },
+            [&](int lines) { console->ScrollDown(lines); },
+            RefreshConsole);
     };
 
     using InputActionOwner = input::RuntimeInputActionOwnerT<
