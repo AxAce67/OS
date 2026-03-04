@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "input/history.hpp"
+#include "input/ime_session.hpp"
 #include "input/key_handler.hpp"
 #include "input/key_handler_exec.hpp"
 #include "input/key_event.hpp"
@@ -169,6 +170,14 @@ struct RuntimeImeCandidateStartRefsT {
     char* romaji_buffer;
     int* romaji_len;
     const TCandidateEntry** active_entry;
+};
+
+template <class TCandidateEntry>
+struct RuntimeImeProcessContextT {
+    char* romaji_buffer;
+    int romaji_capacity;
+    int* romaji_len;
+    const TCandidateEntry** candidate_entry;
 };
 
 inline bool TryConsumeReleasedKey(const KeyEvent& key_event,
@@ -599,6 +608,75 @@ inline bool TryStartImeCandidateFromRomaji(bool try_start_candidate,
     refs.romaji_buffer[0] = '\0';
     replace_candidate_text();
     return true;
+}
+
+template <class TCandidateEntry,
+          class TAdvanceCandidate,
+          class TReplaceCandidateText,
+          class TCommitLearning,
+          class TClearCandidate,
+          class TFlushRomaji,
+          class TRenderInputLine,
+          class TRefreshInputLine,
+          class TResolveEntry,
+          class TBuildPrefixEntry,
+          class TIsEntryUsable,
+          class THasSelection,
+          class TDeleteSelection,
+          class TStartSession>
+inline bool ProcessImeDecisionPath(const ImeCharDecision& ime_decision,
+                                   const RuntimeImeProcessContextT<TCandidateEntry>& context,
+                                   TAdvanceCandidate&& advance_candidate,
+                                   TReplaceCandidateText&& replace_candidate_text,
+                                   TCommitLearning&& commit_learning,
+                                   TClearCandidate&& clear_candidate,
+                                   TFlushRomaji&& flush_romaji,
+                                   TRenderInputLine&& render_input_line,
+                                   TRefreshInputLine&& refresh_input_line,
+                                   TResolveEntry&& resolve_entry,
+                                   TBuildPrefixEntry&& build_prefix_entry,
+                                   TIsEntryUsable&& is_entry_usable,
+                                   THasSelection&& has_selection,
+                                   TDeleteSelection&& delete_selection,
+                                   TStartSession&& start_session) {
+    if (!ime_decision.ime_path) {
+        return false;
+    }
+    if (TryHandleImeCandidateCycle(ime_decision.cycle_candidate,
+                                   advance_candidate,
+                                   replace_candidate_text)) {
+        return true;
+    }
+    ApplyImeCommitSideEffects(ime_decision.commit_candidate,
+                              commit_learning,
+                              clear_candidate);
+    if (TryHandleImeAppendAlpha(ime_decision.append_alpha,
+                                ime_decision.lower_alpha,
+                                context.romaji_buffer,
+                                context.romaji_capacity,
+                                context.romaji_len,
+                                flush_romaji,
+                                render_input_line,
+                                refresh_input_line)) {
+        return true;
+    }
+    if (TryStartImeCandidateFromRomaji(ime_decision.try_start_candidate,
+                                       RuntimeImeCandidateStartRefsT<TCandidateEntry>{
+                                           context.romaji_buffer,
+                                           context.romaji_len,
+                                           context.candidate_entry,
+                                       },
+                                       resolve_entry,
+                                       build_prefix_entry,
+                                       is_entry_usable,
+                                       has_selection,
+                                       delete_selection,
+                                       start_session,
+                                       replace_candidate_text)) {
+        return true;
+    }
+    FinalizeImeRomajiIfNeeded(ime_decision.finalize_romaji, flush_romaji);
+    return false;
 }
 
 template <class TOnCommitActiveCandidate, class TApplySideEffects>
