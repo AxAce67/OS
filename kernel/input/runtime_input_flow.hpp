@@ -154,6 +154,13 @@ struct RuntimeCommandInputStateRefs {
     int* ime_romaji_len;
 };
 
+template <class TCandidateEntry>
+struct RuntimeImeCandidateStartRefsT {
+    char* romaji_buffer;
+    int* romaji_len;
+    const TCandidateEntry** active_entry;
+};
+
 inline bool TryConsumeReleasedKey(const KeyEvent& key_event,
                                   const RuntimeKeyDownRefs& refs) {
     if (!key_event.released) {
@@ -484,9 +491,7 @@ template <class TCandidateEntry,
           class TStartSession,
           class TReplaceCandidateText>
 inline bool TryStartImeCandidateFromRomaji(bool try_start_candidate,
-                                           char* romaji_buffer,
-                                           int* romaji_len,
-                                           const TCandidateEntry** active_entry,
+                                           const RuntimeImeCandidateStartRefsT<TCandidateEntry>& refs,
                                            TResolveEntry&& resolve_entry,
                                            TBuildPrefixEntry&& build_prefix_entry,
                                            TIsEntryUsable&& is_entry_usable,
@@ -497,12 +502,12 @@ inline bool TryStartImeCandidateFromRomaji(bool try_start_candidate,
     if (!try_start_candidate) {
         return false;
     }
-    if (romaji_buffer == nullptr || romaji_len == nullptr || active_entry == nullptr) {
+    if (refs.romaji_buffer == nullptr || refs.romaji_len == nullptr || refs.active_entry == nullptr) {
         return false;
     }
 
     char keybuf[32];
-    const TCandidateEntry* entry = resolve_entry(romaji_buffer, *romaji_len, keybuf, static_cast<int>(sizeof(keybuf)));
+    const TCandidateEntry* entry = resolve_entry(refs.romaji_buffer, *refs.romaji_len, keybuf, static_cast<int>(sizeof(keybuf)));
     if (entry == nullptr) {
         entry = build_prefix_entry(keybuf);
     }
@@ -513,10 +518,10 @@ inline bool TryStartImeCandidateFromRomaji(bool try_start_candidate,
     if (has_selection()) {
         delete_selection();
     }
-    *active_entry = entry;
+    *refs.active_entry = entry;
     start_session(entry);
-    *romaji_len = 0;
-    romaji_buffer[0] = '\0';
+    *refs.romaji_len = 0;
+    refs.romaji_buffer[0] = '\0';
     replace_candidate_text();
     return true;
 }

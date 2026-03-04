@@ -3252,9 +3252,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             }
             if (input::TryStartImeCandidateFromRomaji(
                     ime_decision.try_start_candidate,
-                    ime_romaji_buffer,
-                    &ime_romaji_len,
-                    &ime_candidate_entry,
+                    input::RuntimeImeCandidateStartRefsT<ImeCandidateEntry>{
+                        ime_romaji_buffer,
+                        &ime_romaji_len,
+                        &ime_candidate_entry,
+                    },
                     [&](const char* romaji, int romaji_len, char* keybuf, int keybuf_capacity) {
                         return input::ResolveCandidateEntryFromRomaji(
                             romaji,
