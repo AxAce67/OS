@@ -3103,6 +3103,38 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             &ime_candidate_active,
             CopyString);
     };
+    auto ProcessEnterKey = [&](const input::RuntimeEnterCommandRefs& enter_refs,
+                               const input::RuntimeCommandInputStateRefs& reset_refs) {
+        input::ProcessEnterCommandAction(
+            enter_refs,
+            reset_refs,
+            [&]() { console->SetCursorPosition(input_row, input_col + command_len); },
+            [&]() { console->Print("\n"); },
+            [&](const char* command) { command_history.Add(command); },
+            StrEqual,
+            [&]() { PrintHistory(command_history); },
+            [&]() {
+                command_history.Clear();
+                console->PrintLine("history cleared");
+            },
+            [&]() { ExecuteCommand(command_buffer); },
+            ClearImeCandidate,
+            ClearSelection,
+            [&]() { command_history.ResetNavigation(); },
+            PrintPrompt,
+            [&]() {
+                input_row = console->CursorRow();
+                input_col = console->CursorColumn();
+                console->SetCursorPosition(input_row, input_col);
+            });
+    };
+    auto ProcessPrintableInputByte = [&](uint8_t byte_ch) {
+        input::ProcessPrintableCharInput(
+            byte_ch,
+            DeleteSelection,
+            InsertByteAtCursor,
+            RenderInputLine);
+    };
     auto HandleKeyboardMessage = [&](const Message& msg) {
         input::RuntimeEnterCommandRefs enter_refs{};
         input::RuntimeCommandInputStateRefs reset_refs{};
@@ -3161,37 +3193,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             DeleteSelection,
             StartImeCandidateSessionForEntry,
             IsPrintableAscii,
-            [&]() {
-                input::ProcessEnterCommandAction(
-                    enter_refs,
-                    reset_refs,
-                    [&]() { console->SetCursorPosition(input_row, input_col + command_len); },
-                    [&]() { console->Print("\n"); },
-                    [&](const char* command) { command_history.Add(command); },
-                    StrEqual,
-                    [&]() { PrintHistory(command_history); },
-                    [&]() {
-                        command_history.Clear();
-                        console->PrintLine("history cleared");
-                    },
-                    [&]() { ExecuteCommand(command_buffer); },
-                    ClearImeCandidate,
-                    ClearSelection,
-                    [&]() { command_history.ResetNavigation(); },
-                    PrintPrompt,
-                    [&]() {
-                        input_row = console->CursorRow();
-                        input_col = console->CursorColumn();
-                        console->SetCursorPosition(input_row, input_col);
-                    });
-            },
-            [&](uint8_t byte_ch) {
-                input::ProcessPrintableCharInput(
-                    byte_ch,
-                    DeleteSelection,
-                    InsertByteAtCursor,
-                    RenderInputLine);
-            },
+            [&]() { ProcessEnterKey(enter_refs, reset_refs); },
+            ProcessPrintableInputByte,
             RefreshConsole);
     };
     auto QueueCount = [&]() { return main_queue != nullptr ? main_queue->Count() : 0; };
