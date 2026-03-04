@@ -2927,22 +2927,17 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         screen_h - taskbar_h - term_frame_h);
                     const int new_frame_x = new_pos.x;
                     const int new_frame_y = new_pos.y;
-                    if (input::DecidePendingDragMove(
-                            term_frame_layer->GetX(),
-                            term_frame_layer->GetY(),
-                            new_frame_x,
-                            new_frame_y,
-                            drag_pending_move,
-                            drag_pending_window,
-                            0,
-                            drag_pending_x,
-                            drag_pending_y).should_queue) {
-                        drag_pending_window = 0;
-                        drag_pending_x = new_frame_x;
-                        drag_pending_y = new_frame_y;
-                        drag_pending_move = true;
-                        drag_visual_dirty = true;
-                    }
+                    input::QueuePendingDragMoveIfNeeded(
+                        0,
+                        term_frame_layer->GetX(),
+                        term_frame_layer->GetY(),
+                        new_frame_x,
+                        new_frame_y,
+                        &drag_pending_window,
+                        &drag_pending_x,
+                        &drag_pending_y,
+                        &drag_pending_move,
+                        &drag_visual_dirty);
                 } else {
                     const auto new_pos = input::ComputeClampedDragPosition(
                         pointer_x,
@@ -2953,22 +2948,17 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         screen_h - taskbar_h - info_frame_h);
                     const int new_info_x = new_pos.x;
                     const int new_info_y = new_pos.y;
-                    if (input::DecidePendingDragMove(
-                            info_frame_layer->GetX(),
-                            info_frame_layer->GetY(),
-                            new_info_x,
-                            new_info_y,
-                            drag_pending_move,
-                            drag_pending_window,
-                            1,
-                            drag_pending_x,
-                            drag_pending_y).should_queue) {
-                        drag_pending_window = 1;
-                        drag_pending_x = new_info_x;
-                        drag_pending_y = new_info_y;
-                        drag_pending_move = true;
-                        drag_visual_dirty = true;
-                    }
+                    input::QueuePendingDragMoveIfNeeded(
+                        1,
+                        info_frame_layer->GetX(),
+                        info_frame_layer->GetY(),
+                        new_info_x,
+                        new_info_y,
+                        &drag_pending_window,
+                        &drag_pending_x,
+                        &drag_pending_y,
+                        &drag_pending_move,
+                        &drag_visual_dirty);
                 }
                 return;
             }

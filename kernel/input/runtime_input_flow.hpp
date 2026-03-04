@@ -634,6 +634,42 @@ inline RuntimePendingDragDecision DecidePendingDragMove(int current_x,
     return RuntimePendingDragDecision{window_position_changed || pending_value_changed};
 }
 
+inline bool QueuePendingDragMoveIfNeeded(int active_drag_window,
+                                         int current_x,
+                                         int current_y,
+                                         int new_x,
+                                         int new_y,
+                                         int* drag_pending_window,
+                                         int* drag_pending_x,
+                                         int* drag_pending_y,
+                                         bool* drag_pending_move,
+                                         bool* drag_visual_dirty) {
+    if (drag_pending_window == nullptr ||
+        drag_pending_x == nullptr ||
+        drag_pending_y == nullptr ||
+        drag_pending_move == nullptr ||
+        drag_visual_dirty == nullptr) {
+        return false;
+    }
+    if (!DecidePendingDragMove(current_x,
+                               current_y,
+                               new_x,
+                               new_y,
+                               *drag_pending_move,
+                               *drag_pending_window,
+                               active_drag_window,
+                               *drag_pending_x,
+                               *drag_pending_y).should_queue) {
+        return false;
+    }
+    *drag_pending_window = active_drag_window;
+    *drag_pending_x = new_x;
+    *drag_pending_y = new_y;
+    *drag_pending_move = true;
+    *drag_visual_dirty = true;
+    return true;
+}
+
 inline bool IsLeftMousePressed(uint8_t pressed_buttons) {
     return (pressed_buttons & 0x01) != 0;
 }
