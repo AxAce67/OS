@@ -170,6 +170,7 @@ Write-Host "Starting QEMU..." -ForegroundColor Cyan
 # QEMUインストールディレクトリにある可能性のあるOVMFを探す
 $ovmf = $null
 $ovmfCandidates = @(
+    "OVMF.fd",
     "C:\Program Files\qemu\share\edk2-x86_64-code.fd"
 )
 if (-Not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
@@ -183,7 +184,6 @@ foreach ($cand in $ovmfCandidates) {
 }
 
 # ファイルがある場合はローカルにコピーして使う（アクセス権限の問題回避）
-$accelArg = if ($UseWhpx) { "whpx" } else { "tcg" }
 $hasOvmf = (-Not [string]::IsNullOrWhiteSpace($ovmf) -and (Test-Path $ovmf))
 
 if ($hasOvmf) {
@@ -194,24 +194,30 @@ if ($hasOvmf) {
     Write-Host "Warning: OVMF.fd (UEFI BIOS) not found. QEMU might boot in Legacy BIOS mode." -ForegroundColor Yellow
 }
 
-$qemuArgs = @(
-    "-m", "512M",
-    "-machine", "q35",
-    "-accel", $accelArg,
-    "-k", "ja"
-)
-
 if ($UseUsbTablet) {
-    # xHCI + WHPX環境でMSIトラブルが出るため、MSIを明示的に無効化する
-    $qemuArgs += @("-device", "qemu-xhci,msi=off")
-    $qemuArgs += @("-device", "usb-tablet")
+    if ($hasOvmf) {
+        & $qemu -m 512M `
+            -machine q35 `
+            -device "qemu-xhci,msi=off" `
+            -device "usb-tablet" `
+            -pflash "OVMF.fd" `
+            -drive "format=raw,file=fat:rw:disk"
+    } else {
+        & $qemu -m 512M `
+            -machine q35 `
+            -device "qemu-xhci,msi=off" `
+            -device "usb-tablet" `
+            -drive "format=raw,file=fat:rw:disk"
+    }
+} else {
+    if ($hasOvmf) {
+        & $qemu -m 512M `
+            -machine q35 `
+            -pflash "OVMF.fd" `
+            -drive "format=raw,file=fat:rw:disk"
+    } else {
+        & $qemu -m 512M `
+            -machine q35 `
+            -drive "format=raw,file=fat:rw:disk"
+    }
 }
-
-if ($hasOvmf) {
-    $qemuArgs += @("-drive", "if=pflash,format=raw,readonly=on,file=OVMF.fd")
-}
-$qemuArgs += @("-drive", "format=raw,file=fat:rw:disk")
-$qemuArgs = $qemuArgs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-
-# Foreground run: keep terminal attached so behavior is obvious.
-& $qemu @qemuArgs
