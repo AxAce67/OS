@@ -3119,8 +3119,31 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         const input::RegularShortcutAction action =
             input::DecideRegularShortcutAction(key, IsCtrlPressed(keyboard_mods), keyboard_mods.num_lock);
-        if (action == input::RegularShortcutAction::kEsc) {
-            if (ime_candidate_active && ime_candidate_entry != nullptr) {
+        if (action == input::RegularShortcutAction::kCtrlSpace) {
+            FlushImeRomaji(true);
+            const auto mode = input::ApplyImeModeAction(action, g_ime_enabled, g_jp_layout);
+            g_ime_enabled = mode.ime_enabled;
+            g_jp_layout = mode.jp_layout;
+            RepaintPromptAndInput();
+            return true;
+        }
+        const auto exec_plan = input::BuildRegularExecPlan(action, g_ime_enabled, ime_romaji_len, ime_candidate_active);
+        if (exec_plan.handled) {
+            if (exec_plan.requires_active_candidate &&
+                (!ime_candidate_active || ime_candidate_entry == nullptr)) {
+                return false;
+            }
+            if (exec_plan.flush_romaji) {
+                FlushImeRomaji(true);
+            }
+            if (exec_plan.ensure_live_console) {
+                EnsureLiveConsole();
+            }
+            if (exec_plan.clear_selection) {
+                ClearSelection();
+            }
+            switch (exec_plan.kind) {
+            case input::RegularExecKind::kEscCancelCandidateToRomaji:
                 cursor_pos = ime_candidate_start;
                 DeleteRangeAt(ime_candidate_start, ime_candidate_len);
                 cursor_pos = ime_candidate_start;
@@ -3133,56 +3156,29 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RenderInputLine();
                 RefreshInputLine();
                 return true;
-            }
-            if (g_ime_enabled && ime_romaji_len > 0) {
+            case input::RegularExecKind::kEscClearRomaji:
                 ime_romaji_len = 0;
                 ime_romaji_buffer[0] = '\0';
                 RenderInputLine();
                 RefreshInputLine();
                 return true;
-            }
-        }
-        if (action == input::RegularShortcutAction::kCtrlSpace) {
-            FlushImeRomaji(true);
-            const auto mode = input::ApplyImeModeAction(action, g_ime_enabled, g_jp_layout);
-            g_ime_enabled = mode.ime_enabled;
-            g_jp_layout = mode.jp_layout;
-            RepaintPromptAndInput();
-            return true;
-        }
-        if (action == input::RegularShortcutAction::kCtrlL) {
-            if (g_ime_enabled && ime_romaji_len > 0) {
-                FlushImeRomaji(true);
-            }
-            console->Clear();
-            PrintPrompt();
-            input_row = console->CursorRow();
-            input_col = console->CursorColumn();
-            rendered_len = 0;
-            command_len = 0;
-            cursor_pos = 0;
-            command_buffer[0] = '\0';
-            ime_romaji_len = 0;
-            ime_romaji_buffer[0] = '\0';
-            ClearImeCandidate();
-            ClearSelection();
-            command_history.ResetNavigation();
-            RenderInputLine();
-            RefreshInputLine();
-            return true;
-        }
-        const auto exec_plan = input::BuildRegularExecPlan(action, g_ime_enabled, ime_romaji_len);
-        if (exec_plan.handled) {
-            if (exec_plan.flush_romaji) {
-                FlushImeRomaji(true);
-            }
-            if (exec_plan.ensure_live_console) {
-                EnsureLiveConsole();
-            }
-            if (exec_plan.clear_selection) {
+            case input::RegularExecKind::kClearScreenAndResetInput:
+                console->Clear();
+                PrintPrompt();
+                input_row = console->CursorRow();
+                input_col = console->CursorColumn();
+                rendered_len = 0;
+                command_len = 0;
+                cursor_pos = 0;
+                command_buffer[0] = '\0';
+                ime_romaji_len = 0;
+                ime_romaji_buffer[0] = '\0';
+                ClearImeCandidate();
                 ClearSelection();
-            }
-            switch (exec_plan.kind) {
+                command_history.ResetNavigation();
+                RenderInputLine();
+                RefreshInputLine();
+                return true;
             case input::RegularExecKind::kMoveCursorStart:
                 cursor_pos = 0;
                 RenderInputLine();

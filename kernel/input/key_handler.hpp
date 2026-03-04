@@ -45,6 +45,9 @@ struct ImeModeState {
 
 enum class RegularExecKind {
     kNone = 0,
+    kEscCancelCandidateToRomaji,
+    kEscClearRomaji,
+    kClearScreenAndResetInput,
     kMoveCursorStart,
     kMoveCursorEnd,
     kHistoryUpWithCandidate,
@@ -59,6 +62,7 @@ struct RegularExecPlan {
     bool flush_romaji;
     bool ensure_live_console;
     bool clear_selection;
+    bool requires_active_candidate;
     RegularExecKind kind;
 };
 
@@ -96,7 +100,8 @@ ImeModeState ApplyImeModeAction(RegularShortcutAction action,
 
 RegularExecPlan BuildRegularExecPlan(RegularShortcutAction action,
                                      bool ime_enabled,
-                                     int ime_romaji_len);
+                                     int ime_romaji_len,
+                                     bool candidate_active);
 
 ExtendedExecPlan BuildExtendedExecPlan(ExtendedKeyAction action,
                                        bool ime_enabled,

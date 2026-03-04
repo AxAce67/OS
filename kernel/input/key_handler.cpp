@@ -73,15 +73,33 @@ ImeModeState ApplyImeModeAction(RegularShortcutAction action,
 
 RegularExecPlan BuildRegularExecPlan(RegularShortcutAction action,
                                      bool ime_enabled,
-                                     int ime_romaji_len) {
+                                     int ime_romaji_len,
+                                     bool candidate_active) {
     RegularExecPlan p{};
     p.handled = false;
     p.flush_romaji = false;
     p.ensure_live_console = false;
     p.clear_selection = false;
+    p.requires_active_candidate = false;
     p.kind = RegularExecKind::kNone;
 
     switch (action) {
+    case RegularShortcutAction::kEsc:
+        p.handled = true;
+        if (candidate_active) {
+            p.kind = RegularExecKind::kEscCancelCandidateToRomaji;
+            p.requires_active_candidate = true;
+        } else if (ime_enabled && ime_romaji_len > 0) {
+            p.kind = RegularExecKind::kEscClearRomaji;
+        } else {
+            p.handled = false;
+        }
+        return p;
+    case RegularShortcutAction::kCtrlL:
+        p.handled = true;
+        p.flush_romaji = ime_enabled && ime_romaji_len > 0;
+        p.kind = RegularExecKind::kClearScreenAndResetInput;
+        return p;
     case RegularShortcutAction::kCtrlA:
     case RegularShortcutAction::kHomeFallback:
         p.handled = true;
