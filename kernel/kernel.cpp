@@ -2852,9 +2852,19 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         focus_visual_dirty = true;
     };
-    auto BuildMouseRuntimeContext = [&](input::RuntimeMouseMessageContext* out_context) {
-        input::bridge::BuildMouseRuntimeContext(
-            out_context,
+    auto ScrollConsoleUp = [&](int lines) { console->ScrollUp(lines); };
+    auto ScrollConsoleDown = [&](int lines) { console->ScrollDown(lines); };
+
+    auto HandleMouseMessage = [&](const Message& msg) {
+        input::RuntimeMouseMessageContext mouse_context{};
+        input::RuntimeMouseWindowGeometry geometry{};
+        input::RuntimeConsoleGridMetrics console_metrics{};
+        input::RuntimeMouseConsoleSelectionRefs mouse_selection_refs{};
+        input::bridge::BuildMouseRuntimeInvocation(
+            &mouse_context,
+            &geometry,
+            &console_metrics,
+            &mouse_selection_refs,
             &g_mouse_buttons_current,
             &g_mouse_left_press_count,
             &g_mouse_right_press_count,
@@ -2875,17 +2885,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             &drag_pending_x,
             &drag_pending_y,
             &drag_pending_move,
-            &drag_visual_dirty);
-    };
-    auto ScrollConsoleUp = [&](int lines) { console->ScrollUp(lines); };
-    auto ScrollConsoleDown = [&](int lines) { console->ScrollDown(lines); };
-
-    auto HandleMouseMessage = [&](const Message& msg) {
-        input::RuntimeMouseMessageContext mouse_context{};
-        BuildMouseRuntimeContext(&mouse_context);
-        input::RuntimeMouseWindowGeometry geometry{};
-        input::bridge::BuildMouseWindowGeometry(
-            &geometry,
+            &drag_visual_dirty,
             term_frame_layer->GetX(),
             term_frame_layer->GetY(),
             term_frame_w,
@@ -2903,10 +2903,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             term_frame_layer->GetX(),
             term_frame_layer->GetY(),
             info_frame_layer->GetX(),
-            info_frame_layer->GetY());
-        input::RuntimeConsoleGridMetrics console_metrics{};
-        input::bridge::BuildConsoleGridMetrics(
-            &console_metrics,
+            info_frame_layer->GetY(),
             term_console_layer->GetX(),
             term_console_layer->GetY(),
             term_content_w,
@@ -2914,11 +2911,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             Console::kMarginX,
             Console::kMarginY,
             Console::kCellWidth,
-            Console::kCellHeight);
-        input::RuntimeMouseConsoleSelectionRefs mouse_selection_refs{};
-        input::bridge::BuildMouseSelectionRefs(
-            &mouse_selection_refs,
-            &selecting_with_mouse,
+            Console::kCellHeight,
             &selection_anchor,
             &selection_end,
             &cursor_pos,
@@ -3107,14 +3100,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
     auto HandleKeyboardMessage = [&](const Message& msg) {
         input::RuntimeEnterCommandRefs enter_refs{};
-        input::bridge::BuildEnterCommandRefs(
-            &enter_refs,
-            command_buffer,
-            static_cast<int>(sizeof(command_buffer)),
-            &command_len);
         input::RuntimeCommandInputStateRefs reset_refs{};
-        input::bridge::BuildCommandResetRefs(
+        input::RuntimeKeyboardDecodeRefs keyboard_decode_refs{};
+        input::RuntimeImeProcessContextT<ImeCandidateEntry> ime_process_context{};
+        input::RuntimeKeyboardMessageContextT<ImeCandidateEntry> keyboard_context{};
+        input::bridge::BuildKeyboardRuntimeInvocation<ImeCandidateEntry>(
+            &enter_refs,
             &reset_refs,
+            &keyboard_decode_refs,
+            &ime_process_context,
+            &keyboard_context,
             command_buffer,
             static_cast<int>(sizeof(command_buffer)),
             &command_len,
@@ -3122,28 +3117,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             &rendered_len,
             ime_romaji_buffer,
             static_cast<int>(sizeof(ime_romaji_buffer)),
-            &ime_romaji_len);
-        input::RuntimeKeyboardDecodeRefs keyboard_decode_refs{};
-        input::bridge::BuildKeyboardDecodeRefs(
-            &keyboard_decode_refs,
+            &ime_romaji_len,
             &g_keyboard_irq_count,
             &g_keyboard_last_raw,
             &g_keyboard_last_key,
             &g_keyboard_last_extended,
             &g_keyboard_last_released,
             &e0_prefix,
-            &keyboard_mods);
-        input::RuntimeImeProcessContextT<ImeCandidateEntry> ime_process_context{};
-        input::bridge::BuildKeyboardImeProcessContext(
-            &ime_process_context,
-            ime_romaji_buffer,
-            static_cast<int>(sizeof(ime_romaji_buffer)),
-            &ime_romaji_len,
-            &ime_candidate_entry);
-        input::RuntimeKeyboardMessageContextT<ImeCandidateEntry> keyboard_context{};
-        input::bridge::BuildKeyboardRuntimeContext<ImeCandidateEntry>(
-            &keyboard_context,
-            keyboard_decode_refs,
+            &keyboard_mods,
             key_down_extended,
             key_down_normal,
             g_key_repeat_enabled,
@@ -3152,8 +3133,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             g_has_halfwidth_kana_font,
             ime_candidate_active,
             ime_candidate_entry,
-            ime_romaji_len,
-            ime_process_context);
+            &ime_candidate_entry);
         input::HandleKeyboardMessageRuntime(
             msg.keycode,
             keyboard_context,
