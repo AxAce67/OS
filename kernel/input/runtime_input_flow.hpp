@@ -235,6 +235,27 @@ struct RuntimeConsoleGridMetrics {
     int cell_h;
 };
 
+inline RuntimeConsoleGridMetrics BuildRuntimeConsoleGridMetrics(
+    int origin_x,
+    int origin_y,
+    int width,
+    int height,
+    int margin_x,
+    int margin_y,
+    int cell_w,
+    int cell_h) {
+    return RuntimeConsoleGridMetrics{
+        origin_x,
+        origin_y,
+        width,
+        height,
+        margin_x,
+        margin_y,
+        cell_w,
+        cell_h,
+    };
+}
+
 struct RuntimeConsoleCellHit {
     bool in_console;
     int click_col;
@@ -281,6 +302,25 @@ struct RuntimeMouseConsoleSelectionRefs {
     int command_len;
 };
 
+inline RuntimeMouseConsoleSelectionRefs BuildRuntimeMouseConsoleSelectionRefs(
+    bool* selecting_with_mouse,
+    int* selection_anchor,
+    int* selection_end,
+    int* cursor_pos,
+    int input_row,
+    int input_col,
+    int command_len) {
+    return RuntimeMouseConsoleSelectionRefs{
+        selecting_with_mouse,
+        selection_anchor,
+        selection_end,
+        cursor_pos,
+        input_row,
+        input_col,
+        command_len,
+    };
+}
+
 struct RuntimeMouseMessageContext {
     RuntimeMouseButtonCounterRefs button_counters;
     RuntimeMousePointerUpdateRefs pointer_update;
@@ -288,6 +328,44 @@ struct RuntimeMouseMessageContext {
     RuntimeMouseDragStopRefs drag_stop_refs;
     RuntimePendingDragRefs pending_drag_refs;
 };
+
+inline void BuildRuntimeMouseMessageContext(
+    RuntimeMouseMessageContext* out_context,
+    RuntimeMouseButtonCounterRefs button_counters,
+    RuntimeMousePointerUpdateRefs pointer_update,
+    RuntimeMouseDragRefs drag_refs,
+    RuntimeMouseDragStopRefs drag_stop_refs,
+    RuntimePendingDragRefs pending_drag_refs) {
+    if (out_context == nullptr) {
+        return;
+    }
+    out_context->button_counters.current_buttons = button_counters.current_buttons;
+    out_context->button_counters.left_press_count = button_counters.left_press_count;
+    out_context->button_counters.right_press_count = button_counters.right_press_count;
+    out_context->button_counters.middle_press_count = button_counters.middle_press_count;
+
+    out_context->pointer_update.pointer_logical_x = pointer_update.pointer_logical_x;
+    out_context->pointer_update.pointer_logical_y = pointer_update.pointer_logical_y;
+    out_context->pointer_update.screen_w = pointer_update.screen_w;
+    out_context->pointer_update.screen_h = pointer_update.screen_h;
+    out_context->pointer_update.xhci_hid_auto_enabled = pointer_update.xhci_hid_auto_enabled;
+    out_context->pointer_update.last_absolute_mouse_tick = pointer_update.last_absolute_mouse_tick;
+    out_context->pointer_update.pointer_visual_dirty = pointer_update.pointer_visual_dirty;
+    out_context->pointer_update.last_pointer_move_tick = pointer_update.last_pointer_move_tick;
+
+    out_context->drag_refs.dragging_window = drag_refs.dragging_window;
+    out_context->drag_refs.drag_offset_x = drag_refs.drag_offset_x;
+    out_context->drag_refs.drag_offset_y = drag_refs.drag_offset_y;
+
+    out_context->drag_stop_refs.selecting_with_mouse = drag_stop_refs.selecting_with_mouse;
+    out_context->drag_stop_refs.dragging_window = drag_stop_refs.dragging_window;
+
+    out_context->pending_drag_refs.drag_pending_window = pending_drag_refs.drag_pending_window;
+    out_context->pending_drag_refs.drag_pending_x = pending_drag_refs.drag_pending_x;
+    out_context->pending_drag_refs.drag_pending_y = pending_drag_refs.drag_pending_y;
+    out_context->pending_drag_refs.drag_pending_move = pending_drag_refs.drag_pending_move;
+    out_context->pending_drag_refs.drag_visual_dirty = pending_drag_refs.drag_visual_dirty;
+}
 
 struct RuntimeMouseWindowGeometry {
     int term_frame_x;
@@ -309,6 +387,47 @@ struct RuntimeMouseWindowGeometry {
     int info_current_x;
     int info_current_y;
 };
+
+inline RuntimeMouseWindowGeometry BuildRuntimeMouseWindowGeometry(
+    int term_frame_x,
+    int term_frame_y,
+    int term_frame_w,
+    int term_frame_h,
+    int term_title_h,
+    int info_frame_x,
+    int info_frame_y,
+    int info_frame_w,
+    int info_frame_h,
+    int info_title_h,
+    int term_drag_max_x,
+    int term_drag_max_y,
+    int info_drag_max_x,
+    int info_drag_max_y,
+    int term_current_x,
+    int term_current_y,
+    int info_current_x,
+    int info_current_y) {
+    return RuntimeMouseWindowGeometry{
+        term_frame_x,
+        term_frame_y,
+        term_frame_w,
+        term_frame_h,
+        term_title_h,
+        info_frame_x,
+        info_frame_y,
+        info_frame_w,
+        info_frame_h,
+        info_title_h,
+        term_drag_max_x,
+        term_drag_max_y,
+        info_drag_max_x,
+        info_drag_max_y,
+        term_current_x,
+        term_current_y,
+        info_current_x,
+        info_current_y,
+    };
+}
 
 template <class TCandidateEntry>
 struct RuntimeImeCandidateStartRefsT {
@@ -338,6 +457,45 @@ struct RuntimeKeyboardMessageContextT {
     int ime_romaji_len;
     RuntimeImeProcessContextT<TCandidateEntry> ime_process_context;
 };
+
+template <class TCandidateEntry>
+inline void BuildRuntimeKeyboardMessageContext(
+    RuntimeKeyboardMessageContextT<TCandidateEntry>* out_context,
+    RuntimeKeyboardDecodeRefs decode_refs,
+    RuntimeKeyDownRefs key_down_refs,
+    bool key_repeat_enabled,
+    bool jp_layout,
+    bool ime_enabled,
+    bool has_halfwidth_kana_font,
+    bool ime_candidate_active,
+    const TCandidateEntry* ime_candidate_entry,
+    int ime_romaji_len,
+    RuntimeImeProcessContextT<TCandidateEntry> ime_process_context) {
+    if (out_context == nullptr) {
+        return;
+    }
+    out_context->decode_refs.irq_count = decode_refs.irq_count;
+    out_context->decode_refs.last_raw = decode_refs.last_raw;
+    out_context->decode_refs.last_key = decode_refs.last_key;
+    out_context->decode_refs.last_extended = decode_refs.last_extended;
+    out_context->decode_refs.last_released = decode_refs.last_released;
+    out_context->decode_refs.e0_prefix = decode_refs.e0_prefix;
+    out_context->decode_refs.modifiers = decode_refs.modifiers;
+
+    out_context->key_down_refs.key_down_extended = key_down_refs.key_down_extended;
+    out_context->key_down_refs.key_down_normal = key_down_refs.key_down_normal;
+    out_context->key_repeat_enabled = key_repeat_enabled;
+    out_context->jp_layout = jp_layout;
+    out_context->ime_enabled = ime_enabled;
+    out_context->has_halfwidth_kana_font = has_halfwidth_kana_font;
+    out_context->ime_candidate_active = ime_candidate_active;
+    out_context->ime_candidate_entry = ime_candidate_entry;
+    out_context->ime_romaji_len = ime_romaji_len;
+    out_context->ime_process_context.romaji_buffer = ime_process_context.romaji_buffer;
+    out_context->ime_process_context.romaji_capacity = ime_process_context.romaji_capacity;
+    out_context->ime_process_context.romaji_len = ime_process_context.romaji_len;
+    out_context->ime_process_context.candidate_entry = ime_process_context.candidate_entry;
+}
 
 inline bool TryConsumeReleasedKey(const KeyEvent& key_event,
                                   const RuntimeKeyDownRefs& refs) {

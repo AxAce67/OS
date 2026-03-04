@@ -2851,8 +2851,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         focus_visual_dirty = true;
     };
-    auto BuildMouseRuntimeContext = [&]() {
-        return input::RuntimeMouseMessageContext{
+    auto BuildMouseRuntimeContext = [&](input::RuntimeMouseMessageContext* out_context) {
+        input::BuildRuntimeMouseMessageContext(
+            out_context,
             input::RuntimeMouseButtonCounterRefs{
                 &g_mouse_buttons_current,
                 &g_mouse_left_press_count,
@@ -2884,11 +2885,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 &drag_pending_y,
                 &drag_pending_move,
                 &drag_visual_dirty,
-            },
-        };
+            }
+        );
     };
     auto BuildMouseWindowGeometry = [&]() {
-        return input::RuntimeMouseWindowGeometry{
+        return input::BuildRuntimeMouseWindowGeometry(
             term_frame_layer->GetX(),
             term_frame_layer->GetY(),
             term_frame_w,
@@ -2906,11 +2907,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             term_frame_layer->GetX(),
             term_frame_layer->GetY(),
             info_frame_layer->GetX(),
-            info_frame_layer->GetY(),
-        };
+            info_frame_layer->GetY()
+        );
     };
     auto BuildConsoleGridMetrics = [&]() {
-        return input::RuntimeConsoleGridMetrics{
+        return input::BuildRuntimeConsoleGridMetrics(
             term_console_layer->GetX(),
             term_console_layer->GetY(),
             term_content_w,
@@ -2918,23 +2919,24 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             Console::kMarginX,
             Console::kMarginY,
             Console::kCellWidth,
-            Console::kCellHeight,
-        };
+            Console::kCellHeight
+        );
     };
     auto BuildMouseSelectionRefs = [&]() {
-        return input::RuntimeMouseConsoleSelectionRefs{
+        return input::BuildRuntimeMouseConsoleSelectionRefs(
             &selecting_with_mouse,
             &selection_anchor,
             &selection_end,
             &cursor_pos,
             input_row,
             input_col,
-            command_len,
-        };
+            command_len
+        );
     };
 
     auto HandleMouseMessage = [&](const Message& msg) {
-        const auto mouse_context = BuildMouseRuntimeContext();
+        input::RuntimeMouseMessageContext mouse_context{};
+        BuildMouseRuntimeContext(&mouse_context);
         input::HandleMouseMessageRuntime(
             msg,
             CurrentTick(),
@@ -3114,8 +3116,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             &ime_candidate_entry,
         };
     };
-    auto BuildKeyboardRuntimeContext = [&]() {
-        return input::RuntimeKeyboardMessageContextT<ImeCandidateEntry>{
+    auto BuildKeyboardRuntimeContext = [&](input::RuntimeKeyboardMessageContextT<ImeCandidateEntry>* out_context) {
+        input::BuildRuntimeKeyboardMessageContext<ImeCandidateEntry>(
+            out_context,
             BuildKeyboardDecodeRefs(),
             input::RuntimeKeyDownRefs{key_down_extended, key_down_normal},
             g_key_repeat_enabled,
@@ -3125,8 +3128,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             ime_candidate_active,
             ime_candidate_entry,
             ime_romaji_len,
-            BuildKeyboardImeProcessContext(),
-        };
+            BuildKeyboardImeProcessContext()
+        );
     };
     auto BuildEnterCommandRefs = [&]() {
         return input::RuntimeEnterCommandRefs{
@@ -3150,9 +3153,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     auto HandleKeyboardMessage = [&](const Message& msg) {
         const auto enter_refs = BuildEnterCommandRefs();
         const auto reset_refs = BuildCommandResetRefs();
+        input::RuntimeKeyboardMessageContextT<ImeCandidateEntry> keyboard_context{};
+        BuildKeyboardRuntimeContext(&keyboard_context);
         input::HandleKeyboardMessageRuntime(
             msg.keycode,
-            BuildKeyboardRuntimeContext(),
+            keyboard_context,
             HandleExtendedKey,
             HandleRegularKeyShortcut,
             KeycodeToAsciiByLayout,
