@@ -79,6 +79,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "input/ime_candidate.hpp"
 #include "input/ime_engine.hpp"
 #include "input/ime_logic.hpp"
+#include "input/ime_session.hpp"
 #include "input/line_editor.hpp"
 #include "input/line_ops.hpp"
 #include "input/line_render.hpp"
@@ -2500,9 +2501,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             ime_prefix_candidate_view.candidates[i] = nullptr;
         }
         ime_prefix_candidate_key[0] = '\0';
-        for (int i = 0; i < 4; ++i) {
-            ime_candidate_source_keys[i][0] = '\0';
-        }
+        input::ClearCandidateSourceKeys(ime_candidate_source_keys);
     };
 
     auto ReplaceInputLine = [&](const char* text) {
@@ -3421,9 +3420,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     bool full_refresh = false;
                     if (g_ime_enabled && g_jp_layout && g_has_halfwidth_kana_font) {
                         if (ch == ' ' && ime_candidate_active && ime_candidate_entry != nullptr) {
-                            ime_candidate_index = (ime_candidate_index + 1) % ime_candidate_entry->count;
-                            ReplaceImeCandidateText();
-                            break;
+                            if (input::AdvanceImeCandidateIndex(ime_candidate_entry, &ime_candidate_index)) {
+                                ReplaceImeCandidateText();
+                                break;
+                            }
                         }
                         if (ime_candidate_active && ch != ' ') {
                             CommitImeCandidateLearning();
@@ -3457,16 +3457,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                     DeleteSelection();
                                 }
                                 ime_candidate_entry = entry;
-                                ime_candidate_active = true;
-                                for (int i = 0; i < 4; ++i) {
-                                    ime_candidate_source_keys[i][0] = '\0';
-                                }
-                                for (int i = 0; i < entry->count && i < 4; ++i) {
-                                    CopyString(ime_candidate_source_keys[i], entry->key, static_cast<int>(sizeof(ime_candidate_source_keys[i])));
-                                }
-                                ime_candidate_index = FindBestImeCandidateIndex(entry);
-                                ime_candidate_start = cursor_pos;
-                                ime_candidate_len = 0;
+                                input::StartImeCandidateSession(
+                                    entry, cursor_pos, ime_candidate_source_keys,
+                                    FindBestImeCandidateIndex(entry),
+                                    &ime_candidate_index, &ime_candidate_start, &ime_candidate_len,
+                                    &ime_candidate_active,
+                                    CopyString);
                                 ime_romaji_len = 0;
                                 ime_romaji_buffer[0] = '\0';
                                 ReplaceImeCandidateText();
