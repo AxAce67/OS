@@ -3933,6 +3933,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         if (drag_visual_dirty && (now_tick != last_drag_redraw_tick || dragging_window < 0)) {
             FlushPendingDrag();
+            // Keep cursor position synchronized with drag updates.
+            mouse_cursor->SetPosition(pointer_logical_x - 1, pointer_logical_y - 1);
+            mouse_cursor->Redraw();
+            pointer_visual_dirty = false;
+            last_pointer_redraw_tick = now_tick;
             drag_visual_dirty = false;
             last_drag_redraw_tick = now_tick;
             compositor_drew = true;
