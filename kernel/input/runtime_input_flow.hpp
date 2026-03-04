@@ -241,6 +241,10 @@ struct RuntimeConsoleCellHit {
     int click_row;
 };
 
+struct RuntimePendingDragDecision {
+    bool should_queue;
+};
+
 template <class TCandidateEntry>
 struct RuntimeImeCandidateStartRefsT {
     char* romaji_buffer;
@@ -535,6 +539,23 @@ inline int ComputeClampedInputCursorFromClick(int click_col,
     if (next_cursor < 0) next_cursor = 0;
     if (next_cursor > command_len) next_cursor = command_len;
     return next_cursor;
+}
+
+inline RuntimePendingDragDecision DecidePendingDragMove(int current_x,
+                                                        int current_y,
+                                                        int new_x,
+                                                        int new_y,
+                                                        bool drag_pending_move,
+                                                        int drag_pending_window,
+                                                        int active_drag_window,
+                                                        int drag_pending_x,
+                                                        int drag_pending_y) {
+    const bool window_position_changed = (new_x != current_x) || (new_y != current_y);
+    const bool pending_value_changed =
+        drag_pending_move &&
+        drag_pending_window == active_drag_window &&
+        ((drag_pending_x != new_x) || (drag_pending_y != new_y));
+    return RuntimePendingDragDecision{window_position_changed || pending_value_changed};
 }
 
 template <class TQueueCount, class TQueuePeek, class TQueuePop>
