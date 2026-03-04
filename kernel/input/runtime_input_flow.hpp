@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+#include "input/history.hpp"
 #include "input/key_handler.hpp"
 #include "input/key_handler_exec.hpp"
 
@@ -40,6 +41,49 @@ enum class ExecChainResult {
     kHandled,
     kHandledNeedsRender,
     kFailed,
+};
+
+template <class TRefresh,
+          class TCycle, class TBrowseUp, class TBrowseDown,
+          class TBackspace, class TDelete, class TTab>
+struct RuntimeInputActionOwnerT {
+    Console* console;
+    TRefresh* refresh_console;
+    TCycle* cycle_candidate;
+    TBrowseUp* browse_history_up;
+    TBrowseDown* browse_history_down;
+    TBackspace* backspace_at_cursor;
+    TDelete* delete_at_cursor;
+    TTab* tab_complete;
+};
+
+template <class TDeleteRange,
+          class TClearCandidate,
+          class TPrintPrompt,
+          class TClearSelection,
+          class THistory,
+          class TRepaintPromptAndInput>
+struct RuntimeRegularShortcutOwnerT {
+    TDeleteRange* delete_range_at;
+    TClearCandidate* clear_ime_candidate;
+    Console* console;
+    int* input_row;
+    int* input_col;
+    TPrintPrompt* print_prompt;
+    TClearSelection* clear_selection;
+    THistory* command_history;
+    TRepaintPromptAndInput* repaint_prompt_and_input;
+};
+
+template <class TInputActionOwner>
+struct RuntimeExtendedExecBundleT {
+    TInputActionOwner owner;
+};
+
+template <class TInputActionOwner, class TRegularShortcutOwner>
+struct RuntimeRegularExecBundleT {
+    TInputActionOwner action_owner;
+    TRegularShortcutOwner shortcut_owner;
 };
 
 ExecChainResult ExecuteRegularExecChain(const RegularExecPlan& plan,

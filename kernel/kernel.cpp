@@ -3038,34 +3038,24 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
     };
 
-    struct InputActionOwner {
-        Console* console;
-        decltype(RefreshConsole)* refresh_console;
-        decltype(CycleImeCandidate)* cycle_candidate;
-        decltype(BrowseHistoryUp)* browse_history_up;
-        decltype(BrowseHistoryDown)* browse_history_down;
-        decltype(BackspaceAtCursor)* backspace_at_cursor;
-        decltype(DeleteAtCursor)* delete_at_cursor;
-        decltype(HandleTabCompletion)* tab_complete;
-    };
-    struct RegularShortcutOwner {
-        decltype(DeleteRangeAt)* delete_range_at;
-        decltype(ClearImeCandidate)* clear_ime_candidate;
-        Console* console;
-        int* input_row;
-        int* input_col;
-        decltype(PrintPrompt)* print_prompt;
-        decltype(ClearSelection)* clear_selection;
-        decltype(command_history)* command_history;
-        decltype(RepaintPromptAndInput)* repaint_prompt_and_input;
-    };
-    struct ExtendedExecBundle {
-        InputActionOwner owner;
-    };
-    struct RegularExecBundle {
-        InputActionOwner action_owner;
-        RegularShortcutOwner shortcut_owner;
-    };
+    using InputActionOwner = input::RuntimeInputActionOwnerT<
+        decltype(RefreshConsole),
+        decltype(CycleImeCandidate),
+        decltype(BrowseHistoryUp),
+        decltype(BrowseHistoryDown),
+        decltype(BackspaceAtCursor),
+        decltype(DeleteAtCursor),
+        decltype(HandleTabCompletion)>;
+    using RegularShortcutOwner = input::RuntimeRegularShortcutOwnerT<
+        decltype(DeleteRangeAt),
+        decltype(ClearImeCandidate),
+        decltype(PrintPrompt),
+        decltype(ClearSelection),
+        CommandHistory,
+        decltype(RepaintPromptAndInput)>;
+    using ExtendedExecBundle = input::RuntimeExtendedExecBundleT<InputActionOwner>;
+    using RegularExecBundle = input::RuntimeRegularExecBundleT<InputActionOwner, RegularShortcutOwner>;
+
     auto ApplyExtendedPlanSideEffects = [&](const input::ExtendedExecPlan& plan) {
         if (plan.flush_romaji) {
             FlushImeRomaji(true);
