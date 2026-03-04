@@ -3216,6 +3216,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             pointer_logical_y = pointer_y;
             pointer_visual_dirty = true;
         }
+        if (dragging_window < 0 && pointer_visual_dirty) {
+            // Keep plain cursor movement responsive; throttle is still applied during drag.
+            FlushPointerVisual();
+        }
 
         {
             const int frame_x = term_frame_layer->GetX();
@@ -3676,7 +3680,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 int merged = 0;
                 int total_dx = msg.dx;
                 int total_dy = msg.dy;
-                while (merged < 128 &&
+                const int max_merge = (msg.buttons == 0) ? 8 : 64;
+                while (merged < max_merge &&
                        main_queue->Peek(next) &&
                        next.type == Message::Type::kInterruptMouse &&
                        next.pointer_mode == Message::PointerMode::kRelative &&
