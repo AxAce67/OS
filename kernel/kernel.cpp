@@ -3268,21 +3268,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             ch,
             IsPrintableAscii,
             [&]() {
-                console->SetCursorPosition(input_row, input_col + command_len);
-                console->Print("\n");
-                command_buffer[command_len] = '\0';
-                if (command_len > 0) {
-                    command_history.Add(command_buffer);
-                }
-                input::ExecuteShellCommandOrHistory(
+                const input::RuntimeEnterCommandRefs enter_refs{
                     command_buffer,
-                    StrEqual,
-                    [&]() { PrintHistory(command_history); },
-                    [&]() {
-                        command_history.Clear();
-                        console->PrintLine("history cleared");
-                    },
-                    [&]() { ExecuteCommand(command_buffer); });
+                    static_cast<int>(sizeof(command_buffer)),
+                    command_len,
+                };
                 const input::RuntimeCommandInputStateRefs reset_refs{
                     command_buffer,
                     static_cast<int>(sizeof(command_buffer)),
@@ -3293,8 +3283,19 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     static_cast<int>(sizeof(ime_romaji_buffer)),
                     &ime_romaji_len,
                 };
-                input::ResetAfterCommandExecution(
+                input::ProcessEnterCommandAction(
+                    enter_refs,
                     reset_refs,
+                    [&]() { console->SetCursorPosition(input_row, input_col + command_len); },
+                    [&]() { console->Print("\n"); },
+                    [&](const char* command) { command_history.Add(command); },
+                    StrEqual,
+                    [&]() { PrintHistory(command_history); },
+                    [&]() {
+                        command_history.Clear();
+                        console->PrintLine("history cleared");
+                    },
+                    [&]() { ExecuteCommand(command_buffer); },
                     ClearImeCandidate,
                     ClearSelection,
                     [&]() { command_history.ResetNavigation(); },

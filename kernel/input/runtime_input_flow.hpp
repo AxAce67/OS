@@ -165,6 +165,12 @@ struct RuntimeCommandInputStateRefs {
     int* ime_romaji_len;
 };
 
+struct RuntimeEnterCommandRefs {
+    char* command_buffer;
+    int command_capacity;
+    int command_len;
+};
+
 struct RuntimeCharTranslationResult {
     bool has_char;
     char ch;
@@ -351,6 +357,58 @@ inline bool ProcessKeyboardCharAction(char ch,
         on_printable(static_cast<uint8_t>(ch));
     }
     return false;
+}
+
+template <class TSetInputCursorToLineEnd,
+          class TPrintNewLine,
+          class TAddHistory,
+          class TStrEqual,
+          class TPrintHistory,
+          class TClearHistory,
+          class TExecuteCommand,
+          class TClearCandidate,
+          class TClearSelection,
+          class TResetHistory,
+          class TPrintPrompt,
+          class TPlacePromptCursor>
+inline void ProcessEnterCommandAction(const RuntimeEnterCommandRefs& enter_refs,
+                                      const RuntimeCommandInputStateRefs& reset_refs,
+                                      TSetInputCursorToLineEnd&& set_input_cursor_to_line_end,
+                                      TPrintNewLine&& print_new_line,
+                                      TAddHistory&& add_history,
+                                      TStrEqual&& str_equal,
+                                      TPrintHistory&& print_history,
+                                      TClearHistory&& clear_history,
+                                      TExecuteCommand&& execute_command,
+                                      TClearCandidate&& clear_candidate,
+                                      TClearSelection&& clear_selection,
+                                      TResetHistory&& reset_history,
+                                      TPrintPrompt&& print_prompt,
+                                      TPlacePromptCursor&& place_prompt_cursor) {
+    if (enter_refs.command_buffer == nullptr || enter_refs.command_capacity <= 0) {
+        return;
+    }
+    if (enter_refs.command_len < 0 || enter_refs.command_len >= enter_refs.command_capacity) {
+        return;
+    }
+
+    set_input_cursor_to_line_end();
+    print_new_line();
+    enter_refs.command_buffer[enter_refs.command_len] = '\0';
+    if (enter_refs.command_len > 0) {
+        add_history(enter_refs.command_buffer);
+    }
+    ExecuteShellCommandOrHistory(enter_refs.command_buffer,
+                                 str_equal,
+                                 print_history,
+                                 clear_history,
+                                 execute_command);
+    ResetAfterCommandExecution(reset_refs,
+                               clear_candidate,
+                               clear_selection,
+                               reset_history,
+                               print_prompt,
+                               place_prompt_cursor);
 }
 
 template <class TClearCandidate,
