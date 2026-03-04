@@ -143,6 +143,17 @@ struct RuntimeKeyDownRefs {
     bool* key_down_normal;
 };
 
+struct RuntimeCommandInputStateRefs {
+    char* command_buffer;
+    int command_capacity;
+    int* command_len;
+    int* cursor_pos;
+    int* rendered_len;
+    char* ime_romaji_buffer;
+    int ime_romaji_capacity;
+    int* ime_romaji_len;
+};
+
 inline bool TryConsumeReleasedKey(const KeyEvent& key_event,
                                   const RuntimeKeyDownRefs& refs) {
     if (!key_event.released) {
@@ -205,6 +216,43 @@ inline void RefreshAfterKeyboardCharInput(bool full_refresh,
         return;
     }
     refresh_input_line();
+}
+
+template <class TClearCandidate,
+          class TClearSelection,
+          class TResetHistory,
+          class TPrintPrompt,
+          class TPlacePromptCursor>
+inline void ResetAfterCommandExecution(const RuntimeCommandInputStateRefs& refs,
+                                       TClearCandidate&& clear_candidate,
+                                       TClearSelection&& clear_selection,
+                                       TResetHistory&& reset_history,
+                                       TPrintPrompt&& print_prompt,
+                                       TPlacePromptCursor&& place_prompt_cursor) {
+    if (refs.command_len != nullptr) {
+        *refs.command_len = 0;
+    }
+    if (refs.cursor_pos != nullptr) {
+        *refs.cursor_pos = 0;
+    }
+    if (refs.rendered_len != nullptr) {
+        *refs.rendered_len = 0;
+    }
+    if (refs.command_buffer != nullptr && refs.command_capacity > 0) {
+        refs.command_buffer[0] = '\0';
+    }
+    if (refs.ime_romaji_len != nullptr) {
+        *refs.ime_romaji_len = 0;
+    }
+    if (refs.ime_romaji_buffer != nullptr && refs.ime_romaji_capacity > 0) {
+        refs.ime_romaji_buffer[0] = '\0';
+    }
+
+    clear_candidate();
+    clear_selection();
+    reset_history();
+    print_prompt();
+    place_prompt_cursor();
 }
 
 template <class TImeCandidateEntry>

@@ -3373,19 +3373,27 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         } else {
                             ExecuteCommand(command_buffer);
                         }
-                        command_len = 0;
-                        cursor_pos = 0;
-                        rendered_len = 0;
-                        command_buffer[0] = '\0';
-                        ime_romaji_len = 0;
-                        ime_romaji_buffer[0] = '\0';
-                        ClearImeCandidate();
-                        ClearSelection();
-                        command_history.ResetNavigation();
-                        PrintPrompt();
-                        input_row = console->CursorRow();
-                        input_col = console->CursorColumn();
-                        console->SetCursorPosition(input_row, input_col);
+                        const input::RuntimeCommandInputStateRefs reset_refs{
+                            command_buffer,
+                            static_cast<int>(sizeof(command_buffer)),
+                            &command_len,
+                            &cursor_pos,
+                            &rendered_len,
+                            ime_romaji_buffer,
+                            static_cast<int>(sizeof(ime_romaji_buffer)),
+                            &ime_romaji_len,
+                        };
+                        input::ResetAfterCommandExecution(
+                            reset_refs,
+                            ClearImeCandidate,
+                            ClearSelection,
+                            [&]() { command_history.ResetNavigation(); },
+                            PrintPrompt,
+                            [&]() {
+                                input_row = console->CursorRow();
+                                input_col = console->CursorColumn();
+                                console->SetCursorPosition(input_row, input_col);
+                            });
                         full_refresh = true;
                     } else if (IsPrintableAscii(ch)) {
                         DeleteSelection();
