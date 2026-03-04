@@ -2368,12 +2368,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (!drag_pending_move || drag_pending_window < 0) {
             return;
         }
-        auto DrawMovedUnion = [&](int old_x, int old_y, int new_x, int new_y, int w, int h) {
-            const int x0 = (old_x < new_x) ? old_x : new_x;
-            const int y0 = (old_y < new_y) ? old_y : new_y;
-            const int x1 = ((old_x + w) > (new_x + w)) ? (old_x + w) : (new_x + w);
-            const int y1 = ((old_y + h) > (new_y + h)) ? (old_y + h) : (new_y + h);
-            layer_manager->Draw(x0, y0, x1 - x0, y1 - y0);
+        auto DrawMovedRects = [&](int old_x, int old_y, int new_x, int new_y, int w, int h) {
+            // For large jumps, union area becomes huge and causes stutter.
+            // Redraw old and new rectangles separately to keep update cost bounded.
+            layer_manager->Draw(old_x, old_y, w, h);
+            if (new_x != old_x || new_y != old_y) {
+                layer_manager->Draw(new_x, new_y, w, h);
+            }
         };
         if (drag_pending_window == 0) {
             const int old_x = term_frame_layer->GetX();
@@ -2383,7 +2384,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             if (old_x != new_x || old_y != new_y) {
                 term_frame_layer->Move(new_x, new_y);
                 term_console_layer->Move(new_x + term_frame_border, new_y + term_title_h);
-                DrawMovedUnion(old_x, old_y, new_x, new_y, term_frame_w, term_frame_h);
+                DrawMovedRects(old_x, old_y, new_x, new_y, term_frame_w, term_frame_h);
             }
         } else if (drag_pending_window == 1) {
             const int old_x = info_frame_layer->GetX();
@@ -2393,7 +2394,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             if (old_x != new_x || old_y != new_y) {
                 info_frame_layer->Move(new_x, new_y);
                 info_content_layer->Move(new_x + info_frame_border, new_y + info_title_h);
-                DrawMovedUnion(old_x, old_y, new_x, new_y, info_frame_w, info_frame_h);
+                DrawMovedRects(old_x, old_y, new_x, new_y, info_frame_w, info_frame_h);
             }
         }
         drag_pending_move = false;
