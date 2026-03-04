@@ -85,14 +85,6 @@ const ImeCandidateEntry* ResolveCandidateEntryFromRomaji(
     return find_exact(out_key);
 }
 
-bool ShouldCommitActiveCandidateBeforeShortcut(bool candidate_active, uint8_t key) {
-    if (!candidate_active) {
-        return false;
-    }
-    // keep candidate selection on Space and Esc
-    return key != 0x39 && key != 0x01;
-}
-
 ImeCharDecision DecideImeCharHandling(char ch,
                                       bool ime_enabled,
                                       bool jp_layout,

@@ -39,6 +39,14 @@ ExtendedKeyAction DecideExtendedKeyAction(uint8_t key) {
     return ExtendedKeyAction::kNone;
 }
 
+bool ShouldCommitActiveCandidateBeforeKey(bool candidate_active, uint8_t key) {
+    if (!candidate_active) {
+        return false;
+    }
+    // keep candidate selection on Space and Esc
+    return key != 0x39 && key != 0x01;
+}
+
 ImeModeState ApplyImeModeAction(RegularShortcutAction action,
                                 bool ime_enabled,
                                 bool jp_layout) {

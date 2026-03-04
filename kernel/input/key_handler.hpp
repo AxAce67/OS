@@ -96,6 +96,8 @@ RegularShortcutAction DecideRegularShortcutAction(uint8_t key,
 
 ExtendedKeyAction DecideExtendedKeyAction(uint8_t key);
 
+bool ShouldCommitActiveCandidateBeforeKey(bool candidate_active, uint8_t key);
+
 ImeModeState ApplyImeModeAction(RegularShortcutAction action,
                                 bool ime_enabled,
                                 bool jp_layout);

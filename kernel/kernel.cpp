@@ -3114,7 +3114,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
-        if (input::ShouldCommitActiveCandidateBeforeShortcut(ime_candidate_active, key)) {
+        if (input::ShouldCommitActiveCandidateBeforeKey(ime_candidate_active, key)) {
             CommitImeCandidateLearning();
             ClearImeCandidate();
         }

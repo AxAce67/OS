@@ -35,8 +35,6 @@ const ImeCandidateEntry* ResolveCandidateEntryFromRomaji(
     char (*to_lower_ascii)(char),
     const ImeCandidateEntry* (*find_exact)(const char*));
 
-bool ShouldCommitActiveCandidateBeforeShortcut(bool candidate_active, uint8_t key);
-
 struct ImeCharDecision {
     bool ime_path;
     bool cycle_candidate;
