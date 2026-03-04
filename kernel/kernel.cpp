@@ -3056,6 +3056,27 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     using ExtendedExecBundle = input::RuntimeExtendedExecBundleT<InputActionOwner>;
     using RegularExecBundle = input::RuntimeRegularExecBundleT<InputActionOwner, RegularShortcutOwner>;
     using RuntimeFlowBundles = input::RuntimeFlowBundlesT<ExtendedExecBundle, RegularExecBundle>;
+    auto AcquireRuntimeFlowBundles = [&]() {
+        RuntimeFlowBundles bundles{};
+        input::BuildRuntimeFlowBundles(&bundles,
+                                       console,
+                                       &RefreshConsole,
+                                       &CycleImeCandidate,
+                                       &BrowseHistoryUp,
+                                       &BrowseHistoryDown,
+                                       &BackspaceAtCursor,
+                                       &DeleteAtCursor,
+                                       &HandleTabCompletion,
+                                       &DeleteRangeAt,
+                                       &ClearImeCandidate,
+                                       &input_row,
+                                       &input_col,
+                                       &PrintPrompt,
+                                       &ClearSelection,
+                                       &command_history,
+                                       &RepaintPromptAndInput);
+        return bundles;
+    };
 
     auto RenderAndRefreshInput = [&]() {
         RenderInputLine();
@@ -3090,24 +3111,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 &exec_plan)) {
             return false;
         }
-        RuntimeFlowBundles bundles{};
-        input::BuildRuntimeFlowBundles(&bundles,
-                                       console,
-                                       &RefreshConsole,
-                                       &CycleImeCandidate,
-                                       &BrowseHistoryUp,
-                                       &BrowseHistoryDown,
-                                       &BackspaceAtCursor,
-                                       &DeleteAtCursor,
-                                       &HandleTabCompletion,
-                                       &DeleteRangeAt,
-                                       &ClearImeCandidate,
-                                       &input_row,
-                                       &input_col,
-                                       &PrintPrompt,
-                                       &ClearSelection,
-                                       &command_history,
-                                       &RepaintPromptAndInput);
+        auto bundles = AcquireRuntimeFlowBundles();
         const auto action_context = input::BuildExtendedActionContext(&bundles.extended.owner);
         const auto chain_result =
             input::ExecuteExtendedExecChain(exec_plan, action_context, &cursor_pos, command_len);
@@ -3143,24 +3147,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 &exec_plan)) {
             return false;
         }
-        RuntimeFlowBundles bundles{};
-        input::BuildRuntimeFlowBundles(&bundles,
-                                       console,
-                                       &RefreshConsole,
-                                       &CycleImeCandidate,
-                                       &BrowseHistoryUp,
-                                       &BrowseHistoryDown,
-                                       &BackspaceAtCursor,
-                                       &DeleteAtCursor,
-                                       &HandleTabCompletion,
-                                       &DeleteRangeAt,
-                                       &ClearImeCandidate,
-                                       &input_row,
-                                       &input_col,
-                                       &PrintPrompt,
-                                       &ClearSelection,
-                                       &command_history,
-                                       &RepaintPromptAndInput);
+        auto bundles = AcquireRuntimeFlowBundles();
         const auto action_context = input::BuildRegularActionContext(&bundles.regular.action_owner);
         const auto ime_context = input::BuildRegularImeContext(&bundles.regular.shortcut_owner,
                                                                ime_candidate_entry,
