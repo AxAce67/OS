@@ -3324,32 +3324,34 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                 RefreshInputLine)) {
                             break;
                         }
-                        if (ime_decision.try_start_candidate) {
-                            char keybuf[32];
-                            const ImeCandidateEntry* entry = input::ResolveCandidateEntryFromRomaji(
-                                ime_romaji_buffer, ime_romaji_len,
-                                keybuf, static_cast<int>(sizeof(keybuf)),
-                                ToLowerAscii,
-                                FindImeCandidateEntry);
-                            if (entry == nullptr) {
-                                entry = TryBuildPrefixCandidateEntry(keybuf);
-                            }
-                            if (entry != nullptr && entry->count > 0) {
-                                if (input::HasSelection(selection_anchor, selection_end)) {
-                                    DeleteSelection();
-                                }
-                                ime_candidate_entry = entry;
-                                input::StartImeCandidateSession(
-                                    entry, cursor_pos, ime_candidate_source_keys,
-                                    FindBestImeCandidateIndex(entry),
-                                    &ime_candidate_index, &ime_candidate_start, &ime_candidate_len,
-                                    &ime_candidate_active,
-                                    CopyString);
-                                ime_romaji_len = 0;
-                                ime_romaji_buffer[0] = '\0';
-                                ReplaceImeCandidateText();
-                                break;
-                            }
+                        if (input::TryStartImeCandidateFromRomaji(
+                                ime_decision.try_start_candidate,
+                                ime_romaji_buffer,
+                                &ime_romaji_len,
+                                &ime_candidate_entry,
+                                [&](const char* romaji, int romaji_len, char* keybuf, int keybuf_capacity) {
+                                    return input::ResolveCandidateEntryFromRomaji(
+                                        romaji,
+                                        romaji_len,
+                                        keybuf,
+                                        keybuf_capacity,
+                                        ToLowerAscii,
+                                        FindImeCandidateEntry);
+                                },
+                                TryBuildPrefixCandidateEntry,
+                                [](const ImeCandidateEntry* entry) { return entry != nullptr && entry->count > 0; },
+                                [&]() { return input::HasSelection(selection_anchor, selection_end); },
+                                DeleteSelection,
+                                [&](const ImeCandidateEntry* entry) {
+                                    input::StartImeCandidateSession(
+                                        entry, cursor_pos, ime_candidate_source_keys,
+                                        FindBestImeCandidateIndex(entry),
+                                        &ime_candidate_index, &ime_candidate_start, &ime_candidate_len,
+                                        &ime_candidate_active,
+                                        CopyString);
+                                },
+                                ReplaceImeCandidateText)) {
+                            break;
                         }
                         if (ime_decision.finalize_romaji) {
                             // Finalize pending romaji before non-alpha key (space/punct/enter).

@@ -465,6 +465,52 @@ inline bool TryHandleImeAppendAlpha(bool append_alpha,
     return true;
 }
 
+template <class TCandidateEntry,
+          class TResolveEntry,
+          class TBuildPrefixEntry,
+          class TIsEntryUsable,
+          class THasSelection,
+          class TDeleteSelection,
+          class TStartSession,
+          class TReplaceCandidateText>
+inline bool TryStartImeCandidateFromRomaji(bool try_start_candidate,
+                                           char* romaji_buffer,
+                                           int* romaji_len,
+                                           const TCandidateEntry** active_entry,
+                                           TResolveEntry&& resolve_entry,
+                                           TBuildPrefixEntry&& build_prefix_entry,
+                                           TIsEntryUsable&& is_entry_usable,
+                                           THasSelection&& has_selection,
+                                           TDeleteSelection&& delete_selection,
+                                           TStartSession&& start_session,
+                                           TReplaceCandidateText&& replace_candidate_text) {
+    if (!try_start_candidate) {
+        return false;
+    }
+    if (romaji_buffer == nullptr || romaji_len == nullptr || active_entry == nullptr) {
+        return false;
+    }
+
+    char keybuf[32];
+    const TCandidateEntry* entry = resolve_entry(romaji_buffer, *romaji_len, keybuf, static_cast<int>(sizeof(keybuf)));
+    if (entry == nullptr) {
+        entry = build_prefix_entry(keybuf);
+    }
+    if (!is_entry_usable(entry)) {
+        return false;
+    }
+
+    if (has_selection()) {
+        delete_selection();
+    }
+    *active_entry = entry;
+    start_session(entry);
+    *romaji_len = 0;
+    romaji_buffer[0] = '\0';
+    replace_candidate_text();
+    return true;
+}
+
 template <class TOnCommitActiveCandidate, class TApplySideEffects>
 inline bool TryPrepareRegularExecPlan(uint8_t key,
                                       bool ctrl_pressed,
