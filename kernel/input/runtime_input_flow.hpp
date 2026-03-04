@@ -245,6 +245,13 @@ struct RuntimePendingDragDecision {
     bool should_queue;
 };
 
+struct RuntimeMouseDragStartDecision {
+    bool should_start;
+    int drag_window;
+    int drag_offset_x;
+    int drag_offset_y;
+};
+
 struct RuntimeMouseConsoleSelectionRefs {
     bool* selecting_with_mouse;
     int* selection_anchor;
@@ -504,6 +511,28 @@ inline int DecideMouseHitWindow(int active_window,
         return 0;
     }
     return -1;
+}
+
+inline RuntimeMouseDragStartDecision DecideMouseDragStart(int hit_window,
+                                                          const RuntimeWindowHitTestResult& term_hit,
+                                                          const RuntimeWindowHitTestResult& info_hit) {
+    if (hit_window == 0 && term_hit.on_title) {
+        return RuntimeMouseDragStartDecision{
+            true,
+            0,
+            term_hit.local_x,
+            term_hit.local_y,
+        };
+    }
+    if (hit_window == 1 && info_hit.on_title) {
+        return RuntimeMouseDragStartDecision{
+            true,
+            1,
+            info_hit.local_x,
+            info_hit.local_y,
+        };
+    }
+    return RuntimeMouseDragStartDecision{false, -1, 0, 0};
 }
 
 inline RuntimeDragClampedPosition ComputeClampedDragPosition(int pointer_x,

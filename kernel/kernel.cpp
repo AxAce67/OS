@@ -2899,15 +2899,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 if (hit_window >= 0) {
                     ApplyWindowFocus(hit_window);
                 }
-                if (hit_window == 0 && term_hit.on_title) {
-                    dragging_window = 0;
-                    drag_offset_x = term_hit.local_x;
-                    drag_offset_y = term_hit.local_y;
-                    ClearSelection();
-                } else if (hit_window == 1 && info_hit.on_title) {
-                    dragging_window = 1;
-                    drag_offset_x = info_hit.local_x;
-                    drag_offset_y = info_hit.local_y;
+                const auto drag_start = input::DecideMouseDragStart(
+                    hit_window,
+                    term_hit,
+                    info_hit);
+                if (drag_start.should_start) {
+                    dragging_window = drag_start.drag_window;
+                    drag_offset_x = drag_start.drag_offset_x;
+                    drag_offset_y = drag_start.drag_offset_y;
                     ClearSelection();
                 }
             }
