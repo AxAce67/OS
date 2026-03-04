@@ -3157,17 +3157,25 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 return true;
             }
             case input::RegularExecKind::kEscCancelCandidateToRomaji:
-                cursor_pos = ime_candidate_start;
-                DeleteRangeAt(ime_candidate_start, ime_candidate_len);
-                cursor_pos = ime_candidate_start;
-                ime_romaji_len = input::RestoreRomajiFromCandidate(
+            {
+                const auto esc_state = input::BuildEscCancelState(
                     ime_candidate_entry,
+                    ime_candidate_start,
+                    ime_candidate_len,
                     ime_romaji_buffer,
                     static_cast<int>(sizeof(ime_romaji_buffer)),
                     StrLength);
+                if (!esc_state.valid) {
+                    return false;
+                }
+                cursor_pos = esc_state.delete_start;
+                DeleteRangeAt(esc_state.delete_start, esc_state.delete_len);
+                cursor_pos = esc_state.cursor_after_delete;
+                ime_romaji_len = esc_state.restored_romaji_len;
                 ClearImeCandidate();
                 RenderAndRefreshInput();
                 return true;
+            }
             case input::RegularExecKind::kEscClearRomaji:
                 input::ClearRomajiInput(ime_romaji_buffer,
                                         static_cast<int>(sizeof(ime_romaji_buffer)),
@@ -3179,14 +3187,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 PrintPrompt();
                 input_row = console->CursorRow();
                 input_col = console->CursorColumn();
-                input::ResetLineForClear(command_buffer,
-                                         static_cast<int>(sizeof(command_buffer)),
-                                         &command_len,
-                                         &cursor_pos,
-                                         &rendered_len,
-                                         ime_romaji_buffer,
-                                         static_cast<int>(sizeof(ime_romaji_buffer)),
-                                         &ime_romaji_len);
+                input::ResetForCtrlL(command_buffer,
+                                     static_cast<int>(sizeof(command_buffer)),
+                                     &command_len,
+                                     &cursor_pos,
+                                     &rendered_len,
+                                     ime_romaji_buffer,
+                                     static_cast<int>(sizeof(ime_romaji_buffer)),
+                                     &ime_romaji_len);
                 ClearImeCandidate();
                 ClearSelection();
                 command_history.ResetNavigation();
