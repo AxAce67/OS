@@ -359,6 +359,17 @@ inline bool ProcessKeyboardCharAction(char ch,
     return false;
 }
 
+template <class TDeleteSelection, class TInsertByteAtCursor, class TRenderInputLine>
+inline void ProcessPrintableCharInput(uint8_t ch,
+                                      TDeleteSelection&& delete_selection,
+                                      TInsertByteAtCursor&& insert_byte_at_cursor,
+                                      TRenderInputLine&& render_input_line) {
+    delete_selection();
+    if (insert_byte_at_cursor(ch)) {
+        render_input_line();
+    }
+}
+
 template <class TSetInputCursorToLineEnd,
           class TPrintNewLine,
           class TAddHistory,

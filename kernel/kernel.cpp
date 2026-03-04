@@ -3307,10 +3307,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     });
             },
             [&](uint8_t byte_ch) {
-                DeleteSelection();
-                if (InsertByteAtCursor(byte_ch)) {
-                    RenderInputLine();
-                }
+                input::ProcessPrintableCharInput(
+                    byte_ch,
+                    DeleteSelection,
+                    InsertByteAtCursor,
+                    RenderInputLine);
             });
         input::RefreshAfterKeyboardCharInput(full_refresh, RefreshConsole, RefreshInputLine);
     };
