@@ -182,6 +182,20 @@ inline void MarkKeyDownIfTrackable(const KeyEvent& key_event,
     }
 }
 
+template <class THandleExtendedKey>
+inline bool ShouldProcessAfterExtendedKey(const KeyEvent& key_event,
+                                          uint8_t key,
+                                          THandleExtendedKey&& handle_extended_key) {
+    if (!key_event.extended) {
+        return true;
+    }
+    if (handle_extended_key(key)) {
+        return false;
+    }
+    // Extended keypad Enter and keypad Slash should behave as text input keys.
+    return key == 0x1C || key == 0x35;
+}
+
 template <class TImeCandidateEntry>
 inline void BuildRuntimeExecInputRefs(RuntimeExecInputRefsT<TImeCandidateEntry>* refs,
                                       const TImeCandidateEntry* ime_candidate_entry,

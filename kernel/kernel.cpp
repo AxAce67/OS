@@ -3274,14 +3274,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     break;
                 }
                 const uint8_t key = key_event.keycode;
-                if (key_event.extended) {
-                    if (HandleExtendedKey(key)) {
-                        break;
-                    }
-                    // Extended keypad Enter and keypad Slash should behave as text input keys.
-                    if (key != 0x1C && key != 0x35) {
-                        break;
-                    }
+                if (!input::ShouldProcessAfterExtendedKey(key_event, key, HandleExtendedKey)) {
+                    break;
                 }
                 if (input::ShouldSkipRepeatedKeyDown(key_event, g_key_repeat_enabled, key_down_refs)) {
                     break;
