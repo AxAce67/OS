@@ -3283,50 +3283,53 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             }
             input::FinalizeImeRomajiIfNeeded(ime_decision.finalize_romaji, FlushImeRomaji);
         }
-        if (ch == '\n') {
-            console->SetCursorPosition(input_row, input_col + command_len);
-            console->Print("\n");
-            command_buffer[command_len] = '\0';
-            if (command_len > 0) {
-                command_history.Add(command_buffer);
-            }
-            input::ExecuteShellCommandOrHistory(
-                command_buffer,
-                StrEqual,
-                [&]() { PrintHistory(command_history); },
-                [&]() {
-                    command_history.Clear();
-                    console->PrintLine("history cleared");
-                },
-                [&]() { ExecuteCommand(command_buffer); });
-            const input::RuntimeCommandInputStateRefs reset_refs{
-                command_buffer,
-                static_cast<int>(sizeof(command_buffer)),
-                &command_len,
-                &cursor_pos,
-                &rendered_len,
-                ime_romaji_buffer,
-                static_cast<int>(sizeof(ime_romaji_buffer)),
-                &ime_romaji_len,
-            };
-            input::ResetAfterCommandExecution(
-                reset_refs,
-                ClearImeCandidate,
-                ClearSelection,
-                [&]() { command_history.ResetNavigation(); },
-                PrintPrompt,
-                [&]() {
-                    input_row = console->CursorRow();
-                    input_col = console->CursorColumn();
-                    console->SetCursorPosition(input_row, input_col);
-                });
-            full_refresh = true;
-        } else if (IsPrintableAscii(ch)) {
-            DeleteSelection();
-            if (InsertByteAtCursor(static_cast<uint8_t>(ch))) {
-                RenderInputLine();
-            }
-        }
+        full_refresh = input::ProcessKeyboardCharAction(
+            ch,
+            IsPrintableAscii,
+            [&]() {
+                console->SetCursorPosition(input_row, input_col + command_len);
+                console->Print("\n");
+                command_buffer[command_len] = '\0';
+                if (command_len > 0) {
+                    command_history.Add(command_buffer);
+                }
+                input::ExecuteShellCommandOrHistory(
+                    command_buffer,
+                    StrEqual,
+                    [&]() { PrintHistory(command_history); },
+                    [&]() {
+                        command_history.Clear();
+                        console->PrintLine("history cleared");
+                    },
+                    [&]() { ExecuteCommand(command_buffer); });
+                const input::RuntimeCommandInputStateRefs reset_refs{
+                    command_buffer,
+                    static_cast<int>(sizeof(command_buffer)),
+                    &command_len,
+                    &cursor_pos,
+                    &rendered_len,
+                    ime_romaji_buffer,
+                    static_cast<int>(sizeof(ime_romaji_buffer)),
+                    &ime_romaji_len,
+                };
+                input::ResetAfterCommandExecution(
+                    reset_refs,
+                    ClearImeCandidate,
+                    ClearSelection,
+                    [&]() { command_history.ResetNavigation(); },
+                    PrintPrompt,
+                    [&]() {
+                        input_row = console->CursorRow();
+                        input_col = console->CursorColumn();
+                        console->SetCursorPosition(input_row, input_col);
+                    });
+            },
+            [&](uint8_t byte_ch) {
+                DeleteSelection();
+                if (InsertByteAtCursor(byte_ch)) {
+                    RenderInputLine();
+                }
+            });
         input::RefreshAfterKeyboardCharInput(full_refresh, RefreshConsole, RefreshInputLine);
     };
 

@@ -252,6 +252,21 @@ inline void ExecuteShellCommandOrHistory(const char* command,
     execute_command();
 }
 
+template <class TIsPrintable, class TOnEnter, class TOnPrintable>
+inline bool ProcessKeyboardCharAction(char ch,
+                                      TIsPrintable&& is_printable,
+                                      TOnEnter&& on_enter,
+                                      TOnPrintable&& on_printable) {
+    if (ch == '\n') {
+        on_enter();
+        return true;
+    }
+    if (is_printable(ch)) {
+        on_printable(static_cast<uint8_t>(ch));
+    }
+    return false;
+}
+
 template <class TClearCandidate,
           class TClearSelection,
           class TResetHistory,
