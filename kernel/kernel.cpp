@@ -3684,14 +3684,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     ++merged;
                     // Keep interaction state fresh first: latest button state wins.
                     msg.buttons = next.buttons;
-                    // If backlog grows, drop stale deltas to avoid "post-release drift".
-                    if (merged <= 8) {
-                        total_dx += next.dx;
-                        total_dy += next.dy;
-                    } else {
-                        total_dx = next.dx;
-                        total_dy = next.dy;
-                    }
+                    // Preserve full motion amount even when events are coalesced.
+                    total_dx += next.dx;
+                    total_dy += next.dy;
                 }
                 msg.dx = total_dx;
                 msg.dy = total_dy;
