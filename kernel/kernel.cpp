@@ -3631,33 +3631,50 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         // キューにデータが入っていたら、メッセージを1つ取り出す
         Message msg;
         main_queue->Pop(msg);
-        if (msg.type == Message::Type::kInterruptMouse &&
-            msg.pointer_mode == Message::PointerMode::kRelative &&
-            msg.wheel == 0) {
+        if (msg.type == Message::Type::kInterruptMouse && msg.wheel == 0) {
             Message next;
-            int merged = 0;
-            int total_dx = msg.dx;
-            int total_dy = msg.dy;
-            while (merged < 128 &&
-                   main_queue->Peek(next) &&
-                   next.type == Message::Type::kInterruptMouse &&
-                   next.pointer_mode == Message::PointerMode::kRelative &&
-                   next.wheel == 0) {
-                main_queue->Pop(next);
-                ++merged;
-                // Keep interaction state fresh first: latest button state wins.
-                msg.buttons = next.buttons;
-                // If backlog grows, drop stale deltas to avoid "post-release drift".
-                if (merged <= 8) {
-                    total_dx += next.dx;
-                    total_dy += next.dy;
-                } else {
-                    total_dx = next.dx;
-                    total_dy = next.dy;
+            if (msg.pointer_mode == Message::PointerMode::kRelative) {
+                int merged = 0;
+                int total_dx = msg.dx;
+                int total_dy = msg.dy;
+                while (merged < 128 &&
+                       main_queue->Peek(next) &&
+                       next.type == Message::Type::kInterruptMouse &&
+                       next.pointer_mode == Message::PointerMode::kRelative &&
+                       next.wheel == 0) {
+                    main_queue->Pop(next);
+                    ++merged;
+                    // Keep interaction state fresh first: latest button state wins.
+                    msg.buttons = next.buttons;
+                    // If backlog grows, drop stale deltas to avoid "post-release drift".
+                    if (merged <= 8) {
+                        total_dx += next.dx;
+                        total_dy += next.dy;
+                    } else {
+                        total_dx = next.dx;
+                        total_dy = next.dy;
+                    }
                 }
+                msg.dx = total_dx;
+                msg.dy = total_dy;
+            } else {
+                int merged = 0;
+                int last_x = msg.x;
+                int last_y = msg.y;
+                while (merged < 128 &&
+                       main_queue->Peek(next) &&
+                       next.type == Message::Type::kInterruptMouse &&
+                       next.pointer_mode == Message::PointerMode::kAbsolute &&
+                       next.wheel == 0) {
+                    main_queue->Pop(next);
+                    ++merged;
+                    msg.buttons = next.buttons;
+                    last_x = next.x;
+                    last_y = next.y;
+                }
+                msg.x = last_x;
+                msg.y = last_y;
             }
-            msg.dx = total_dx;
-            msg.dy = total_dy;
         }
         
         // 取り出し終わったら割り込みを再開する

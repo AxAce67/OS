@@ -94,10 +94,13 @@ void MouseCursor::SetPosition(int x, int y) {
 
     layer_->Move(x, y);
 
-    int final_x = layer_->GetX();
-    int final_y = layer_->GetY();
-    layer_manager_->Draw(old_x, old_y, w, h);
-    layer_manager_->Draw(final_x, final_y, w, h);
+    const int final_x = layer_->GetX();
+    const int final_y = layer_->GetY();
+    const int x0 = (old_x < final_x) ? old_x : final_x;
+    const int y0 = (old_y < final_y) ? old_y : final_y;
+    const int x1 = ((old_x + w) > (final_x + w)) ? (old_x + w) : (final_x + w);
+    const int y1 = ((old_y + h) > (final_y + h)) ? (old_y + h) : (final_y + h);
+    layer_manager_->Draw(x0, y0, x1 - x0, y1 - y0);
 }
 
 int MouseCursor::X() const {
