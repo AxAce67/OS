@@ -2360,6 +2360,32 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (ime_candidate_active && key != 0x39) {
             ClearImeCandidate();
         }
+        if (key == 0x01) { // Esc
+            if (ime_candidate_active && ime_candidate_entry != nullptr) {
+                const char* src = ime_candidate_entry->key;
+                int src_len = StrLength(src);
+                cursor_pos = ime_candidate_start;
+                DeleteRangeAt(ime_candidate_start, ime_candidate_len);
+                cursor_pos = ime_candidate_start;
+                ime_romaji_len = 0;
+                for (int i = 0; i < src_len && i + 1 < static_cast<int>(sizeof(ime_romaji_buffer)); ++i) {
+                    ime_romaji_buffer[i] = src[i];
+                    ime_romaji_len = i + 1;
+                }
+                ime_romaji_buffer[ime_romaji_len] = '\0';
+                ClearImeCandidate();
+                RenderInputLine();
+                RefreshInputLine();
+                return true;
+            }
+            if (g_ime_enabled && ime_romaji_len > 0) {
+                ime_romaji_len = 0;
+                ime_romaji_buffer[0] = '\0';
+                RenderInputLine();
+                RefreshInputLine();
+                return true;
+            }
+        }
         if (IsCtrlPressed(keyboard_mods)) {
             if (key == 0x39) { // Ctrl + Space => IME toggle fallback
                 FlushImeRomaji(true);
