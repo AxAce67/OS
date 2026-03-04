@@ -2354,6 +2354,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int drag_offset_x = 0;
     int drag_offset_y = 0;
     uint64_t next_system_info_tick = 0;
+    uint64_t last_drag_redraw_tick = 0;
+    bool drag_visual_dirty = false;
     auto RefreshConsole = [&]() {
         layer_manager->Draw(term_console_layer->GetX(),
                             term_console_layer->GetY(),
@@ -3202,9 +3204,20 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             }
             if (((prev_buttons & 0x01) != 0) && ((now_buttons & 0x01) == 0)) {
                 selecting_with_mouse = false;
+                if (drag_visual_dirty) {
+                    layer_manager->Draw();
+                    drag_visual_dirty = false;
+                }
                 dragging_window = -1;
             }
             if ((now_buttons & 0x01) != 0 && dragging_window >= 0) {
+                auto DrawMovedUnion = [&](int old_x, int old_y, int new_x, int new_y, int w, int h) {
+                    const int x0 = (old_x < new_x) ? old_x : new_x;
+                    const int y0 = (old_y < new_y) ? old_y : new_y;
+                    const int x1 = ((old_x + w) > (new_x + w)) ? (old_x + w) : (new_x + w);
+                    const int y1 = ((old_y + h) > (new_y + h)) ? (old_y + h) : (new_y + h);
+                    layer_manager->Draw(x0, y0, x1 - x0, y1 - y0);
+                };
                 if (dragging_window == 0) {
                     int new_frame_x = pointer_x - drag_offset_x;
                     int new_frame_y = pointer_y - drag_offset_y;
@@ -3217,8 +3230,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         const int old_frame_y = term_frame_layer->GetY();
                         term_frame_layer->Move(new_frame_x, new_frame_y);
                         term_console_layer->Move(new_frame_x + term_frame_border, new_frame_y + term_title_h);
-                        layer_manager->Draw(old_frame_x, old_frame_y, term_frame_w, term_frame_h);
-                        layer_manager->Draw(new_frame_x, new_frame_y, term_frame_w, term_frame_h);
+                        drag_visual_dirty = true;
+                        const uint64_t now = CurrentTick();
+                        if (now != last_drag_redraw_tick) {
+                            DrawMovedUnion(old_frame_x, old_frame_y, new_frame_x, new_frame_y, term_frame_w, term_frame_h);
+                            last_drag_redraw_tick = now;
+                            drag_visual_dirty = false;
+                        }
                     }
                 } else {
                     int new_info_x = pointer_x - drag_offset_x;
@@ -3232,8 +3250,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         const int old_info_y = info_frame_layer->GetY();
                         info_frame_layer->Move(new_info_x, new_info_y);
                         info_content_layer->Move(new_info_x + info_frame_border, new_info_y + info_title_h);
-                        layer_manager->Draw(old_info_x, old_info_y, info_frame_w, info_frame_h);
-                        layer_manager->Draw(new_info_x, new_info_y, info_frame_w, info_frame_h);
+                        drag_visual_dirty = true;
+                        const uint64_t now = CurrentTick();
+                        if (now != last_drag_redraw_tick) {
+                            DrawMovedUnion(old_info_x, old_info_y, new_info_x, new_info_y, info_frame_w, info_frame_h);
+                            last_drag_redraw_tick = now;
+                            drag_visual_dirty = false;
+                        }
                     }
                 }
                 return;
@@ -3766,9 +3789,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
 
         const uint64_t now_tick = CurrentTick();
-        if (now_tick >= next_system_info_tick) {
+        if (dragging_window < 0 && now_tick >= next_system_info_tick) {
             RefreshSystemInfo();
-            next_system_info_tick = now_tick + 8;
+            next_system_info_tick = now_tick + 12;
         }
 
     }
