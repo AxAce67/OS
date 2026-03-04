@@ -76,6 +76,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "input/key_layout.hpp"
 #include "input/hid_keyboard.hpp"
 #include "input/history.hpp"
+#include "input/line_ops.hpp"
 #include "boot_info.h"
 #include "memory.hpp"
 #include "paging.hpp"
@@ -2866,49 +2867,18 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto DeleteRangeAt = [&](int start, int len) -> bool {
-        if (len <= 0 || start < 0 || start > command_len) {
-            return false;
-        }
-        if (start + len > command_len) {
-            len = command_len - start;
-        }
-        for (int i = start; i + len <= command_len; ++i) {
-            command_buffer[i] = command_buffer[i + len];
-        }
-        command_len -= len;
-        if (command_len < 0) {
-            command_len = 0;
-        }
-        if (cursor_pos > command_len) {
-            cursor_pos = command_len;
-        }
-        command_buffer[command_len] = '\0';
-        return true;
+        return input::DeleteRange(command_buffer, static_cast<int>(sizeof(command_buffer)),
+                                  &command_len, &cursor_pos, start, len);
     };
 
     auto InsertByteAtCursor = [&](uint8_t b) -> bool {
-        if (command_len >= MaxInputLen()) {
-            return false;
-        }
-        for (int i = command_len; i > cursor_pos; --i) {
-            command_buffer[i] = command_buffer[i - 1];
-        }
-        command_buffer[cursor_pos] = static_cast<char>(b);
-        ++command_len;
-        ++cursor_pos;
-        command_buffer[command_len] = '\0';
-        return true;
+        return input::InsertByteAtCursor(command_buffer, static_cast<int>(sizeof(command_buffer)),
+                                         &command_len, &cursor_pos, MaxInputLen(), b);
     };
 
     auto InsertCStringAtCursor = [&](const char* text) -> int {
-        int inserted = 0;
-        for (int i = 0; text[i] != '\0'; ++i) {
-            if (!InsertByteAtCursor(static_cast<uint8_t>(text[i]))) {
-                break;
-            }
-            ++inserted;
-        }
-        return inserted;
+        return input::InsertCStringAtCursor(command_buffer, static_cast<int>(sizeof(command_buffer)),
+                                            &command_len, &cursor_pos, MaxInputLen(), text);
     };
 
     auto ReplaceImeCandidateText = [&]() {
