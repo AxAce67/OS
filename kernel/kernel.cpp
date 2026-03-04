@@ -80,6 +80,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "input/ime_engine.hpp"
 #include "input/ime_logic.hpp"
 #include "input/ime_session.hpp"
+#include "input/key_flow.hpp"
 #include "input/line_editor.hpp"
 #include "input/line_ops.hpp"
 #include "input/line_render.hpp"
@@ -3035,20 +3036,20 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleExtendedKey = [&](uint8_t key) -> bool {
-        if (ime_candidate_active && ime_candidate_entry != nullptr) {
-            if (key == 0x48) { // Arrow Up
-                EnsureLiveConsole();
-                return CycleImeCandidate(-1);
-            }
-            if (key == 0x50) { // Arrow Down
-                EnsureLiveConsole();
-                return CycleImeCandidate(1);
-            }
+        const input::CandidateNav nav =
+            input::DecideCandidateNavOnExtendedKey(key, ime_candidate_active, ime_candidate_entry);
+        if (nav == input::CandidateNav::kPrev) {
+            EnsureLiveConsole();
+            return CycleImeCandidate(-1);
         }
-        if (g_ime_enabled && ime_romaji_len > 0) {
+        if (nav == input::CandidateNav::kNext) {
+            EnsureLiveConsole();
+            return CycleImeCandidate(1);
+        }
+        if (input::ShouldFlushRomajiBeforeExtendedKey(g_ime_enabled, ime_romaji_len, nav)) {
             FlushImeRomaji(true);
         }
-        if (ime_candidate_active) {
+        if (input::ShouldClearCandidateBeforeExtendedKey(ime_candidate_active, nav)) {
             ClearImeCandidate();
         }
         if (key == 0x49) { // Page Up
@@ -3146,7 +3147,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 return true;
             }
             if (key == 0x1E) { // Ctrl + A
-                if (g_ime_enabled && ime_romaji_len > 0) {
+                if (input::ShouldFlushRomajiForCursorShortcut(g_ime_enabled, ime_romaji_len)) {
                     FlushImeRomaji(true);
                 }
                 EnsureLiveConsole();
@@ -3157,7 +3158,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 return true;
             }
             if (key == 0x12) { // Ctrl + E
-                if (g_ime_enabled && ime_romaji_len > 0) {
+                if (input::ShouldFlushRomajiForCursorShortcut(g_ime_enabled, ime_romaji_len)) {
                     FlushImeRomaji(true);
                 }
                 EnsureLiveConsole();
@@ -3190,7 +3191,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             }
         }
         if (!keyboard_mods.num_lock && key == 0x47) { // Home (non-E0 fallback)
-            if (g_ime_enabled && ime_romaji_len > 0) {
+            if (input::ShouldFlushRomajiForCursorShortcut(g_ime_enabled, ime_romaji_len)) {
                 FlushImeRomaji(true);
             }
             EnsureLiveConsole();
@@ -3212,7 +3213,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return true;
         }
         if (!keyboard_mods.num_lock && key == 0x4F) { // End (non-E0 fallback)
-            if (g_ime_enabled && ime_romaji_len > 0) {
+            if (input::ShouldFlushRomajiForCursorShortcut(g_ime_enabled, ime_romaji_len)) {
                 FlushImeRomaji(true);
             }
             EnsureLiveConsole();
