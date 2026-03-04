@@ -17,6 +17,8 @@ public:
     int Y() const;
 
 private:
+    void DrawCursorAt(int x, int y);
     LayerManager* layer_manager_;
-    Layer* layer_;
+    int x_{0};
+    int y_{0};
 };
