@@ -183,41 +183,29 @@ foreach ($cand in $ovmfCandidates) {
     }
 }
 
-# ファイルがある場合はローカルにコピーして使う（アクセス権限の問題回避）
 $hasOvmf = (-Not [string]::IsNullOrWhiteSpace($ovmf) -and (Test-Path $ovmf))
 
-if ($hasOvmf) {
-    if (-Not (Test-Path "OVMF.fd")) {
-        Copy-Item $ovmf -Destination "OVMF.fd"
+if (-Not $hasOvmf) {
+    Write-Host "Error: OVMF firmware not found. UEFI boot is required." -ForegroundColor Red
+    Write-Host "Checked paths:" -ForegroundColor Yellow
+    foreach ($cand in $ovmfCandidates) {
+        Write-Host "  - $cand" -ForegroundColor Yellow
     }
-} else {
-    Write-Host "Warning: OVMF.fd (UEFI BIOS) not found. QEMU might boot in Legacy BIOS mode." -ForegroundColor Yellow
+    exit 1
 }
+$ovmfPath = (Resolve-Path $ovmf).Path
+Write-Host "Using OVMF: $ovmfPath" -ForegroundColor Cyan
 
 if ($UseUsbTablet) {
-    if ($hasOvmf) {
-        & $qemu -m 512M `
-            -machine q35 `
-            -device "qemu-xhci,msi=off" `
-            -device "usb-tablet" `
-            -pflash "OVMF.fd" `
-            -drive "format=raw,file=fat:rw:disk"
-    } else {
-        & $qemu -m 512M `
-            -machine q35 `
-            -device "qemu-xhci,msi=off" `
-            -device "usb-tablet" `
-            -drive "format=raw,file=fat:rw:disk"
-    }
+    & $qemu -m 512M `
+        -machine q35 `
+        -drive "if=pflash,format=raw,readonly=on,file=$ovmfPath" `
+        -device "qemu-xhci,msi=off" `
+        -device "usb-tablet" `
+        -drive "format=raw,file=fat:rw:disk"
 } else {
-    if ($hasOvmf) {
-        & $qemu -m 512M `
-            -machine q35 `
-            -pflash "OVMF.fd" `
-            -drive "format=raw,file=fat:rw:disk"
-    } else {
-        & $qemu -m 512M `
-            -machine q35 `
-            -drive "format=raw,file=fat:rw:disk"
-    }
+    & $qemu -m 512M `
+        -machine q35 `
+        -drive "if=pflash,format=raw,readonly=on,file=$ovmfPath" `
+        -drive "format=raw,file=fat:rw:disk"
 }
