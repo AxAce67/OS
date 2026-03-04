@@ -53,5 +53,25 @@ int RestoreRomajiFromCandidate(const ImeCandidateEntry* entry,
     return len;
 }
 
-}  // namespace input
+void ApplyImeModeState(const ImeModeState& mode,
+                       bool* ime_enabled,
+                       bool* jp_layout) {
+    if (ime_enabled != nullptr) {
+        *ime_enabled = mode.ime_enabled;
+    }
+    if (jp_layout != nullptr) {
+        *jp_layout = mode.jp_layout;
+    }
+}
 
+void SetCursorValue(int* cursor_pos, int target) {
+    if (cursor_pos != nullptr) {
+        *cursor_pos = target;
+    }
+}
+
+bool ShouldBrowseHistoryAfterCycle(bool cycle_succeeded) {
+    return !cycle_succeeded;
+}
+
+}  // namespace input

@@ -3138,8 +3138,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             switch (exec_plan.kind) {
             case input::RegularExecKind::kApplyImeModeAndRepaint: {
                 const auto mode = input::ApplyImeModeAction(exec_plan.mode_action, g_ime_enabled, g_jp_layout);
-                g_ime_enabled = mode.ime_enabled;
-                g_jp_layout = mode.jp_layout;
+                input::ApplyImeModeState(mode, &g_ime_enabled, &g_jp_layout);
                 RepaintPromptAndInput();
                 return true;
             }
@@ -3183,26 +3182,24 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RefreshInputLine();
                 return true;
             case input::RegularExecKind::kMoveCursorStart:
-                cursor_pos = 0;
+                input::SetCursorValue(&cursor_pos, 0);
                 RenderInputLine();
                 RefreshInputLine();
                 return true;
             case input::RegularExecKind::kMoveCursorEnd:
-                cursor_pos = command_len;
+                input::SetCursorValue(&cursor_pos, command_len);
                 RenderInputLine();
                 RefreshInputLine();
                 return true;
             case input::RegularExecKind::kHistoryUpWithCandidate:
-                if (CycleImeCandidate(-1)) {
-                    return true;
+                if (input::ShouldBrowseHistoryAfterCycle(CycleImeCandidate(-1))) {
+                    BrowseHistoryUp();
                 }
-                BrowseHistoryUp();
                 return true;
             case input::RegularExecKind::kHistoryDownWithCandidate:
-                if (CycleImeCandidate(1)) {
-                    return true;
+                if (input::ShouldBrowseHistoryAfterCycle(CycleImeCandidate(1))) {
+                    BrowseHistoryDown();
                 }
-                BrowseHistoryDown();
                 return true;
             case input::RegularExecKind::kBackspace:
                 BackspaceAtCursor();

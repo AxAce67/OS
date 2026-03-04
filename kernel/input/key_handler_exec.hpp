@@ -1,6 +1,7 @@
 #pragma once
 
 #include "input/ime_candidate.hpp"
+#include "input/key_handler.hpp"
 
 namespace input {
 
@@ -20,5 +21,12 @@ int RestoreRomajiFromCandidate(const ImeCandidateEntry* entry,
                                int romaji_capacity,
                                int (*str_length)(const char*));
 
-}  // namespace input
+void ApplyImeModeState(const ImeModeState& mode,
+                       bool* ime_enabled,
+                       bool* jp_layout);
 
+void SetCursorValue(int* cursor_pos, int target);
+
+bool ShouldBrowseHistoryAfterCycle(bool cycle_succeeded);
+
+}  // namespace input
