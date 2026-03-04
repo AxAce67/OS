@@ -3083,6 +3083,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 if (which == active_window) {
                     return;
                 }
+                const int term_frame_x0 = term_frame_layer->GetX();
+                const int term_frame_y0 = term_frame_layer->GetY();
+                const int term_console_x0 = term_console_layer->GetX();
+                const int term_console_y0 = term_console_layer->GetY();
+                const int info_frame_x0 = info_frame_layer->GetX();
+                const int info_frame_y0 = info_frame_layer->GetY();
+                const int info_content_x0 = info_content_layer->GetX();
+                const int info_content_y0 = info_content_layer->GetY();
                 active_window = which;
                 if (which == 0) {
                     layer_manager->UpDown(info_frame_layer, 2);
@@ -3103,7 +3111,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     DrawFrameTitle(info_frame_window, info_frame_border, info_title_h, info_frame_w, "System", true);
                     info_frame_window->FillRectangle(info_frame_w - 20, 6, 12, 12, {104, 108, 126});
                 }
-                layer_manager->Draw();
+                layer_manager->Draw(term_frame_x0, term_frame_y0, term_frame_w, term_frame_h);
+                layer_manager->Draw(term_console_x0, term_console_y0, term_content_w, term_content_h);
+                layer_manager->Draw(info_frame_x0, info_frame_y0, info_frame_w, info_frame_h);
+                layer_manager->Draw(info_content_x0, info_content_y0, info_content_w, info_content_h);
             };
             if ((pressed & 0x01) != 0) {
                 int hit_window = -1;
