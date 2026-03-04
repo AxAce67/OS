@@ -3908,11 +3908,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             last_drag_redraw_tick = now_tick;
         }
         if (pointer_visual_dirty && now_tick != last_pointer_redraw_tick) {
-            // Queue-aware flush: keep smoothness while avoiding overdraw under heavy input.
-            if (dragging_window >= 0 || (main_queue != nullptr && main_queue->Count() <= 8)) {
-                FlushPointerVisual();
-                last_pointer_redraw_tick = now_tick;
-            }
+            FlushPointerVisual();
+            last_pointer_redraw_tick = now_tick;
         }
         if (dragging_window < 0 && now_tick >= next_system_info_tick) {
             RefreshSystemInfo();
