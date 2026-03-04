@@ -3055,38 +3055,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         decltype(RepaintPromptAndInput)>;
     using ExtendedExecBundle = input::RuntimeExtendedExecBundleT<InputActionOwner>;
     using RegularExecBundle = input::RuntimeRegularExecBundleT<InputActionOwner, RegularShortcutOwner>;
-    struct RuntimeFlowBundles {
-        ExtendedExecBundle extended;
-        RegularExecBundle regular;
-    };
-    auto BuildRuntimeFlowBundles = [&](RuntimeFlowBundles* bundles) {
-        if (bundles == nullptr) {
-            return;
-        }
-        input::BuildExtendedExecBundle(&bundles->extended,
-                                       console,
-                                       &RefreshConsole,
-                                       &BrowseHistoryUp,
-                                       &BrowseHistoryDown,
-                                       &DeleteAtCursor);
-        input::BuildRegularExecBundle(&bundles->regular,
-                                      console,
-                                      &RefreshConsole,
-                                      &CycleImeCandidate,
-                                      &BrowseHistoryUp,
-                                      &BrowseHistoryDown,
-                                      &BackspaceAtCursor,
-                                      &DeleteAtCursor,
-                                      &HandleTabCompletion,
-                                      &DeleteRangeAt,
-                                      &ClearImeCandidate,
-                                      &input_row,
-                                      &input_col,
-                                      &PrintPrompt,
-                                      &ClearSelection,
-                                      &command_history,
-                                      &RepaintPromptAndInput);
-    };
+    using RuntimeFlowBundles = input::RuntimeFlowBundlesT<ExtendedExecBundle, RegularExecBundle>;
 
     auto RenderAndRefreshInput = [&]() {
         RenderInputLine();
@@ -3122,7 +3091,23 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return false;
         }
         RuntimeFlowBundles bundles{};
-        BuildRuntimeFlowBundles(&bundles);
+        input::BuildRuntimeFlowBundles(&bundles,
+                                       console,
+                                       &RefreshConsole,
+                                       &CycleImeCandidate,
+                                       &BrowseHistoryUp,
+                                       &BrowseHistoryDown,
+                                       &BackspaceAtCursor,
+                                       &DeleteAtCursor,
+                                       &HandleTabCompletion,
+                                       &DeleteRangeAt,
+                                       &ClearImeCandidate,
+                                       &input_row,
+                                       &input_col,
+                                       &PrintPrompt,
+                                       &ClearSelection,
+                                       &command_history,
+                                       &RepaintPromptAndInput);
         const auto action_context = input::BuildExtendedActionContext(&bundles.extended.owner);
         const auto chain_result =
             input::ExecuteExtendedExecChain(exec_plan, action_context, &cursor_pos, command_len);
@@ -3159,7 +3144,23 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return false;
         }
         RuntimeFlowBundles bundles{};
-        BuildRuntimeFlowBundles(&bundles);
+        input::BuildRuntimeFlowBundles(&bundles,
+                                       console,
+                                       &RefreshConsole,
+                                       &CycleImeCandidate,
+                                       &BrowseHistoryUp,
+                                       &BrowseHistoryDown,
+                                       &BackspaceAtCursor,
+                                       &DeleteAtCursor,
+                                       &HandleTabCompletion,
+                                       &DeleteRangeAt,
+                                       &ClearImeCandidate,
+                                       &input_row,
+                                       &input_col,
+                                       &PrintPrompt,
+                                       &ClearSelection,
+                                       &command_history,
+                                       &RepaintPromptAndInput);
         const auto action_context = input::BuildRegularActionContext(&bundles.regular.action_owner);
         const auto ime_context = input::BuildRegularImeContext(&bundles.regular.shortcut_owner,
                                                                ime_candidate_entry,

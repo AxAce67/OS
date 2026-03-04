@@ -86,6 +86,12 @@ struct RuntimeRegularExecBundleT {
     TRegularShortcutOwner shortcut_owner;
 };
 
+template <class TExtendedExecBundle, class TRegularExecBundle>
+struct RuntimeFlowBundlesT {
+    TExtendedExecBundle extended;
+    TRegularExecBundle regular;
+};
+
 ExecChainResult ExecuteRegularExecChain(const RegularExecPlan& plan,
                                         const RegularImeActionContext& ime_context,
                                         const RegularClearContext& clear_context,
@@ -407,6 +413,56 @@ inline void BuildRegularExecBundle(TRegularExecBundle* bundle,
     bundle->shortcut_owner.clear_selection = clear_selection;
     bundle->shortcut_owner.command_history = command_history;
     bundle->shortcut_owner.repaint_prompt_and_input = repaint_prompt_and_input;
+}
+
+template <class TFlowBundles,
+          class TRefresh, class TCycle, class TBrowseUp, class TBrowseDown,
+          class TBackspace, class TDelete, class TTab,
+          class TDeleteRange, class TClearCandidate, class TPrintPrompt,
+          class TClearSelection, class THistory, class TRepaintPromptAndInput>
+inline void BuildRuntimeFlowBundles(TFlowBundles* bundles,
+                                    Console* console,
+                                    TRefresh* refresh_console,
+                                    TCycle* cycle_candidate,
+                                    TBrowseUp* browse_history_up,
+                                    TBrowseDown* browse_history_down,
+                                    TBackspace* backspace_at_cursor,
+                                    TDelete* delete_at_cursor,
+                                    TTab* tab_complete,
+                                    TDeleteRange* delete_range_at,
+                                    TClearCandidate* clear_ime_candidate,
+                                    int* input_row,
+                                    int* input_col,
+                                    TPrintPrompt* print_prompt,
+                                    TClearSelection* clear_selection,
+                                    THistory* command_history,
+                                    TRepaintPromptAndInput* repaint_prompt_and_input) {
+    if (bundles == nullptr) {
+        return;
+    }
+    BuildExtendedExecBundle(&bundles->extended,
+                            console,
+                            refresh_console,
+                            browse_history_up,
+                            browse_history_down,
+                            delete_at_cursor);
+    BuildRegularExecBundle(&bundles->regular,
+                           console,
+                           refresh_console,
+                           cycle_candidate,
+                           browse_history_up,
+                           browse_history_down,
+                           backspace_at_cursor,
+                           delete_at_cursor,
+                           tab_complete,
+                           delete_range_at,
+                           clear_ime_candidate,
+                           input_row,
+                           input_col,
+                           print_prompt,
+                           clear_selection,
+                           command_history,
+                           repaint_prompt_and_input);
 }
 
 }  // namespace input
