@@ -3198,6 +3198,43 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             },
         };
     };
+    auto BuildExtendedInputActionOwner = [&]() {
+        return InputActionOwner{
+            console,
+            &RefreshConsole,
+            nullptr,
+            &BrowseHistoryUp,
+            &BrowseHistoryDown,
+            nullptr,
+            &DeleteAtCursor,
+            nullptr,
+        };
+    };
+    auto BuildRegularInputActionOwner = [&]() {
+        return InputActionOwner{
+            console,
+            &RefreshConsole,
+            &CycleImeCandidate,
+            &BrowseHistoryUp,
+            &BrowseHistoryDown,
+            &BackspaceAtCursor,
+            &DeleteAtCursor,
+            &HandleTabCompletion,
+        };
+    };
+    auto BuildRegularShortcutOwner = [&]() {
+        return RegularShortcutOwner{
+            &DeleteRangeAt,
+            &ClearImeCandidate,
+            console,
+            &input_row,
+            &input_col,
+            &PrintPrompt,
+            &ClearSelection,
+            &command_history,
+            &RepaintPromptAndInput,
+        };
+    };
 
     auto HandleExtendedKey = [&](uint8_t key) -> bool {
         const input::CandidateNav nav =
@@ -3228,16 +3265,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (exec_plan.clear_selection) {
             ClearSelection();
         }
-        InputActionOwner action_owner{
-            console,
-            &RefreshConsole,
-            nullptr,
-            &BrowseHistoryUp,
-            &BrowseHistoryDown,
-            nullptr,
-            &DeleteAtCursor,
-            nullptr,
-        };
+        auto action_owner = BuildExtendedInputActionOwner();
         const auto action_context = BuildExtendedActionContext(&action_owner);
         if (input::ExecuteExtendedActionWithContext(exec_plan.kind, action_context)) {
             return true;
@@ -3280,28 +3308,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             if (exec_plan.clear_selection) {
                 ClearSelection();
             }
-            InputActionOwner action_owner{
-                console,
-                &RefreshConsole,
-                &CycleImeCandidate,
-                &BrowseHistoryUp,
-                &BrowseHistoryDown,
-                &BackspaceAtCursor,
-                &DeleteAtCursor,
-                &HandleTabCompletion,
-            };
+            auto action_owner = BuildRegularInputActionOwner();
             const auto action_context = BuildRegularActionContext(&action_owner);
-            RegularShortcutOwner shortcut_owner{
-                &DeleteRangeAt,
-                &ClearImeCandidate,
-                console,
-                &input_row,
-                &input_col,
-                &PrintPrompt,
-                &ClearSelection,
-                &command_history,
-                &RepaintPromptAndInput,
-            };
+            auto shortcut_owner = BuildRegularShortcutOwner();
             const auto ime_context = BuildRegularImeContext(&shortcut_owner,
                                                             ime_candidate_entry,
                                                             ime_candidate_start,
