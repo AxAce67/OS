@@ -3235,6 +3235,31 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             &RepaintPromptAndInput,
         };
     };
+    auto ApplyExtendedPlanSideEffects = [&](const input::ExtendedExecPlan& plan) {
+        if (plan.flush_romaji) {
+            FlushImeRomaji(true);
+        }
+        if (plan.clear_candidate) {
+            ClearImeCandidate();
+        }
+        if (plan.ensure_live_console) {
+            EnsureLiveConsole();
+        }
+        if (plan.clear_selection) {
+            ClearSelection();
+        }
+    };
+    auto ApplyRegularPlanSideEffects = [&](const input::RegularExecPlan& plan) {
+        if (plan.flush_romaji) {
+            FlushImeRomaji(true);
+        }
+        if (plan.ensure_live_console) {
+            EnsureLiveConsole();
+        }
+        if (plan.clear_selection) {
+            ClearSelection();
+        }
+    };
 
     auto HandleExtendedKey = [&](uint8_t key) -> bool {
         const input::CandidateNav nav =
@@ -3253,18 +3278,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (!exec_plan.handled) {
             return false;
         }
-        if (exec_plan.flush_romaji) {
-            FlushImeRomaji(true);
-        }
-        if (exec_plan.clear_candidate) {
-            ClearImeCandidate();
-        }
-        if (exec_plan.ensure_live_console) {
-            EnsureLiveConsole();
-        }
-        if (exec_plan.clear_selection) {
-            ClearSelection();
-        }
+        ApplyExtendedPlanSideEffects(exec_plan);
         auto action_owner = BuildExtendedInputActionOwner();
         const auto action_context = BuildExtendedActionContext(&action_owner);
         if (input::ExecuteExtendedActionWithContext(exec_plan.kind, action_context)) {
@@ -3299,15 +3313,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 (!ime_candidate_active || ime_candidate_entry == nullptr)) {
                 return false;
             }
-            if (exec_plan.flush_romaji) {
-                FlushImeRomaji(true);
-            }
-            if (exec_plan.ensure_live_console) {
-                EnsureLiveConsole();
-            }
-            if (exec_plan.clear_selection) {
-                ClearSelection();
-            }
+            ApplyRegularPlanSideEffects(exec_plan);
             auto action_owner = BuildRegularInputActionOwner();
             const auto action_context = BuildRegularActionContext(&action_owner);
             auto shortcut_owner = BuildRegularShortcutOwner();
