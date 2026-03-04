@@ -75,6 +75,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "input/key_event.hpp"
 #include "input/key_layout.hpp"
 #include "input/hid_keyboard.hpp"
+#include "input/history.hpp"
 #include "boot_info.h"
 #include "memory.hpp"
 #include "paging.hpp"
@@ -1960,11 +1961,15 @@ void ExecuteCommand(const char* command) {
     console->PrintLine(command);
 }
 
-void PrintHistory(char history[][128], int history_count) {
-    for (int i = 0; i < history_count; ++i) {
+void PrintHistory(const CommandHistory& history) {
+    for (int i = 0; i < history.Count(); ++i) {
+        const char* entry = history.Entry(i);
+        if (entry == nullptr) {
+            continue;
+        }
         console->PrintDec(i + 1);
         console->Print(": ");
-        console->PrintLine(history[i]);
+        console->PrintLine(entry);
     }
 }
 
@@ -2321,11 +2326,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int command_len = 0;
     int cursor_pos = 0;
     command_buffer[0] = '\0';
-    char command_history[16][128];
-    int history_count = 0;
-    int history_nav = -1;   // -1 = browsing off, 0..history_count-1 = selected history row
-    char draft_buffer[128];
-    draft_buffer[0] = '\0';
+    CommandHistory command_history;
     char ime_romaji_buffer[32];
     int ime_romaji_len = 0;
     ime_romaji_buffer[0] = '\0';
@@ -2851,28 +2852,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto BrowseHistoryUp = [&]() {
-        if (history_count <= 0) {
-            return;
+        char next[128];
+        if (command_history.BrowseUp(command_buffer, next, static_cast<int>(sizeof(next)))) {
+            ReplaceInputLine(next);
         }
-        if (history_nav == -1) {
-            CopyString(draft_buffer, command_buffer, static_cast<int>(sizeof(draft_buffer)));
-            history_nav = history_count - 1;
-        } else if (history_nav > 0) {
-            --history_nav;
-        }
-        ReplaceInputLine(command_history[history_nav]);
     };
 
     auto BrowseHistoryDown = [&]() {
-        if (history_nav < 0) {
-            return;
-        }
-        if (history_nav < history_count - 1) {
-            ++history_nav;
-            ReplaceInputLine(command_history[history_nav]);
-        } else {
-            history_nav = -1;
-            ReplaceInputLine(draft_buffer);
+        char next[128];
+        if (command_history.BrowseDown(next, static_cast<int>(sizeof(next)))) {
+            ReplaceInputLine(next);
         }
     };
 
@@ -3534,8 +3523,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 ime_romaji_buffer[0] = '\0';
                 ClearImeCandidate();
                 ClearSelection();
-                history_nav = -1;
-                draft_buffer[0] = '\0';
+                command_history.ResetNavigation();
                 RenderInputLine();
                 RefreshInputLine();
                 return true;
@@ -3831,21 +3819,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         const bool is_history_cmd = StrEqual(command_buffer, "history");
                         const bool is_clear_history_cmd = StrEqual(command_buffer, "clearhistory");
                         if (command_len > 0) {
-                            if (history_count < static_cast<int>(sizeof(command_history) / sizeof(command_history[0]))) {
-                                CopyString(command_history[history_count], command_buffer, 128);
-                                ++history_count;
-                            } else {
-                                for (int i = 1; i < static_cast<int>(sizeof(command_history) / sizeof(command_history[0])); ++i) {
-                                    CopyString(command_history[i - 1], command_history[i], 128);
-                                }
-                                CopyString(command_history[static_cast<int>(sizeof(command_history) / sizeof(command_history[0])) - 1],
-                                           command_buffer, 128);
-                            }
+                            command_history.Add(command_buffer);
                         }
                         if (is_history_cmd) {
-                            PrintHistory(command_history, history_count);
+                            PrintHistory(command_history);
                         } else if (is_clear_history_cmd) {
-                            history_count = 0;
+                            command_history.Clear();
                             console->PrintLine("history cleared");
                         } else {
                             ExecuteCommand(command_buffer);
@@ -3858,8 +3837,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         ime_romaji_buffer[0] = '\0';
                         ClearImeCandidate();
                         ClearSelection();
-                        history_nav = -1;
-                        draft_buffer[0] = '\0';
+                        command_history.ResetNavigation();
                         PrintPrompt();
                         input_row = console->CursorRow();
                         input_col = console->CursorColumn();
