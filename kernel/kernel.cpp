@@ -77,6 +77,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "input/hid_keyboard.hpp"
 #include "input/history.hpp"
 #include "input/line_ops.hpp"
+#include "input/selection.hpp"
 #include "boot_info.h"
 #include "memory.hpp"
 #include "paging.hpp"
@@ -2462,19 +2463,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     RefreshSystemInfo();
     next_system_info_tick = CurrentTick() + kSystemInfoRefreshIntervalTicks;
 
-    auto HasSelection = [&]() {
-        return selection_anchor >= 0 && selection_end >= 0 && selection_anchor != selection_end;
-    };
-    auto SelectionStart = [&]() {
-        return (selection_anchor < selection_end) ? selection_anchor : selection_end;
-    };
-    auto SelectionEnd = [&]() {
-        return (selection_anchor > selection_end) ? selection_anchor : selection_end;
-    };
     auto ClearSelection = [&]() {
-        selection_anchor = -1;
-        selection_end = -1;
-        selecting_with_mouse = false;
+        input::ClearSelectionState(&selection_anchor, &selection_end, &selecting_with_mouse);
     };
 
     auto RenderInputLine = [&]() {
@@ -2532,9 +2522,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             console->Print(cand_total);
             console->Print("]");
         }
-        if (HasSelection()) {
-            const int sel_start = SelectionStart();
-            const int sel_end = SelectionEnd();
+        if (input::HasSelection(selection_anchor, selection_end)) {
+            const int sel_start = input::SelectionStart(selection_anchor, selection_end);
+            const int sel_end = input::SelectionEnd(selection_anchor, selection_end);
             Window* win = console->RawWindow();
             for (int i = sel_start; i < sel_end; ++i) {
                 const int col = input_col + i;
@@ -2626,11 +2616,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto DeleteSelection = [&]() -> bool {
-        if (!HasSelection()) {
+        if (!input::HasSelection(selection_anchor, selection_end)) {
             return false;
         }
-        int sel_start = SelectionStart();
-        int sel_end = SelectionEnd();
+        int sel_start = input::SelectionStart(selection_anchor, selection_end);
+        int sel_end = input::SelectionEnd(selection_anchor, selection_end);
         if (sel_start < 0) sel_start = 0;
         if (sel_end > command_len) sel_end = command_len;
         const int remove_len = sel_end - sel_start;
@@ -3072,7 +3062,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         ClearImeCandidate();
         const int before_len = ime_romaji_len;
         bool inserted = false;
-        if (HasSelection()) {
+        if (input::HasSelection(selection_anchor, selection_end)) {
             DeleteSelection();
         }
         while (ime_romaji_len > 0) {
@@ -3320,7 +3310,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     RefreshInputLine();
                 }
             }
-            if ((pressed & 0x01) != 0 && !HasSelection()) {  // Left click
+            if ((pressed & 0x01) != 0 && !input::HasSelection(selection_anchor, selection_end)) {  // Left click
                 EnsureLiveConsole();
                 if (click_row == input_row && click_col >= input_col) {
                     int next_cursor = click_col - input_col;
@@ -3759,7 +3749,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                 entry = TryBuildPrefixCandidateEntry(keybuf);
                             }
                             if (entry != nullptr && entry->count > 0) {
-                                if (HasSelection()) {
+                                if (input::HasSelection(selection_anchor, selection_end)) {
                                     DeleteSelection();
                                 }
                                 ime_candidate_entry = entry;
