@@ -2851,9 +2851,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         focus_visual_dirty = true;
     };
-
-    auto HandleMouseMessage = [&](const Message& msg) {
-        const input::RuntimeMouseMessageContext mouse_context{
+    auto BuildMouseRuntimeContext = [&]() {
+        return input::RuntimeMouseMessageContext{
             input::RuntimeMouseButtonCounterRefs{
                 &g_mouse_buttons_current,
                 &g_mouse_left_press_count,
@@ -2887,50 +2886,63 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 &drag_visual_dirty,
             },
         };
+    };
+    auto BuildMouseWindowGeometry = [&]() {
+        return input::RuntimeMouseWindowGeometry{
+            term_frame_layer->GetX(),
+            term_frame_layer->GetY(),
+            term_frame_w,
+            term_frame_h,
+            term_title_h,
+            info_frame_layer->GetX(),
+            info_frame_layer->GetY(),
+            info_frame_w,
+            info_frame_h,
+            info_title_h,
+            screen_w - term_frame_w,
+            screen_h - taskbar_h - term_frame_h,
+            screen_w - info_frame_w,
+            screen_h - taskbar_h - info_frame_h,
+            term_frame_layer->GetX(),
+            term_frame_layer->GetY(),
+            info_frame_layer->GetX(),
+            info_frame_layer->GetY(),
+        };
+    };
+    auto BuildConsoleGridMetrics = [&]() {
+        return input::RuntimeConsoleGridMetrics{
+            term_console_layer->GetX(),
+            term_console_layer->GetY(),
+            term_content_w,
+            term_content_h,
+            Console::kMarginX,
+            Console::kMarginY,
+            Console::kCellWidth,
+            Console::kCellHeight,
+        };
+    };
+    auto BuildMouseSelectionRefs = [&]() {
+        return input::RuntimeMouseConsoleSelectionRefs{
+            &selecting_with_mouse,
+            &selection_anchor,
+            &selection_end,
+            &cursor_pos,
+            input_row,
+            input_col,
+            command_len,
+        };
+    };
+
+    auto HandleMouseMessage = [&](const Message& msg) {
+        const auto mouse_context = BuildMouseRuntimeContext();
         input::HandleMouseMessageRuntime(
             msg,
             CurrentTick(),
             active_window,
             mouse_context,
-            input::RuntimeMouseWindowGeometry{
-                term_frame_layer->GetX(),
-                term_frame_layer->GetY(),
-                term_frame_w,
-                term_frame_h,
-                term_title_h,
-                info_frame_layer->GetX(),
-                info_frame_layer->GetY(),
-                info_frame_w,
-                info_frame_h,
-                info_title_h,
-                screen_w - term_frame_w,
-                screen_h - taskbar_h - term_frame_h,
-                screen_w - info_frame_w,
-                screen_h - taskbar_h - info_frame_h,
-                term_frame_layer->GetX(),
-                term_frame_layer->GetY(),
-                info_frame_layer->GetX(),
-                info_frame_layer->GetY(),
-            },
-            input::RuntimeConsoleGridMetrics{
-                term_console_layer->GetX(),
-                term_console_layer->GetY(),
-                term_content_w,
-                term_content_h,
-                Console::kMarginX,
-                Console::kMarginY,
-                Console::kCellWidth,
-                Console::kCellHeight,
-            },
-            input::RuntimeMouseConsoleSelectionRefs{
-                &selecting_with_mouse,
-                &selection_anchor,
-                &selection_end,
-                &cursor_pos,
-                input_row,
-                input_col,
-                command_len,
-            },
+            BuildMouseWindowGeometry(),
+            BuildConsoleGridMetrics(),
+            BuildMouseSelectionRefs(),
             input::HasSelection(selection_anchor, selection_end),
             ApplyWindowFocus,
             ClearSelection,
@@ -3083,13 +3095,48 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return ExecuteRegularChainWithContexts(bundles, exec_plan, refs);
         });
     };
-    auto HandleKeyboardMessage = [&](const Message& msg) {
-        const input::RuntimeEnterCommandRefs enter_refs{
+    auto BuildKeyboardDecodeRefs = [&]() {
+        return input::RuntimeKeyboardDecodeRefs{
+            &g_keyboard_irq_count,
+            &g_keyboard_last_raw,
+            &g_keyboard_last_key,
+            &g_keyboard_last_extended,
+            &g_keyboard_last_released,
+            &e0_prefix,
+            &keyboard_mods,
+        };
+    };
+    auto BuildKeyboardImeProcessContext = [&]() {
+        return input::RuntimeImeProcessContextT<ImeCandidateEntry>{
+            ime_romaji_buffer,
+            static_cast<int>(sizeof(ime_romaji_buffer)),
+            &ime_romaji_len,
+            &ime_candidate_entry,
+        };
+    };
+    auto BuildKeyboardRuntimeContext = [&]() {
+        return input::RuntimeKeyboardMessageContextT<ImeCandidateEntry>{
+            BuildKeyboardDecodeRefs(),
+            input::RuntimeKeyDownRefs{key_down_extended, key_down_normal},
+            g_key_repeat_enabled,
+            g_jp_layout,
+            g_ime_enabled,
+            g_has_halfwidth_kana_font,
+            ime_candidate_active,
+            ime_candidate_entry,
+            ime_romaji_len,
+            BuildKeyboardImeProcessContext(),
+        };
+    };
+    auto BuildEnterCommandRefs = [&]() {
+        return input::RuntimeEnterCommandRefs{
             command_buffer,
             static_cast<int>(sizeof(command_buffer)),
             &command_len,
         };
-        const input::RuntimeCommandInputStateRefs reset_refs{
+    };
+    auto BuildCommandResetRefs = [&]() {
+        return input::RuntimeCommandInputStateRefs{
             command_buffer,
             static_cast<int>(sizeof(command_buffer)),
             &command_len,
@@ -3099,33 +3146,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             static_cast<int>(sizeof(ime_romaji_buffer)),
             &ime_romaji_len,
         };
+    };
+    auto HandleKeyboardMessage = [&](const Message& msg) {
+        const auto enter_refs = BuildEnterCommandRefs();
+        const auto reset_refs = BuildCommandResetRefs();
         input::HandleKeyboardMessageRuntime(
             msg.keycode,
-            input::RuntimeKeyboardMessageContextT<ImeCandidateEntry>{
-                input::RuntimeKeyboardDecodeRefs{
-                    &g_keyboard_irq_count,
-                    &g_keyboard_last_raw,
-                    &g_keyboard_last_key,
-                    &g_keyboard_last_extended,
-                    &g_keyboard_last_released,
-                    &e0_prefix,
-                    &keyboard_mods,
-                },
-                input::RuntimeKeyDownRefs{key_down_extended, key_down_normal},
-                g_key_repeat_enabled,
-                g_jp_layout,
-                g_ime_enabled,
-                g_has_halfwidth_kana_font,
-                ime_candidate_active,
-                ime_candidate_entry,
-                ime_romaji_len,
-                input::RuntimeImeProcessContextT<ImeCandidateEntry>{
-                    ime_romaji_buffer,
-                    static_cast<int>(sizeof(ime_romaji_buffer)),
-                    &ime_romaji_len,
-                    &ime_candidate_entry,
-                },
-            },
+            BuildKeyboardRuntimeContext(),
             HandleExtendedKey,
             HandleRegularKeyShortcut,
             KeycodeToAsciiByLayout,
