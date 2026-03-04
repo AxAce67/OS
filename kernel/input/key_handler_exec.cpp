@@ -190,6 +190,24 @@ bool ExecuteRegularClearActionWithContext(RegularExecKind kind,
     return true;
 }
 
+bool ExecuteRegularModeActionWithContext(RegularExecKind kind,
+                                         const RegularModeContext& context) {
+    if (kind != RegularExecKind::kApplyImeModeAndRepaint) {
+        return false;
+    }
+    if (context.ime_enabled == nullptr ||
+        context.jp_layout == nullptr ||
+        context.repaint_prompt_and_input == nullptr) {
+        return false;
+    }
+    const auto mode = ApplyImeModeAction(context.mode_action,
+                                         *context.ime_enabled,
+                                         *context.jp_layout);
+    ApplyImeModeState(mode, context.ime_enabled, context.jp_layout);
+    context.repaint_prompt_and_input(context.owner);
+    return true;
+}
+
 bool ExecuteRegularActionWithContext(RegularExecKind kind,
                                      const RegularActionContext& context) {
     switch (kind) {

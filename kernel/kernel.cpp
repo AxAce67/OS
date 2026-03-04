@@ -3284,13 +3284,25 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RenderAndRefreshInput();
                 return true;
             }
-            switch (exec_plan.kind) {
-            case input::RegularExecKind::kApplyImeModeAndRepaint: {
-                const auto mode = input::ApplyImeModeAction(exec_plan.mode_action, g_ime_enabled, g_jp_layout);
-                input::ApplyImeModeState(mode, &g_ime_enabled, &g_jp_layout);
-                RepaintPromptAndInput();
+            struct RegularModeOwner {
+                decltype(RepaintPromptAndInput)* repaint_prompt_and_input;
+            } mode_owner{
+                &RepaintPromptAndInput,
+            };
+            const input::RegularModeContext mode_context{
+                &mode_owner,
+                exec_plan.mode_action,
+                &g_ime_enabled,
+                &g_jp_layout,
+                [](void* owner) {
+                    auto* o = reinterpret_cast<RegularModeOwner*>(owner);
+                    (*o->repaint_prompt_and_input)();
+                },
+            };
+            if (input::ExecuteRegularModeActionWithContext(exec_plan.kind, mode_context)) {
                 return true;
             }
+            switch (exec_plan.kind) {
             default:
                 if (input::ExecuteRegularActionWithContext(exec_plan.kind, action_context)) {
                     return true;

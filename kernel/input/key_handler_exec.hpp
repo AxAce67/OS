@@ -98,6 +98,17 @@ struct RegularClearContext {
 bool ExecuteRegularClearActionWithContext(RegularExecKind kind,
                                           const RegularClearContext& context);
 
+struct RegularModeContext {
+    void* owner;
+    RegularShortcutAction mode_action;
+    bool* ime_enabled;
+    bool* jp_layout;
+    void (*repaint_prompt_and_input)(void* owner);
+};
+
+bool ExecuteRegularModeActionWithContext(RegularExecKind kind,
+                                         const RegularModeContext& context);
+
 struct RegularActionContext {
     void* owner;
     bool (*cycle_candidate)(void* owner, int direction);
