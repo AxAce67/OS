@@ -3066,36 +3066,55 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (exec_plan.clear_selection) {
             ClearSelection();
         }
-        switch (exec_plan.kind) {
-        case input::ExtendedExecKind::kPageUp:
-            console->ScrollUp(3);
-            RefreshConsole();
-            return true;
-        case input::ExtendedExecKind::kPageDown:
-            console->ScrollDown(3);
-            RefreshConsole();
-            return true;
-        case input::ExtendedExecKind::kDelete:
-            DeleteAtCursor();
-            return true;
-        case input::ExtendedExecKind::kHistoryUp:
-            BrowseHistoryUp();
-            return true;
-        case input::ExtendedExecKind::kHistoryDown:
-            BrowseHistoryDown();
-            return true;
-        default:
-            const auto cursor_move =
-                input::ExecuteExtendedCursorMoveAction(exec_plan.kind, &cursor_pos, command_len);
-            if (cursor_move.handled) {
-                if (cursor_move.should_render) {
-                    RenderInputLine();
-                    RefreshInputLine();
+        struct ExtendedActionCtx {
+            Console* console;
+            decltype(RefreshConsole)* refresh_console;
+            decltype(DeleteAtCursor)* delete_at_cursor;
+            decltype(BrowseHistoryUp)* browse_history_up;
+            decltype(BrowseHistoryDown)* browse_history_down;
+        } action_ctx{
+            console,
+            &RefreshConsole,
+            &DeleteAtCursor,
+            &BrowseHistoryUp,
+            &BrowseHistoryDown,
+        };
+        const input::ExtendedActionCallbacks action_callbacks{
+            [](void* ctx, int direction, int lines) {
+                auto* c = reinterpret_cast<ExtendedActionCtx*>(ctx);
+                if (direction < 0) {
+                    c->console->ScrollUp(lines);
+                } else {
+                    c->console->ScrollDown(lines);
                 }
-                return true;
-            }
-            return false;
+                (*c->refresh_console)();
+            },
+            [](void* ctx) {
+                auto* c = reinterpret_cast<ExtendedActionCtx*>(ctx);
+                (*c->delete_at_cursor)();
+            },
+            [](void* ctx, int direction) {
+                auto* c = reinterpret_cast<ExtendedActionCtx*>(ctx);
+                if (direction < 0) {
+                    (*c->browse_history_up)();
+                    return;
+                }
+                (*c->browse_history_down)();
+            },
+        };
+        if (input::ExecuteExtendedAction(exec_plan.kind, action_callbacks, &action_ctx)) {
+            return true;
         }
+        const auto cursor_move =
+            input::ExecuteExtendedCursorMoveAction(exec_plan.kind, &cursor_pos, command_len);
+        if (cursor_move.handled) {
+            if (cursor_move.should_render) {
+                RenderInputLine();
+                RefreshInputLine();
+            }
+            return true;
+        }
+        return false;
     };
 
     struct RegularActionCtx {

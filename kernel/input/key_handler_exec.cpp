@@ -172,6 +172,45 @@ bool ExecuteRegularAction(RegularExecKind kind,
     }
 }
 
+bool ExecuteExtendedAction(ExtendedExecKind kind,
+                           const ExtendedActionCallbacks& callbacks,
+                           void* ctx) {
+    switch (kind) {
+    case ExtendedExecKind::kPageUp:
+        if (callbacks.scroll == nullptr) {
+            return false;
+        }
+        callbacks.scroll(ctx, -1, 3);
+        return true;
+    case ExtendedExecKind::kPageDown:
+        if (callbacks.scroll == nullptr) {
+            return false;
+        }
+        callbacks.scroll(ctx, 1, 3);
+        return true;
+    case ExtendedExecKind::kDelete:
+        if (callbacks.delete_at_cursor == nullptr) {
+            return false;
+        }
+        callbacks.delete_at_cursor(ctx);
+        return true;
+    case ExtendedExecKind::kHistoryUp:
+        if (callbacks.browse_history == nullptr) {
+            return false;
+        }
+        callbacks.browse_history(ctx, -1);
+        return true;
+    case ExtendedExecKind::kHistoryDown:
+        if (callbacks.browse_history == nullptr) {
+            return false;
+        }
+        callbacks.browse_history(ctx, 1);
+        return true;
+    default:
+        return false;
+    }
+}
+
 ExtendedCursorMoveResult ExecuteExtendedCursorMoveAction(ExtendedExecKind kind,
                                                          int* cursor_pos,
                                                          int command_len) {

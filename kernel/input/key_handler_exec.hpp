@@ -79,6 +79,16 @@ struct ExtendedCursorMoveResult {
     bool should_render;
 };
 
+struct ExtendedActionCallbacks {
+    void (*scroll)(void* ctx, int direction, int lines);
+    void (*delete_at_cursor)(void* ctx);
+    void (*browse_history)(void* ctx, int direction);
+};
+
+bool ExecuteExtendedAction(ExtendedExecKind kind,
+                           const ExtendedActionCallbacks& callbacks,
+                           void* ctx);
+
 ExtendedCursorMoveResult ExecuteExtendedCursorMoveAction(ExtendedExecKind kind,
                                                          int* cursor_pos,
                                                          int command_len);
