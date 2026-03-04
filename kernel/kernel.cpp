@@ -1244,6 +1244,24 @@ void UIntToDecimalString(uint32_t value, char* out, int out_len) {
     out[w] = '\0';
 }
 
+void UInt64ToDecimalString(uint64_t value, char* out, int out_len) {
+    if (out == nullptr || out_len <= 0) {
+        return;
+    }
+    char rev[32];
+    int n = 0;
+    do {
+        rev[n++] = static_cast<char>('0' + (value % 10));
+        value /= 10;
+    } while (value != 0 && n < static_cast<int>(sizeof(rev)));
+
+    int w = 0;
+    for (int i = n - 1; i >= 0 && w + 1 < out_len; --i) {
+        out[w++] = rev[i];
+    }
+    out[w] = '\0';
+}
+
 ShellPair* FindPair(ShellPair* pairs, int count, const char* key) {
     for (int i = 0; i < count; ++i) {
         if (pairs[i].used && StrEqual(pairs[i].key, key)) {
@@ -2335,6 +2353,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int dragging_window = -1;
     int drag_offset_x = 0;
     int drag_offset_y = 0;
+    uint64_t next_system_info_tick = 0;
     auto RefreshConsole = [&]() {
         layer_manager->Draw(term_console_layer->GetX(),
                             term_console_layer->GetY(),
@@ -2356,6 +2375,46 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             RefreshConsole();
         }
     };
+    auto RefreshSystemInfo = [&]() {
+        info_content_window->FillRectangle(0, 0, info_content_w, info_content_h, {14, 16, 22});
+        info_content_window->DrawString(12, 12, "System Monitor", {220, 224, 232});
+
+        char num[40];
+        info_content_window->DrawString(12, 34, "tick:", {180, 188, 204});
+        UInt64ToDecimalString(CurrentTick(), num, static_cast<int>(sizeof(num)));
+        info_content_window->DrawString(88, 34, num, {236, 238, 242});
+
+        uint64_t free_mib = 0;
+        if (memory_manager != nullptr) {
+            free_mib = (memory_manager->CountFreePages() * kPageSize) / kMiB;
+        }
+        info_content_window->DrawString(12, 52, "free:", {180, 188, 204});
+        UInt64ToDecimalString(free_mib, num, static_cast<int>(sizeof(num)));
+        info_content_window->DrawString(88, 52, num, {236, 238, 242});
+        info_content_window->DrawString(152, 52, "MiB", {180, 188, 204});
+
+        info_content_window->DrawString(12, 70, "queue:", {180, 188, 204});
+        UIntToDecimalString(static_cast<uint32_t>((main_queue != nullptr) ? main_queue->Count() : 0),
+                            num, static_cast<int>(sizeof(num)));
+        info_content_window->DrawString(88, 70, num, {236, 238, 242});
+
+        info_content_window->DrawString(12, 88, "kbd_drop:", {180, 188, 204});
+        UInt64ToDecimalString(g_keyboard_dropped_events, num, static_cast<int>(sizeof(num)));
+        info_content_window->DrawString(88, 88, num, {236, 238, 242});
+
+        info_content_window->DrawString(12, 106, "mouse_drop:", {180, 188, 204});
+        UInt64ToDecimalString(g_mouse_dropped_events, num, static_cast<int>(sizeof(num)));
+        info_content_window->DrawString(88, 106, num, {236, 238, 242});
+
+        info_content_window->DrawString(12, 124, "layout:", {180, 188, 204});
+        info_content_window->DrawString(88, 124, g_jp_layout ? "jp" : "us", {236, 238, 242});
+        info_content_window->DrawString(128, 124, "ime:", {180, 188, 204});
+        info_content_window->DrawString(168, 124, g_ime_enabled ? "on" : "off", {236, 238, 242});
+
+        info_content_window->DrawString(12, 146, "drag/window input optimized", {160, 170, 190});
+        layer_manager->Draw(info_content_layer->GetX(), info_content_layer->GetY(), info_content_w, info_content_h);
+    };
+    RefreshSystemInfo();
 
     auto HasSelection = [&]() {
         return selection_anchor >= 0 && selection_end >= 0 && selection_anchor != selection_end;
@@ -3032,6 +3091,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleMouseMessage = [&](const Message& msg) {
+        const int kMouseHotspotX = 1;
+        const int kMouseHotspotY = 1;
         const uint8_t prev_buttons = g_mouse_buttons_current;
         const uint8_t now_buttons = msg.buttons;
         const uint8_t pressed = static_cast<uint8_t>((~prev_buttons) & now_buttons);
@@ -3044,7 +3105,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         int pointer_y = 0;
         if (msg.pointer_mode == Message::PointerMode::kAbsolute) {
             g_last_absolute_mouse_tick = CurrentTick();
-            mouse_cursor->SetPosition(msg.x, msg.y);
+            mouse_cursor->SetPosition(msg.x - kMouseHotspotX, msg.y - kMouseHotspotY);
             pointer_x = msg.x;
             pointer_y = msg.y;
         } else {
@@ -3053,8 +3114,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 return;  // USB absolute pointer is active; ignore noisy PS/2 relative moves.
             }
             mouse_cursor->Move(msg.dx, msg.dy);
-            pointer_x = mouse_cursor->X();
-            pointer_y = mouse_cursor->Y();
+            pointer_x = mouse_cursor->X() + kMouseHotspotX;
+            pointer_y = mouse_cursor->Y() + kMouseHotspotY;
         }
 
         {
@@ -3716,6 +3777,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             }
             default:
                 break;
+        }
+
+        const uint64_t now_tick = CurrentTick();
+        if (now_tick >= next_system_info_tick) {
+            RefreshSystemInfo();
+            next_system_info_tick = now_tick + 8;
         }
 
     }
