@@ -3705,7 +3705,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 int merged = 0;
                 int last_x = msg.x;
                 int last_y = msg.y;
-                while (merged < 128 &&
+                // Absolute pointer events (usb-tablet) should not be over-coalesced,
+                // otherwise cursor movement looks jumpy/stuttery.
+                while (merged < 8 &&
                        main_queue->Peek(next) &&
                        next.type == Message::Type::kInterruptMouse &&
                        next.pointer_mode == Message::PointerMode::kAbsolute &&
