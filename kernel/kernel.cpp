@@ -2859,17 +2859,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
     auto ScrollConsoleUp = [&](int lines) { console->ScrollUp(lines); };
     auto ScrollConsoleDown = [&](int lines) { console->ScrollDown(lines); };
-
-    auto HandleMouseMessage = [&](const Message& msg) {
-        input::RuntimeMouseMessageContext mouse_context{};
-        input::RuntimeMouseWindowGeometry geometry{};
-        input::RuntimeConsoleGridMetrics console_metrics{};
-        input::RuntimeMouseConsoleSelectionRefs mouse_selection_refs{};
+    auto BuildMouseRuntimeState = [&](input::RuntimeMouseMessageContext* mouse_context,
+                                      input::RuntimeMouseWindowGeometry* geometry,
+                                      input::RuntimeConsoleGridMetrics* console_metrics,
+                                      input::RuntimeMouseConsoleSelectionRefs* mouse_selection_refs) {
         input::bridge::BuildMouseRuntimeInvocation(
-            &mouse_context,
-            &geometry,
-            &console_metrics,
-            &mouse_selection_refs,
+            mouse_context,
+            geometry,
+            console_metrics,
+            mouse_selection_refs,
             &g_mouse_buttons_current,
             &g_mouse_left_press_count,
             &g_mouse_right_press_count,
@@ -2923,6 +2921,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             input_row,
             input_col,
             command_len);
+    };
+    auto DispatchMouseRuntime = [&](const Message& msg,
+                                    const input::RuntimeMouseMessageContext& mouse_context,
+                                    const input::RuntimeMouseWindowGeometry& geometry,
+                                    const input::RuntimeConsoleGridMetrics& console_metrics,
+                                    const input::RuntimeMouseConsoleSelectionRefs& mouse_selection_refs) {
         input::HandleMouseMessageRuntime(
             msg,
             CurrentTick(),
@@ -2940,6 +2944,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             ScrollConsoleUp,
             ScrollConsoleDown,
             RefreshConsole);
+    };
+
+    auto HandleMouseMessage = [&](const Message& msg) {
+        input::RuntimeMouseMessageContext mouse_context{};
+        input::RuntimeMouseWindowGeometry geometry{};
+        input::RuntimeConsoleGridMetrics console_metrics{};
+        input::RuntimeMouseConsoleSelectionRefs mouse_selection_refs{};
+        BuildMouseRuntimeState(&mouse_context, &geometry, &console_metrics, &mouse_selection_refs);
+        DispatchMouseRuntime(msg, mouse_context, geometry, console_metrics, mouse_selection_refs);
     };
 
     using InputActionOwner = input::RuntimeInputActionOwnerT<
