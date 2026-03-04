@@ -2,21 +2,6 @@
 #include "layer.hpp"
 #include "boot_info.h" // FrameBufferConfig
 
-namespace {
-inline void WriteFrameBufferPixel(const FrameBufferConfig& config, int x, int y, const PixelColor& c) {
-    const uint32_t index = (static_cast<uint32_t>(y) * config.pixels_per_scan_line + static_cast<uint32_t>(x)) * 4;
-    if (config.pixel_format == kPixelRGBResv8BitPerColor) {
-        config.frame_buffer[index] = c.r;
-        config.frame_buffer[index + 1] = c.g;
-        config.frame_buffer[index + 2] = c.b;
-    } else {
-        config.frame_buffer[index] = c.b;
-        config.frame_buffer[index + 1] = c.g;
-        config.frame_buffer[index + 2] = c.r;
-    }
-}
-}  // namespace
-
 // DrawTo: 自身のWindowクラスが持つピクセル配列から、実際の画面(FrameBufferConfig)へと色を転送する
 void Layer::DrawTo(const FrameBufferConfig& config) const {
     if (!window_) return;
@@ -252,9 +237,34 @@ void LayerManager::Draw(int x, int y, int width, int height) const {
     }
 
     // 3) 合成済みバックバッファをVRAMへ一括転送。
-    for (int py = draw_start_y; py < draw_end_y; ++py) {
-        for (int px = draw_start_x; px < draw_end_x; ++px) {
-            WriteFrameBufferPixel(config_, px, py, back_buffer_[py * back_buffer_width_ + px]);
+    const uint32_t pitch = config_.pixels_per_scan_line;
+    if (config_.pixel_format == kPixelRGBResv8BitPerColor) {
+        for (int py = draw_start_y; py < draw_end_y; ++py) {
+            uint8_t* vram_row = &config_.frame_buffer[(static_cast<uint32_t>(py) * pitch +
+                                                       static_cast<uint32_t>(draw_start_x)) * 4];
+            const PixelColor* src_row = &back_buffer_[py * back_buffer_width_ + draw_start_x];
+            const int span_w = draw_end_x - draw_start_x;
+            for (int i = 0; i < span_w; ++i) {
+                const PixelColor c = src_row[i];
+                vram_row[0] = c.r;
+                vram_row[1] = c.g;
+                vram_row[2] = c.b;
+                vram_row += 4;
+            }
+        }
+    } else {
+        for (int py = draw_start_y; py < draw_end_y; ++py) {
+            uint8_t* vram_row = &config_.frame_buffer[(static_cast<uint32_t>(py) * pitch +
+                                                       static_cast<uint32_t>(draw_start_x)) * 4];
+            const PixelColor* src_row = &back_buffer_[py * back_buffer_width_ + draw_start_x];
+            const int span_w = draw_end_x - draw_start_x;
+            for (int i = 0; i < span_w; ++i) {
+                const PixelColor c = src_row[i];
+                vram_row[0] = c.b;
+                vram_row[1] = c.g;
+                vram_row[2] = c.r;
+                vram_row += 4;
+            }
         }
     }
 }
