@@ -306,4 +306,5 @@ void LayerManager::Draw(int x, int y, int width, int height) const {
             }
         }
     }
+    ++draw_generation_;
 }

@@ -17,8 +17,13 @@ public:
     int Y() const;
 
 private:
+    void SaveBackgroundAt(int x, int y);
+    void RestoreSavedBackground(int x, int y);
     void DrawCursorAt(int x, int y);
     LayerManager* layer_manager_;
     int x_{0};
     int y_{0};
+    PixelColor saved_bg_[kMouseCursorWidth * kMouseCursorHeight]{};
+    bool saved_valid_[kMouseCursorWidth * kMouseCursorHeight]{};
+    uint64_t saved_generation_{0};
 };

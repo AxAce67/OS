@@ -67,6 +67,7 @@ public:
     
     // 特定の矩形領域(x, y, w, h)だけを再描画する最適化版Draw
     void Draw(int x, int y, int width, int height) const;
+    uint64_t DrawGeneration() const { return draw_generation_; }
 
     // 画面解像度などを参照するためのゲッター
     const FrameBufferConfig& GetConfig() const { return config_; }
@@ -85,4 +86,5 @@ private:
     // 実際に画面に表示される順序（Zオーダー: 0が最背面）
     Layer* layer_stack_[256];
     int height_{0}; // 現在スタックに積まれている数
+    mutable uint64_t draw_generation_{0};
 };

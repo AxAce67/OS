@@ -43,6 +43,15 @@ inline void WriteFrameBufferPixel(const FrameBufferConfig& config, int x, int y,
         config.frame_buffer[index + 2] = c.r;
     }
 }
+
+inline PixelColor ReadFrameBufferPixel(const FrameBufferConfig& config, int x, int y) {
+    const uint32_t index = (static_cast<uint32_t>(y) * config.pixels_per_scan_line +
+                            static_cast<uint32_t>(x)) * 4;
+    if (config.pixel_format == kPixelRGBResv8BitPerColor) {
+        return PixelColor{config.frame_buffer[index], config.frame_buffer[index + 1], config.frame_buffer[index + 2]};
+    }
+    return PixelColor{config.frame_buffer[index + 2], config.frame_buffer[index + 1], config.frame_buffer[index]};
+}
 }  // namespace
 
 MouseCursor::MouseCursor(unsigned int initial_x, unsigned int initial_y, LayerManager* layer_manager)
@@ -58,6 +67,8 @@ MouseCursor::MouseCursor(unsigned int initial_x, unsigned int initial_y, LayerMa
     if (y_ < 0) y_ = 0;
     if (x_ > max_x) x_ = max_x;
     if (y_ > max_y) y_ = max_y;
+    SaveBackgroundAt(x_, y_);
+    saved_generation_ = layer_manager_->DrawGeneration();
     DrawCursorAt(x_, y_);
 }
 
@@ -86,10 +97,16 @@ void MouseCursor::SetPosition(int x, int y) {
         return;
     }
 
-    // Restore background under old cursor, then draw cursor at new position.
-    layer_manager_->Draw(old_x, old_y, w, h);
+    // Restore old cursor area quickly if no other layer draw happened.
+    if (saved_generation_ == layer_manager_->DrawGeneration()) {
+        RestoreSavedBackground(old_x, old_y);
+    } else {
+        layer_manager_->Draw(old_x, old_y, w, h);
+    }
     x_ = x;
     y_ = y;
+    SaveBackgroundAt(x_, y_);
+    saved_generation_ = layer_manager_->DrawGeneration();
     DrawCursorAt(x_, y_);
 }
 
@@ -99,6 +116,48 @@ int MouseCursor::X() const {
 
 int MouseCursor::Y() const {
     return y_;
+}
+
+void MouseCursor::SaveBackgroundAt(int x, int y) {
+    const auto& config = layer_manager_->GetConfig();
+    const int res_x = static_cast<int>(config.horizontal_resolution);
+    const int res_y = static_cast<int>(config.vertical_resolution);
+    for (int cy = 0; cy < kMouseCursorHeight; ++cy) {
+        const int vy = y + cy;
+        for (int cx = 0; cx < kMouseCursorWidth; ++cx) {
+            const int vx = x + cx;
+            const int idx = cy * kMouseCursorWidth + cx;
+            if (vx < 0 || vx >= res_x || vy < 0 || vy >= res_y) {
+                saved_valid_[idx] = false;
+                continue;
+            }
+            saved_bg_[idx] = ReadFrameBufferPixel(config, vx, vy);
+            saved_valid_[idx] = true;
+        }
+    }
+}
+
+void MouseCursor::RestoreSavedBackground(int x, int y) {
+    const auto& config = layer_manager_->GetConfig();
+    const int res_x = static_cast<int>(config.horizontal_resolution);
+    const int res_y = static_cast<int>(config.vertical_resolution);
+    for (int cy = 0; cy < kMouseCursorHeight; ++cy) {
+        const int vy = y + cy;
+        if (vy < 0 || vy >= res_y) {
+            continue;
+        }
+        for (int cx = 0; cx < kMouseCursorWidth; ++cx) {
+            const int vx = x + cx;
+            if (vx < 0 || vx >= res_x) {
+                continue;
+            }
+            const int idx = cy * kMouseCursorWidth + cx;
+            if (!saved_valid_[idx]) {
+                continue;
+            }
+            WriteFrameBufferPixel(config, vx, vy, saved_bg_[idx]);
+        }
+    }
 }
 
 void MouseCursor::DrawCursorAt(int x, int y) {
