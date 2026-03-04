@@ -97,33 +97,23 @@ void ApplyImeModeState(const ImeModeState& mode,
     }
 }
 
-void SetCursorValue(int* cursor_pos, int target) {
-    if (cursor_pos != nullptr) {
-        *cursor_pos = target;
-    }
-}
-
 bool ShouldBrowseHistoryAfterCycle(bool cycle_succeeded) {
     return !cycle_succeeded;
 }
 
 bool ExecuteRegularNeutralAction(RegularExecKind kind,
-                                 int command_len,
-                                 const RegularNeutralCallbacks& callbacks,
-                                 void* ctx) {
+                                 int* cursor_pos,
+                                 int command_len) {
+    if (cursor_pos == nullptr) {
+        return false;
+    }
     switch (kind) {
     case RegularExecKind::kMoveCursorStart:
-        if (callbacks.set_cursor_value != nullptr) {
-            callbacks.set_cursor_value(ctx, 0);
-            return true;
-        }
-        return false;
+        *cursor_pos = 0;
+        return true;
     case RegularExecKind::kMoveCursorEnd:
-        if (callbacks.set_cursor_value != nullptr) {
-            callbacks.set_cursor_value(ctx, command_len);
-            return true;
-        }
-        return false;
+        *cursor_pos = command_len;
+        return true;
     default:
         return false;
     }

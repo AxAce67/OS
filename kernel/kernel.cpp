@@ -3154,16 +3154,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             if (exec_plan.clear_selection) {
                 ClearSelection();
             }
-            struct RegularNeutralCtx {
-                int* cursor_pos;
-                int command_len;
-            } neutral_ctx{&cursor_pos, command_len};
-            const input::RegularNeutralCallbacks neutral_callbacks{
-                [](void* ctx, int target) {
-                    auto* c = reinterpret_cast<RegularNeutralCtx*>(ctx);
-                    input::SetCursorValue(c->cursor_pos, target);
-                },
-            };
             RegularActionOwner action_owner{
                 &CycleImeCandidate,
                 &BrowseHistoryUp,
@@ -3254,10 +3244,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 if (input::ExecuteRegularActionWithContext(exec_plan.kind, action_context)) {
                     return true;
                 }
-                if (input::ExecuteRegularNeutralAction(exec_plan.kind,
-                                                       neutral_ctx.command_len,
-                                                       neutral_callbacks,
-                                                       &neutral_ctx)) {
+                if (input::ExecuteRegularNeutralAction(exec_plan.kind, &cursor_pos, command_len)) {
                     RenderAndRefreshInput();
                     return true;
                 }
