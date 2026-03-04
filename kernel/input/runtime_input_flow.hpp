@@ -245,6 +245,16 @@ struct RuntimePendingDragDecision {
     bool should_queue;
 };
 
+struct RuntimeMouseConsoleSelectionRefs {
+    bool* selecting_with_mouse;
+    int* selection_anchor;
+    int* selection_end;
+    int* cursor_pos;
+    int input_row;
+    int input_col;
+    int command_len;
+};
+
 template <class TCandidateEntry>
 struct RuntimeImeCandidateStartRefsT {
     char* romaji_buffer;
@@ -556,6 +566,80 @@ inline RuntimePendingDragDecision DecidePendingDragMove(int current_x,
         drag_pending_window == active_drag_window &&
         ((drag_pending_x != new_x) || (drag_pending_y != new_y));
     return RuntimePendingDragDecision{window_position_changed || pending_value_changed};
+}
+
+inline bool IsLeftMousePressed(uint8_t pressed_buttons) {
+    return (pressed_buttons & 0x01) != 0;
+}
+
+template <class TClearSelection>
+inline void BeginMouseConsoleSelectionIfPressed(uint8_t pressed_buttons,
+                                                int click_row,
+                                                int click_col,
+                                                const RuntimeMouseConsoleSelectionRefs& refs,
+                                                TClearSelection&& clear_selection) {
+    if (!IsLeftMousePressed(pressed_buttons) ||
+        refs.selecting_with_mouse == nullptr ||
+        refs.selection_anchor == nullptr ||
+        refs.selection_end == nullptr) {
+        return;
+    }
+    *refs.selecting_with_mouse = true;
+    if (IsConsoleInputRowHit(click_row, click_col, refs.input_row, refs.input_col)) {
+        const int at = ComputeClampedInputCursorFromClick(click_col, refs.input_col, refs.command_len);
+        *refs.selection_anchor = at;
+        *refs.selection_end = at;
+        return;
+    }
+    clear_selection();
+}
+
+template <class TEnsureLiveConsole, class TRenderInputLine, class TRefreshInputLine>
+inline void UpdateMouseConsoleSelectionDrag(uint8_t now_buttons,
+                                            int click_row,
+                                            int click_col,
+                                            const RuntimeMouseConsoleSelectionRefs& refs,
+                                            TEnsureLiveConsole&& ensure_live_console,
+                                            TRenderInputLine&& render_input_line,
+                                            TRefreshInputLine&& refresh_input_line) {
+    if ((now_buttons & 0x01) == 0 ||
+        refs.selecting_with_mouse == nullptr ||
+        refs.selection_end == nullptr ||
+        refs.cursor_pos == nullptr ||
+        !*refs.selecting_with_mouse ||
+        !IsConsoleInputRowHit(click_row, click_col, refs.input_row, refs.input_col)) {
+        return;
+    }
+    const int next_cursor = ComputeClampedInputCursorFromClick(click_col, refs.input_col, refs.command_len);
+    *refs.selection_end = next_cursor;
+    if (next_cursor != *refs.cursor_pos) {
+        ensure_live_console();
+        *refs.cursor_pos = next_cursor;
+        render_input_line();
+        refresh_input_line();
+    }
+}
+
+template <class TEnsureLiveConsole, class TRenderInputLine, class TRefreshInputLine>
+inline void ApplyMouseConsoleClickCursorIfNeeded(uint8_t pressed_buttons,
+                                                 int click_row,
+                                                 int click_col,
+                                                 bool has_selection,
+                                                 const RuntimeMouseConsoleSelectionRefs& refs,
+                                                 TEnsureLiveConsole&& ensure_live_console,
+                                                 TRenderInputLine&& render_input_line,
+                                                 TRefreshInputLine&& refresh_input_line) {
+    if (!IsLeftMousePressed(pressed_buttons) ||
+        has_selection ||
+        refs.cursor_pos == nullptr ||
+        !IsConsoleInputRowHit(click_row, click_col, refs.input_row, refs.input_col)) {
+        return;
+    }
+    const int next_cursor = ComputeClampedInputCursorFromClick(click_col, refs.input_col, refs.command_len);
+    *refs.cursor_pos = next_cursor;
+    ensure_live_console();
+    render_input_line();
+    refresh_input_line();
 }
 
 template <class TQueueCount, class TQueuePeek, class TQueuePop>
