@@ -2361,6 +2361,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     uint64_t last_drag_redraw_tick = 0;
     uint64_t last_pointer_redraw_tick = 0;
     bool drag_visual_dirty = false;
+    bool focus_visual_dirty = false;
     int pointer_logical_x = mouse_cursor->X() + 1;
     int pointer_logical_y = mouse_cursor->Y() + 1;
     bool pointer_visual_dirty = false;
@@ -2463,10 +2464,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             info_content_window->DrawString(128, 124, "ime:", kLabel);
             info_content_window->DrawString(12, 146, "drag/window input optimized", kSubtle);
             system_info_static_drawn = true;
+            layer_manager->Draw(info_content_layer->GetX(), info_content_layer->GetY(), info_content_w, info_content_h);
         }
         auto DrawValue = [&](int x, int y, int w, const char* text) {
             info_content_window->FillRectangle(x, y, w, 16, kBg);
             info_content_window->DrawString(x, y, text, kValue);
+            layer_manager->Draw(info_content_layer->GetX() + x,
+                                info_content_layer->GetY() + y,
+                                w, 16);
         };
 
         char num[40];
@@ -2491,7 +2496,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         DrawValue(88, 106, 120, num);
         DrawValue(88, 124, 32, g_jp_layout ? "jp" : "us");
         DrawValue(168, 124, 32, g_ime_enabled ? "on" : "off");
-        layer_manager->Draw(info_content_layer->GetX(), info_content_layer->GetY(), info_content_w, info_content_h);
     };
     RefreshSystemInfo();
     next_system_info_tick = CurrentTick() + kSystemInfoRefreshIntervalTicks;
@@ -3232,15 +3236,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             pointer_logical_y = pointer_y;
             pointer_visual_dirty = true;
             last_pointer_move_tick = CurrentTick();
-            // During drag, flush at frame tail after window redraw to avoid cursor overwrite flicker.
-            if (dragging_window < 0) {
-                FlushPointerVisual();
-            } else {
-                // Keep cursor visible during drag even before next drag frame flush.
-                mouse_cursor->SetPosition(pointer_logical_x - 1, pointer_logical_y - 1);
-                pointer_visual_dirty = false;
-                last_pointer_redraw_tick = last_pointer_move_tick;
-            }
         }
         {
             const int frame_x = term_frame_layer->GetX();
@@ -3291,8 +3286,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     DrawFrameTitle(info_frame_window, info_frame_border, info_title_h, info_frame_w, "System", true);
                     info_frame_window->FillRectangle(info_frame_w - 20, 6, 12, 12, {104, 108, 126});
                 }
-                layer_manager->Draw(term_frame_x0, term_frame_y0, term_frame_w, term_frame_h);
-                layer_manager->Draw(info_frame_x0, info_frame_y0, info_frame_w, info_frame_h);
+                (void)term_frame_x0;
+                (void)term_frame_y0;
+                (void)info_frame_x0;
+                (void)info_frame_y0;
+                focus_visual_dirty = true;
             };
             if ((pressed & 0x01) != 0) {
                 int hit_window = -1;
@@ -3326,11 +3324,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             }
             if (((prev_buttons & 0x01) != 0) && ((now_buttons & 0x01) == 0)) {
                 selecting_with_mouse = false;
-                if (drag_visual_dirty) {
-                    FlushPendingDrag();
-                    mouse_cursor->Redraw();
-                    drag_visual_dirty = false;
-                }
                 dragging_window = -1;
             }
             if ((now_buttons & 0x01) != 0 && dragging_window >= 0) {
@@ -3931,20 +3924,25 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
 
         const uint64_t now_tick = CurrentTick();
-        if (drag_visual_dirty && now_tick != last_drag_redraw_tick) {
+        bool compositor_drew = false;
+        if (focus_visual_dirty) {
+            layer_manager->Draw(term_frame_layer->GetX(), term_frame_layer->GetY(), term_frame_w, term_frame_h);
+            layer_manager->Draw(info_frame_layer->GetX(), info_frame_layer->GetY(), info_frame_w, info_frame_h);
+            focus_visual_dirty = false;
+            compositor_drew = true;
+        }
+        if (drag_visual_dirty && (now_tick != last_drag_redraw_tick || dragging_window < 0)) {
             FlushPendingDrag();
-            // During drag, use a single cursor update path after window redraw to avoid flicker.
-            mouse_cursor->SetPosition(pointer_logical_x - 1, pointer_logical_y - 1);
-            // If position is unchanged, SetPosition may early-return; force top-most redraw.
-            mouse_cursor->Redraw();
-            pointer_visual_dirty = false;
-            last_pointer_redraw_tick = now_tick;
             drag_visual_dirty = false;
             last_drag_redraw_tick = now_tick;
+            compositor_drew = true;
         }
         if (dragging_window < 0 && pointer_visual_dirty && now_tick != last_pointer_redraw_tick) {
             FlushPointerVisual();
             last_pointer_redraw_tick = now_tick;
+        } else if (compositor_drew) {
+            // Keep cursor top-most after any composed redraw.
+            mouse_cursor->Redraw();
         }
         if (dragging_window < 0 && now_tick >= next_system_info_tick) {
             // Avoid periodic hitch while pointer is actively moving.
