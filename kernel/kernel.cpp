@@ -2056,23 +2056,67 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
 
     // 2. GUI描画を総括する LayerManager の初期化
     layer_manager = new(layer_manager_buf) LayerManager(*frame_buffer_config);
+    const int screen_w = static_cast<int>(frame_buffer_config->horizontal_resolution);
+    const int screen_h = static_cast<int>(frame_buffer_config->vertical_resolution);
+    const int taskbar_h = 34;
+    const int term_frame_border = 2;
+    const int term_title_h = 24;
 
-    // 3. 背景用ウィンドウ（画面全体と同じサイズ）の作成とレイヤー登録
-    Window* bg_window = new Window(
-        frame_buffer_config->horizontal_resolution,
-        frame_buffer_config->vertical_resolution
-    );
-    // 背景を黒で塗りつぶす
-    bg_window->FillRectangle(0, 0, bg_window->Width(), bg_window->Height(), {0, 0, 0});
-    
+    // 3. デスクトップ背景
+    Window* bg_window = new Window(screen_w, screen_h);
+    bg_window->FillRectangle(0, 0, screen_w, screen_h, {12, 20, 34});
+    bg_window->FillRectangle(0, 0, screen_w, screen_h / 3, {18, 30, 48});
+    bg_window->FillRectangle(0, screen_h - taskbar_h, screen_w, taskbar_h, {10, 10, 14});
     Layer* bg_layer = layer_manager->NewLayer();
     bg_layer->SetWindow(bg_window).Move(0, 0);
-    layer_manager->UpDown(bg_layer, 0); // 最背面(Z=0)に設定
+    layer_manager->UpDown(bg_layer, 0);
 
-    // 4. コンソールの初期化（描画先を背景ウィンドウのキャンバスに指定）
-    console = new(console_buf) Console(bg_window, 
-                                        255, 255, 255, // FG (White)
-                                        0, 0, 0);      // BG (Black)
+    // 4. タスクバー
+    Window* taskbar_window = new Window(screen_w, taskbar_h);
+    taskbar_window->FillRectangle(0, 0, screen_w, taskbar_h, {24, 24, 28});
+    taskbar_window->FillRectangle(0, 0, screen_w, 1, {58, 58, 66});
+    taskbar_window->DrawString(10, 9, "Native OS", {235, 235, 240});
+    taskbar_window->DrawString(screen_w - 108, 9, "Terminal", {190, 190, 205});
+    Layer* taskbar_layer = layer_manager->NewLayer();
+    taskbar_layer->SetWindow(taskbar_window).Move(0, screen_h - taskbar_h);
+    layer_manager->UpDown(taskbar_layer, 1);
+
+    // 5. ターミナルウィンドウ（枠 + コンソール本体）
+    int term_content_w = (screen_w * 4) / 5;
+    int term_content_h = ((screen_h - taskbar_h) * 3) / 4;
+    if (term_content_w < 640) term_content_w = 640;
+    if (term_content_h < 360) term_content_h = 360;
+    if (term_content_w > screen_w - 24) term_content_w = screen_w - 24;
+    if (term_content_h > screen_h - taskbar_h - 24) term_content_h = screen_h - taskbar_h - 24;
+    const int term_frame_w = term_content_w + term_frame_border * 2;
+    const int term_frame_h = term_content_h + term_title_h + term_frame_border;
+    int term_frame_x = (screen_w - term_frame_w) / 2;
+    int term_frame_y = (screen_h - taskbar_h - term_frame_h) / 2;
+    if (term_frame_x < 8) term_frame_x = 8;
+    if (term_frame_y < 8) term_frame_y = 8;
+
+    Window* term_frame_window = new Window(term_frame_w, term_frame_h);
+    term_frame_window->FillRectangle(0, 0, term_frame_w, term_frame_h, {74, 76, 86});
+    term_frame_window->FillRectangle(term_frame_border, term_frame_border,
+                                     term_frame_w - term_frame_border * 2, term_title_h - term_frame_border, {52, 56, 70});
+    term_frame_window->FillRectangle(term_frame_border, term_title_h,
+                                     term_frame_w - term_frame_border * 2, term_frame_h - term_title_h - term_frame_border, {8, 8, 10});
+    term_frame_window->DrawString(10, 5, "Terminal", {238, 238, 242});
+    term_frame_window->FillRectangle(term_frame_w - 20, 6, 12, 12, {175, 68, 68});
+    Layer* term_frame_layer = layer_manager->NewLayer();
+    term_frame_layer->SetWindow(term_frame_window).Move(term_frame_x, term_frame_y);
+    layer_manager->UpDown(term_frame_layer, 2);
+
+    Window* term_console_window = new Window(term_content_w, term_content_h);
+    term_console_window->FillRectangle(0, 0, term_content_w, term_content_h, {0, 0, 0});
+    Layer* term_console_layer = layer_manager->NewLayer();
+    term_console_layer->SetWindow(term_console_window).Move(term_frame_x + term_frame_border, term_frame_y + term_title_h);
+    layer_manager->UpDown(term_console_layer, 3);
+
+    // 6. コンソールの初期化（描画先をターミナルコンテンツへ）
+    console = new(console_buf) Console(term_console_window,
+                                        255, 255, 255,
+                                        0, 0, 0);
     console->Print("Initializing LayerManager...\n");
 
     // ★★★ 真の「動的メモリ確保 (new)」のテスト ★★★
@@ -2237,12 +2281,18 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int selection_anchor = -1;
     int selection_end = -1;
     bool selecting_with_mouse = false;
+    bool dragging_terminal = false;
+    int drag_offset_x = 0;
+    int drag_offset_y = 0;
     auto RefreshConsole = [&]() {
-        layer_manager->Draw(0, 0, console->PixelWidth(), console->PixelHeight());
+        layer_manager->Draw(term_console_layer->GetX(),
+                            term_console_layer->GetY(),
+                            console->PixelWidth(),
+                            console->PixelHeight());
     };
     auto RefreshInputLine = [&]() {
-        int x = Console::kMarginX + input_col * Console::kCellWidth;
-        int y = Console::kMarginY + input_row * Console::kCellHeight;
+        int x = term_console_layer->GetX() + Console::kMarginX + input_col * Console::kCellWidth;
+        int y = term_console_layer->GetY() + Console::kMarginY + input_row * Console::kCellHeight;
         int w = (console->Columns() - input_col) * Console::kCellWidth;
         int h = Console::kCellHeight;
         if (w < 1) w = 1;
@@ -2942,8 +2992,44 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (msg.pointer_mode == Message::PointerMode::kAbsolute) {
             g_last_absolute_mouse_tick = CurrentTick();
             mouse_cursor->SetPosition(msg.x, msg.y);
-            const int click_col = (msg.x - Console::kMarginX) / Console::kCellWidth;
-            const int click_row = (msg.y - Console::kMarginY) / Console::kCellHeight;
+            const int frame_x = term_frame_layer->GetX();
+            const int frame_y = term_frame_layer->GetY();
+            const int local_frame_x = msg.x - frame_x;
+            const int local_frame_y = msg.y - frame_y;
+            const bool on_title =
+                local_frame_x >= 0 && local_frame_x < term_frame_w &&
+                local_frame_y >= 0 && local_frame_y < term_title_h;
+            if ((pressed & 0x01) != 0 && on_title) {
+                dragging_terminal = true;
+                drag_offset_x = local_frame_x;
+                drag_offset_y = local_frame_y;
+                ClearSelection();
+                layer_manager->UpDown(term_frame_layer, 2);
+                layer_manager->UpDown(term_console_layer, 3);
+            }
+            if (((prev_buttons & 0x01) != 0) && ((now_buttons & 0x01) == 0)) {
+                selecting_with_mouse = false;
+                dragging_terminal = false;
+            }
+            if ((now_buttons & 0x01) != 0 && dragging_terminal) {
+                int new_frame_x = msg.x - drag_offset_x;
+                int new_frame_y = msg.y - drag_offset_y;
+                if (new_frame_x < 0) new_frame_x = 0;
+                if (new_frame_y < 0) new_frame_y = 0;
+                if (new_frame_x > screen_w - term_frame_w) new_frame_x = screen_w - term_frame_w;
+                if (new_frame_y > screen_h - taskbar_h - term_frame_h) new_frame_y = screen_h - taskbar_h - term_frame_h;
+                if (new_frame_x != term_frame_layer->GetX() || new_frame_y != term_frame_layer->GetY()) {
+                    term_frame_layer->Move(new_frame_x, new_frame_y);
+                    term_console_layer->Move(new_frame_x + term_frame_border, new_frame_y + term_title_h);
+                    layer_manager->Draw();
+                }
+                return;
+            }
+
+            const int console_x = term_console_layer->GetX();
+            const int console_y = term_console_layer->GetY();
+            const int click_col = (msg.x - console_x - Console::kMarginX) / Console::kCellWidth;
+            const int click_row = (msg.y - console_y - Console::kMarginY) / Console::kCellHeight;
             if ((pressed & 0x01) != 0) {
                 selecting_with_mouse = true;
                 if (click_row == input_row && click_col >= input_col) {
@@ -2968,9 +3054,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     RenderInputLine();
                     RefreshInputLine();
                 }
-            }
-            if (((prev_buttons & 0x01) != 0) && ((now_buttons & 0x01) == 0)) {
-                selecting_with_mouse = false;
             }
             if ((pressed & 0x01) != 0 && !HasSelection()) {  // Left click
                 EnsureLiveConsole();
