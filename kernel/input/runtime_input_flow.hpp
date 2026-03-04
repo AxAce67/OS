@@ -424,6 +424,41 @@ inline RegularModeContext BuildRegularModeContext(TRegularShortcutOwner* owner,
     };
 }
 
+template <class TRegularExecBundle, class TImeCandidateEntry>
+inline ExecChainResult ExecuteRegularExecChainWithRefs(TRegularExecBundle* bundle,
+                                                       const RegularExecPlan& plan,
+                                                       const RuntimeExecInputRefsT<TImeCandidateEntry>& refs) {
+    const auto action_context = BuildRegularActionContext(&bundle->action_owner);
+    const auto ime_context = BuildRegularImeContext(&bundle->shortcut_owner,
+                                                    refs.ime_candidate_entry,
+                                                    refs.ime_candidate_start,
+                                                    refs.ime_candidate_len,
+                                                    refs.ime_romaji_buffer,
+                                                    refs.ime_romaji_capacity,
+                                                    refs.ime_romaji_len,
+                                                    refs.str_length);
+    const auto clear_context = BuildRegularClearContext(&bundle->shortcut_owner,
+                                                        refs.command_buffer,
+                                                        refs.command_capacity,
+                                                        refs.command_len,
+                                                        refs.cursor_pos,
+                                                        refs.rendered_len,
+                                                        refs.ime_romaji_buffer,
+                                                        refs.ime_romaji_capacity,
+                                                        refs.ime_romaji_len);
+    const auto mode_context = BuildRegularModeContext(&bundle->shortcut_owner,
+                                                      plan.mode_action,
+                                                      refs.ime_enabled,
+                                                      refs.jp_layout);
+    return ExecuteRegularExecChain(plan,
+                                   ime_context,
+                                   clear_context,
+                                   mode_context,
+                                   action_context,
+                                   refs.cursor_pos,
+                                   *refs.command_len);
+}
+
 template <class TExtendedExecBundle, class TRefresh, class TBrowseUp, class TBrowseDown, class TDelete>
 inline void BuildExtendedExecBundle(TExtendedExecBundle* bundle,
                                     Console* console,

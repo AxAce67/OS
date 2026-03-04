@@ -3099,35 +3099,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     auto ExecuteRegularChainWithContexts = [&](RuntimeFlowBundles* bundles,
                                                const input::RegularExecPlan& exec_plan,
                                                const RuntimeExecInputRefs& refs) {
-        const auto action_context = input::BuildRegularActionContext(&bundles->regular.action_owner);
-        const auto ime_context = input::BuildRegularImeContext(&bundles->regular.shortcut_owner,
-                                                               refs.ime_candidate_entry,
-                                                               refs.ime_candidate_start,
-                                                               refs.ime_candidate_len,
-                                                               refs.ime_romaji_buffer,
-                                                               refs.ime_romaji_capacity,
-                                                               refs.ime_romaji_len,
-                                                               refs.str_length);
-        const auto clear_context = input::BuildRegularClearContext(&bundles->regular.shortcut_owner,
-                                                                   refs.command_buffer,
-                                                                   refs.command_capacity,
-                                                                   refs.command_len,
-                                                                   refs.cursor_pos,
-                                                                   refs.rendered_len,
-                                                                   refs.ime_romaji_buffer,
-                                                                   refs.ime_romaji_capacity,
-                                                                   refs.ime_romaji_len);
-        const auto mode_context = input::BuildRegularModeContext(&bundles->regular.shortcut_owner,
-                                                                 exec_plan.mode_action,
-                                                                 refs.ime_enabled,
-                                                                 refs.jp_layout);
-        return input::ExecuteRegularExecChain(exec_plan,
-                                              ime_context,
-                                              clear_context,
-                                              mode_context,
-                                              action_context,
-                                              refs.cursor_pos,
-                                              *refs.command_len);
+        return input::ExecuteRegularExecChainWithRefs(&bundles->regular, exec_plan, refs);
     };
     auto ApplyExtendedKeySideEffects = [&](const input::ExtendedExecPlan& plan) {
         input::ApplyExtendedPlanSideEffects(
