@@ -3196,6 +3196,40 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 &HandleTabCompletion,
             };
             const auto action_context = BuildRegularActionContext(&action_owner);
+            struct RegularImeOwner {
+                decltype(DeleteRangeAt)* delete_range_at;
+                decltype(ClearImeCandidate)* clear_ime_candidate;
+            } ime_owner{
+                &DeleteRangeAt,
+                &ClearImeCandidate,
+            };
+            const input::RegularImeActionContext ime_context{
+                &ime_owner,
+                ime_candidate_entry,
+                ime_candidate_start,
+                ime_candidate_len,
+                ime_romaji_buffer,
+                static_cast<int>(sizeof(ime_romaji_buffer)),
+                &ime_romaji_len,
+                StrLength,
+                [](void* owner, int start, int len) -> bool {
+                    auto* o = reinterpret_cast<RegularImeOwner*>(owner);
+                    return (*o->delete_range_at)(start, len);
+                },
+                [](void* owner) {
+                    auto* o = reinterpret_cast<RegularImeOwner*>(owner);
+                    (*o->clear_ime_candidate)();
+                },
+            };
+            const auto ime_exec_result =
+                input::ExecuteRegularImeActionWithContext(exec_plan.kind, ime_context, &cursor_pos);
+            if (ime_exec_result == input::RegularImeExecResult::kFailed) {
+                return false;
+            }
+            if (ime_exec_result == input::RegularImeExecResult::kHandledNeedsRender) {
+                RenderAndRefreshInput();
+                return true;
+            }
             switch (exec_plan.kind) {
             case input::RegularExecKind::kApplyImeModeAndRepaint: {
                 const auto mode = input::ApplyImeModeAction(exec_plan.mode_action, g_ime_enabled, g_jp_layout);
@@ -3203,32 +3237,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RepaintPromptAndInput();
                 return true;
             }
-            case input::RegularExecKind::kEscCancelCandidateToRomaji:
-            {
-                const auto esc_state = input::BuildEscCancelState(
-                    ime_candidate_entry,
-                    ime_candidate_start,
-                    ime_candidate_len,
-                    ime_romaji_buffer,
-                    static_cast<int>(sizeof(ime_romaji_buffer)),
-                    StrLength);
-                if (!esc_state.valid) {
-                    return false;
-                }
-                cursor_pos = esc_state.delete_start;
-                DeleteRangeAt(esc_state.delete_start, esc_state.delete_len);
-                cursor_pos = esc_state.cursor_after_delete;
-                ime_romaji_len = esc_state.restored_romaji_len;
-                ClearImeCandidate();
-                RenderAndRefreshInput();
-                return true;
-            }
-            case input::RegularExecKind::kEscClearRomaji:
-                input::ClearRomajiInput(ime_romaji_buffer,
-                                        static_cast<int>(sizeof(ime_romaji_buffer)),
-                                        &ime_romaji_len);
-                RenderAndRefreshInput();
-                return true;
             case input::RegularExecKind::kClearScreenAndResetInput:
                 console->Clear();
                 PrintPrompt();

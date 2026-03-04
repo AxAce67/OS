@@ -119,6 +119,43 @@ bool ExecuteRegularNeutralAction(RegularExecKind kind,
     }
 }
 
+RegularImeExecResult ExecuteRegularImeActionWithContext(RegularExecKind kind,
+                                                        const RegularImeActionContext& context,
+                                                        int* cursor_pos) {
+    if (cursor_pos == nullptr) {
+        return RegularImeExecResult::kFailed;
+    }
+    switch (kind) {
+    case RegularExecKind::kEscClearRomaji:
+        ClearRomajiInput(context.romaji_buffer, context.romaji_capacity, context.romaji_len);
+        return RegularImeExecResult::kHandledNeedsRender;
+    case RegularExecKind::kEscCancelCandidateToRomaji: {
+        if (context.delete_range == nullptr || context.clear_candidate == nullptr) {
+            return RegularImeExecResult::kFailed;
+        }
+        const auto esc_state = BuildEscCancelState(context.candidate_entry,
+                                                   context.candidate_start,
+                                                   context.candidate_len,
+                                                   context.romaji_buffer,
+                                                   context.romaji_capacity,
+                                                   context.str_length);
+        if (!esc_state.valid) {
+            return RegularImeExecResult::kFailed;
+        }
+        *cursor_pos = esc_state.delete_start;
+        context.delete_range(context.owner, esc_state.delete_start, esc_state.delete_len);
+        *cursor_pos = esc_state.cursor_after_delete;
+        if (context.romaji_len != nullptr) {
+            *context.romaji_len = esc_state.restored_romaji_len;
+        }
+        context.clear_candidate(context.owner);
+        return RegularImeExecResult::kHandledNeedsRender;
+    }
+    default:
+        return RegularImeExecResult::kNotHandled;
+    }
+}
+
 bool ExecuteRegularActionWithContext(RegularExecKind kind,
                                      const RegularActionContext& context) {
     switch (kind) {

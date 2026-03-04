@@ -55,6 +55,29 @@ bool ExecuteRegularNeutralAction(RegularExecKind kind,
                                  int* cursor_pos,
                                  int command_len);
 
+enum class RegularImeExecResult {
+    kNotHandled = 0,
+    kHandledNeedsRender,
+    kFailed,
+};
+
+struct RegularImeActionContext {
+    void* owner;
+    const ImeCandidateEntry* candidate_entry;
+    int candidate_start;
+    int candidate_len;
+    char* romaji_buffer;
+    int romaji_capacity;
+    int* romaji_len;
+    int (*str_length)(const char*);
+    bool (*delete_range)(void* owner, int start, int len);
+    void (*clear_candidate)(void* owner);
+};
+
+RegularImeExecResult ExecuteRegularImeActionWithContext(RegularExecKind kind,
+                                                        const RegularImeActionContext& context,
+                                                        int* cursor_pos);
+
 struct RegularActionContext {
     void* owner;
     bool (*cycle_candidate)(void* owner, int direction);
