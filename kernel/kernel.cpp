@@ -566,6 +566,12 @@ struct RomajiKanaEntry {
     uint8_t len;
 };
 
+struct ImeCandidateEntry {
+    const char* key;             // romaji source
+    const char* candidates[4];   // display/insert text (single-byte font space)
+    int count;
+};
+
 const RomajiKanaEntry kRomajiKanaTable[] = {
     {"kya", {0xB7, 0xAC, 0x00}, 2}, {"kyu", {0xB7, 0xAD, 0x00}, 2}, {"kyo", {0xB7, 0xAE, 0x00}, 2},
     {"sya", {0xBC, 0xAC, 0x00}, 2}, {"syu", {0xBC, 0xAD, 0x00}, 2}, {"syo", {0xBC, 0xAE, 0x00}, 2},
@@ -623,6 +629,24 @@ const RomajiKanaEntry kRomajiKanaTable[] = {
     {"vu",  {0xB3, 0xDE, 0x00}, 2}, {"ve",  {0xB3, 0xDE, 0xAA}, 3}, {"vo",  {0xB3, 0xDE, 0xAB}, 3},
     {"n",   {0xDD, 0x00, 0x00}, 1},
 };
+
+const ImeCandidateEntry kImeCandidateTable[] = {
+    {"nihon",   {"\xC6\xCE\xDD", "\xC6\xAF\xCE\xDF\xDD"}, 2},  // ﾆﾎﾝ / ﾆｯﾎﾟﾝ
+    {"watashi", {"\xDC\xC0\xBC"}, 1},                          // ﾜﾀｼ
+    {"tokyo",   {"\xC4\xB3\xB7\xAE\xB3"}, 1},                  // ﾄｳｷｮｳ
+    {"konnichiha", {"\xBA\xDD\xC6\xC1\xCA"}, 1},               // ｺﾝﾆﾁﾊ
+    {"ohayou",  {"\xB5\xCA\xAE\xB3"}, 1},                      // ｵﾊﾖｳ
+    {"arigatou",{"\xB1\xD8\xB6\xDE\xC4\xB3"}, 1},              // ｱﾘｶﾞﾄｳ
+};
+
+const ImeCandidateEntry* FindImeCandidateEntry(const char* key) {
+    for (int i = 0; i < static_cast<int>(sizeof(kImeCandidateTable) / sizeof(kImeCandidateTable[0])); ++i) {
+        if (StrEqual(kImeCandidateTable[i].key, key)) {
+            return &kImeCandidateTable[i];
+        }
+    }
+    return nullptr;
+}
 
 int RomajiEntryLength(const char* s) {
     int n = 0;
@@ -1682,6 +1706,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     char ime_romaji_buffer[32];
     int ime_romaji_len = 0;
     ime_romaji_buffer[0] = '\0';
+    const ImeCandidateEntry* ime_candidate_entry = nullptr;
+    bool ime_candidate_active = false;
+    int ime_candidate_index = 0;
+    int ime_candidate_start = 0;
+    int ime_candidate_len = 0;
     bool e0_prefix = false;
     bool key_down_normal[128];
     bool key_down_extended[128];
@@ -1771,11 +1800,20 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         return (row_limit < buf_limit) ? row_limit : buf_limit;
     };
 
+    auto ClearImeCandidate = [&]() {
+        ime_candidate_entry = nullptr;
+        ime_candidate_active = false;
+        ime_candidate_index = 0;
+        ime_candidate_start = 0;
+        ime_candidate_len = 0;
+    };
+
     auto ReplaceInputLine = [&](const char* text) {
         CopyString(command_buffer, text, static_cast<int>(sizeof(command_buffer)));
         command_len = StrLength(command_buffer);
         ime_romaji_len = 0;
         ime_romaji_buffer[0] = '\0';
+        ClearImeCandidate();
         const int max_input_len = MaxInputLen();
         if (command_len > max_input_len) {
             command_len = max_input_len;
@@ -1845,6 +1883,27 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (g_ime_enabled && ime_romaji_len > 0) {
             --ime_romaji_len;
             ime_romaji_buffer[ime_romaji_len] = '\0';
+            RenderInputLine();
+            RefreshInputLine();
+            return;
+        }
+        if (ime_candidate_active && ime_candidate_len > 0 &&
+            cursor_pos == ime_candidate_start + ime_candidate_len) {
+            const int start = ime_candidate_start;
+            int len = ime_candidate_len;
+            if (start + len > command_len) {
+                len = command_len - start;
+            }
+            for (int i = start; i + len <= command_len; ++i) {
+                command_buffer[i] = command_buffer[i + len];
+            }
+            command_len -= len;
+            if (command_len < 0) {
+                command_len = 0;
+            }
+            command_buffer[command_len] = '\0';
+            cursor_pos = ime_candidate_start;
+            ClearImeCandidate();
             RenderInputLine();
             RefreshInputLine();
             return;
@@ -2047,6 +2106,27 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
     };
 
+    auto DeleteRangeAt = [&](int start, int len) -> bool {
+        if (len <= 0 || start < 0 || start > command_len) {
+            return false;
+        }
+        if (start + len > command_len) {
+            len = command_len - start;
+        }
+        for (int i = start; i + len <= command_len; ++i) {
+            command_buffer[i] = command_buffer[i + len];
+        }
+        command_len -= len;
+        if (command_len < 0) {
+            command_len = 0;
+        }
+        if (cursor_pos > command_len) {
+            cursor_pos = command_len;
+        }
+        command_buffer[command_len] = '\0';
+        return true;
+    };
+
     auto InsertByteAtCursor = [&](uint8_t b) -> bool {
         if (command_len >= MaxInputLen()) {
             return false;
@@ -2061,10 +2141,36 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         return true;
     };
 
+    auto InsertCStringAtCursor = [&](const char* text) -> int {
+        int inserted = 0;
+        for (int i = 0; text[i] != '\0'; ++i) {
+            if (!InsertByteAtCursor(static_cast<uint8_t>(text[i]))) {
+                break;
+            }
+            ++inserted;
+        }
+        return inserted;
+    };
+
+    auto ReplaceImeCandidateText = [&]() {
+        if (!ime_candidate_active || ime_candidate_entry == nullptr) {
+            return;
+        }
+        const char* cand = ime_candidate_entry->candidates[ime_candidate_index];
+        cursor_pos = ime_candidate_start;
+        DeleteRangeAt(ime_candidate_start, ime_candidate_len);
+        cursor_pos = ime_candidate_start;
+        ime_candidate_len = InsertCStringAtCursor(cand);
+        cursor_pos = ime_candidate_start + ime_candidate_len;
+        RenderInputLine();
+        RefreshInputLine();
+    };
+
     auto FlushImeRomaji = [&](bool finalize) -> bool {
         if (ime_romaji_len <= 0) {
             return false;
         }
+        ClearImeCandidate();
         const int before_len = ime_romaji_len;
         bool inserted = false;
         if (HasSelection()) {
@@ -2191,6 +2297,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (g_ime_enabled && ime_romaji_len > 0) {
             FlushImeRomaji(true);
         }
+        if (ime_candidate_active) {
+            ClearImeCandidate();
+        }
         if (key == 0x49) { // Page Up
             console->ScrollUp(3);
             RefreshConsole();
@@ -2248,6 +2357,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
+        if (ime_candidate_active && key != 0x39) {
+            ClearImeCandidate();
+        }
         if (IsCtrlPressed(keyboard_mods)) {
             if (key == 0x39) { // Ctrl + Space => IME toggle fallback
                 FlushImeRomaji(true);
@@ -2294,6 +2406,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 command_buffer[0] = '\0';
                 ime_romaji_len = 0;
                 ime_romaji_buffer[0] = '\0';
+                ClearImeCandidate();
                 ClearSelection();
                 history_nav = -1;
                 draft_buffer[0] = '\0';
@@ -2472,6 +2585,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     EnsureLiveConsole();
                     bool full_refresh = false;
                     if (g_ime_enabled && g_jp_layout && g_has_halfwidth_kana_font) {
+                        if (ch == ' ' && ime_candidate_active && ime_candidate_entry != nullptr) {
+                            ime_candidate_index = (ime_candidate_index + 1) % ime_candidate_entry->count;
+                            ReplaceImeCandidateText();
+                            break;
+                        }
+                        if (ime_candidate_active && ch != ' ') {
+                            ClearImeCandidate();
+                        }
                         char lower = ToLowerAscii(ch);
                         const bool is_alpha = (lower >= 'a' && lower <= 'z');
                         if (is_alpha) {
@@ -2484,6 +2605,28 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                 }
                             }
                             break;
+                        }
+                        if (ch == ' ' && ime_romaji_len > 0) {
+                            char keybuf[32];
+                            for (int i = 0; i < ime_romaji_len && i + 1 < static_cast<int>(sizeof(keybuf)); ++i) {
+                                keybuf[i] = ToLowerAscii(ime_romaji_buffer[i]);
+                                keybuf[i + 1] = '\0';
+                            }
+                            const ImeCandidateEntry* entry = FindImeCandidateEntry(keybuf);
+                            if (entry != nullptr && entry->count > 0) {
+                                if (HasSelection()) {
+                                    DeleteSelection();
+                                }
+                                ime_candidate_entry = entry;
+                                ime_candidate_active = true;
+                                ime_candidate_index = 0;
+                                ime_candidate_start = cursor_pos;
+                                ime_candidate_len = 0;
+                                ime_romaji_len = 0;
+                                ime_romaji_buffer[0] = '\0';
+                                ReplaceImeCandidateText();
+                                break;
+                            }
                         }
                         // Finalize pending romaji before non-alpha key (space/punct/enter).
                         FlushImeRomaji(true);
@@ -2520,6 +2663,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         command_buffer[0] = '\0';
                         ime_romaji_len = 0;
                         ime_romaji_buffer[0] = '\0';
+                        ClearImeCandidate();
                         ClearSelection();
                         history_nav = -1;
                         draft_buffer[0] = '\0';
