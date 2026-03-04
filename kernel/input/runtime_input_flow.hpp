@@ -302,6 +302,15 @@ inline ExtendedActionContext BuildExtendedActionContext(TInputActionOwner* owner
     };
 }
 
+template <class TExtendedExecBundle>
+inline ExecChainResult ExecuteExtendedExecChainWithOwner(TExtendedExecBundle* bundle,
+                                                         const ExtendedExecPlan& plan,
+                                                         int* cursor_pos,
+                                                         int command_len) {
+    const auto action_context = BuildExtendedActionContext(&bundle->owner);
+    return ExecuteExtendedExecChain(plan, action_context, cursor_pos, command_len);
+}
+
 template <class TInputActionOwner>
 inline RegularActionContext BuildRegularActionContext(TInputActionOwner* owner) {
     return RegularActionContext{

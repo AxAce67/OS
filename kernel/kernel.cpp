@@ -3093,8 +3093,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
     auto ExecuteExtendedChainWithContexts = [&](RuntimeFlowBundles* bundles,
                                                 const input::ExtendedExecPlan& exec_plan) {
-        const auto action_context = input::BuildExtendedActionContext(&bundles->extended.owner);
-        return input::ExecuteExtendedExecChain(exec_plan, action_context, &cursor_pos, command_len);
+        return input::ExecuteExtendedExecChainWithOwner(&bundles->extended,
+                                                        exec_plan,
+                                                        &cursor_pos,
+                                                        command_len);
     };
     auto ExecuteRegularChainWithContexts = [&](RuntimeFlowBundles* bundles,
                                                const input::RegularExecPlan& exec_plan,
