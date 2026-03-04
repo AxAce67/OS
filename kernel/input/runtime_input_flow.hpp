@@ -43,6 +43,15 @@ enum class ExecChainResult {
     kFailed,
 };
 
+inline bool ExecChainNeedsRender(ExecChainResult result) {
+    return result == ExecChainResult::kHandledNeedsRender;
+}
+
+inline bool ExecChainHandled(ExecChainResult result) {
+    return result == ExecChainResult::kHandled ||
+           result == ExecChainResult::kHandledNeedsRender;
+}
+
 template <class TRefresh,
           class TCycle, class TBrowseUp, class TBrowseDown,
           class TBackspace, class TDelete, class TTab>
