@@ -912,6 +912,66 @@ bool ConvertRomajiHeadToHalfKana(const char* buf,
     return true;
 }
 
+bool IsAsciiRomajiToken(const char* s) {
+    if (s == nullptr || s[0] == '\0') {
+        return false;
+    }
+    for (int i = 0; s[i] != '\0'; ++i) {
+        const char c = ToLowerAscii(s[i]);
+        if (c < 'a' || c > 'z') {
+            return false;
+        }
+    }
+    return true;
+}
+
+int ConvertRomajiStringToHalfKana(const char* src, char* out, int out_len) {
+    if (src == nullptr || out == nullptr || out_len <= 0) {
+        return 0;
+    }
+    char work[64];
+    ToLowerAsciiString(src, work, sizeof(work));
+    int work_len = StrLength(work);
+    int w = 0;
+    while (work_len > 0 && w + 1 < out_len) {
+        int consume = 0;
+        uint8_t kana[3] = {0, 0, 0};
+        int kana_len = 0;
+        if (!ConvertRomajiHeadToHalfKana(work, work_len, true, &consume, kana, &kana_len)) {
+            out[w++] = work[0];
+            consume = 1;
+        } else {
+            for (int i = 0; i < kana_len && w + 1 < out_len; ++i) {
+                out[w++] = static_cast<char>(kana[i]);
+            }
+        }
+        for (int i = consume; i <= work_len; ++i) {
+            work[i - consume] = work[i];
+        }
+        work_len -= consume;
+    }
+    out[w] = '\0';
+    return w;
+}
+
+void UIntToDecimalString(uint32_t value, char* out, int out_len) {
+    if (out == nullptr || out_len <= 0) {
+        return;
+    }
+    char rev[16];
+    int n = 0;
+    do {
+        rev[n++] = static_cast<char>('0' + (value % 10));
+        value /= 10;
+    } while (value != 0 && n < static_cast<int>(sizeof(rev)));
+
+    int w = 0;
+    for (int i = n - 1; i >= 0 && w + 1 < out_len; --i) {
+        out[w++] = rev[i];
+    }
+    out[w] = '\0';
+}
+
 ShellPair* FindPair(ShellPair* pairs, int count, const char* key) {
     for (int i = 0; i < count; ++i) {
         if (pairs[i].used && StrEqual(pairs[i].key, key)) {
@@ -1940,6 +2000,18 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             console->Print(ime_romaji_buffer);
             console->Print("]");
         }
+        if (ime_candidate_active && ime_candidate_entry != nullptr &&
+            ime_candidate_entry->count > 0) {
+            char cand_idx[16];
+            char cand_total[16];
+            UIntToDecimalString(static_cast<uint32_t>(ime_candidate_index + 1), cand_idx, static_cast<int>(sizeof(cand_idx)));
+            UIntToDecimalString(static_cast<uint32_t>(ime_candidate_entry->count), cand_total, static_cast<int>(sizeof(cand_total)));
+            console->Print(" [cand ");
+            console->Print(cand_idx);
+            console->Print("/");
+            console->Print(cand_total);
+            console->Print("]");
+        }
         if (HasSelection()) {
             const int sel_start = SelectionStart();
             const int sel_end = SelectionEnd();
@@ -2326,10 +2398,17 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return;
         }
         const char* cand = ime_candidate_entry->candidates[ime_candidate_index];
+        char cand_kana[64];
+        const char* insert_text = cand;
+        if (IsAsciiRomajiToken(cand)) {
+            if (ConvertRomajiStringToHalfKana(cand, cand_kana, static_cast<int>(sizeof(cand_kana))) > 0) {
+                insert_text = cand_kana;
+            }
+        }
         cursor_pos = ime_candidate_start;
         DeleteRangeAt(ime_candidate_start, ime_candidate_len);
         cursor_pos = ime_candidate_start;
-        ime_candidate_len = InsertCStringAtCursor(cand);
+        ime_candidate_len = InsertCStringAtCursor(insert_text);
         cursor_pos = ime_candidate_start + ime_candidate_len;
         RenderInputLine();
         RefreshInputLine();
