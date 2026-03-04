@@ -1,7 +1,9 @@
 # build.ps1
 # WindowsネイティブでのUEFI（PE32+）ビルドスクリプト
 param(
-    [switch]$NoRun
+    [switch]$NoRun,
+    [switch]$UseWhpx,
+    [switch]$UseUsbTablet
 )
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -144,7 +146,7 @@ if (Test-Path "disk") {
         Write-Host "Warning: failed to clean disk/ (file lock). continuing with existing directory." -ForegroundColor Yellow
     }
 }
-New-Item -ItemType Directory -Path "disk\EFI\BOOT" | Out-Null
+New-Item -ItemType Directory -Force -Path "disk\EFI\BOOT" | Out-Null
 Copy-Item "main.efi" -Destination "disk\EFI\BOOT\BOOTX64.EFI"   # ブートローダー
 Copy-Item "kernel.elf" -Destination "disk\kernel.elf"           # カーネル本体 (ELF)
 if (Test-Path "ime.dic") {
@@ -166,38 +168,49 @@ Write-Host "Starting QEMU..." -ForegroundColor Cyan
 # 今回は一番シンプルな形で仮実行してみる（OVMFがない場合のエラー対処は後ほど）
 
 # QEMUインストールディレクトリにある可能性のあるOVMFを探す
-$ovmf = "C:\Program Files\qemu\share\edk2-x86_64-code.fd"
-if (-Not (Test-Path $ovmf)) {
-    # フォールバック用の探し方
-    $ovmf = "$env:USERPROFILE\OVMF.fd"
+$ovmf = $null
+$ovmfCandidates = @(
+    "C:\Program Files\qemu\share\edk2-x86_64-code.fd"
+)
+if (-Not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+    $ovmfCandidates += "$env:USERPROFILE\OVMF.fd"
+}
+foreach ($cand in $ovmfCandidates) {
+    if (-Not [string]::IsNullOrWhiteSpace($cand) -and (Test-Path $cand)) {
+        $ovmf = $cand
+        break
+    }
 }
 
 # ファイルがある場合はローカルにコピーして使う（アクセス権限の問題回避）
-if (Test-Path $ovmf) {
+$accelArg = if ($UseWhpx) { "whpx" } else { "tcg" }
+$hasOvmf = (-Not [string]::IsNullOrWhiteSpace($ovmf) -and (Test-Path $ovmf))
+
+if ($hasOvmf) {
     if (-Not (Test-Path "OVMF.fd")) {
         Copy-Item $ovmf -Destination "OVMF.fd"
     }
-    $machineArg = "q35,accel=whpx:tcg"
-    $displayArg = "gtk,gl=on,show-menubar=off"
-    & $qemu -m 512M `
-        -machine $machineArg `
-        -display $displayArg `
-        -k ja `
-        -device qemu-xhci `
-        -device usb-tablet `
-        -pflash "OVMF.fd" `
-        -drive "format=raw,file=fat:rw:disk"
-}
-else {
+} else {
     Write-Host "Warning: OVMF.fd (UEFI BIOS) not found. QEMU might boot in Legacy BIOS mode." -ForegroundColor Yellow
-    # 警告を出しつつFATディレクトリを指定して通常起動
-    $machineArg = "q35,accel=whpx:tcg"
-    $displayArg = "gtk,gl=on,show-menubar=off"
-    & $qemu -m 512M `
-        -machine $machineArg `
-        -display $displayArg `
-        -k ja `
-        -device qemu-xhci `
-        -device usb-tablet `
-        -drive "format=raw,file=fat:rw:disk"
 }
+
+$qemuArgs = @(
+    "-m", "512M",
+    "-machine", "q35",
+    "-accel", $accelArg,
+    "-k", "ja"
+)
+
+if ($UseUsbTablet) {
+    # xHCI + WHPX環境でMSIトラブルが出るため、MSIを明示的に無効化する
+    $qemuArgs += @("-device", "qemu-xhci,msi=off")
+    $qemuArgs += @("-device", "usb-tablet")
+}
+
+if ($hasOvmf) {
+    $qemuArgs += @("-drive", "if=pflash,format=raw,readonly=on,file=OVMF.fd")
+}
+$qemuArgs += @("-drive", "format=raw,file=fat:rw:disk")
+$qemuArgs = $qemuArgs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+Start-Process -FilePath $qemu -ArgumentList $qemuArgs | Out-Null
