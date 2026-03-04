@@ -77,6 +77,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "input/hid_keyboard.hpp"
 #include "input/history.hpp"
 #include "input/line_ops.hpp"
+#include "input/line_render.hpp"
 #include "input/selection.hpp"
 #include "boot_info.h"
 #include "memory.hpp"
@@ -2468,78 +2469,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto RenderInputLine = [&]() {
-        auto CountU32Digits = [](uint32_t v) {
-            int n = 1;
-            while (v >= 10) {
-                v /= 10;
-                ++n;
-            }
-            return n;
-        };
-        int visual_len = command_len;
-        if (g_ime_enabled && ime_romaji_len > 0) {
-            visual_len += ime_romaji_len + 2; // [romaji]
-        }
-        if (ime_candidate_active && ime_candidate_entry != nullptr && ime_candidate_entry->count > 0) {
-            visual_len += 8; // " [cand "
-            visual_len += CountU32Digits(static_cast<uint32_t>(ime_candidate_index + 1));
-            visual_len += 1; // '/'
-            visual_len += CountU32Digits(static_cast<uint32_t>(ime_candidate_entry->count));
-            visual_len += 1; // ']'
-        }
-        int clear_len = rendered_len;
-        if (clear_len < visual_len) {
-            clear_len = visual_len;
-        }
-        clear_len += 2; // trailing safety
-        const int max_clear = console->Columns() - input_col - 1;
-        if (clear_len > max_clear) {
-            clear_len = max_clear;
-        }
-        if (clear_len < 0) {
-            clear_len = 0;
-        }
-        console->SetCursorPosition(input_row, input_col);
-        for (int i = 0; i < clear_len; ++i) {
-            console->Print(" ");
-        }
-        console->SetCursorPosition(input_row, input_col);
-        console->Print(command_buffer);
-        if (g_ime_enabled && ime_romaji_len > 0) {
-            console->Print("[");
-            console->Print(ime_romaji_buffer);
-            console->Print("]");
-        }
-        if (ime_candidate_active && ime_candidate_entry != nullptr &&
-            ime_candidate_entry->count > 0) {
-            char cand_idx[16];
-            char cand_total[16];
-            UIntToDecimalString(static_cast<uint32_t>(ime_candidate_index + 1), cand_idx, static_cast<int>(sizeof(cand_idx)));
-            UIntToDecimalString(static_cast<uint32_t>(ime_candidate_entry->count), cand_total, static_cast<int>(sizeof(cand_total)));
-            console->Print(" [cand ");
-            console->Print(cand_idx);
-            console->Print("/");
-            console->Print(cand_total);
-            console->Print("]");
-        }
-        if (input::HasSelection(selection_anchor, selection_end)) {
-            const int sel_start = input::SelectionStart(selection_anchor, selection_end);
-            const int sel_end = input::SelectionEnd(selection_anchor, selection_end);
-            Window* win = console->RawWindow();
-            for (int i = sel_start; i < sel_end; ++i) {
-                const int col = input_col + i;
-                if (col < input_col || col >= console->Columns()) {
-                    continue;
-                }
-                const int px = Console::kMarginX + col * Console::kCellWidth;
-                const int py = Console::kMarginY + input_row * Console::kCellHeight;
-                win->FillRectangle(px, py, Console::kCellWidth, Console::kCellHeight, {255, 255, 255});
-                char c = (i < command_len) ? command_buffer[i] : ' ';
-                win->DrawCharScaled(px, py, c, {0, 0, 0}, Console::kFontScale);
-            }
-        }
-        rendered_len = visual_len;
-        console->SetCursorPosition(input_row, input_col + cursor_pos);
+        const int candidate_count =
+            (ime_candidate_active && ime_candidate_entry != nullptr) ? ime_candidate_entry->count : 0;
+        input::RenderInputLine(console, input_row, input_col,
+                               command_buffer, command_len, cursor_pos,
+                               g_ime_enabled, ime_romaji_buffer, ime_romaji_len,
+                               ime_candidate_active, ime_candidate_index, candidate_count,
+                               selection_anchor, selection_end, &rendered_len);
     };
 
     auto MaxInputLen = [&]() {
