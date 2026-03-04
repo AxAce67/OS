@@ -2821,30 +2821,50 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleMouseMessage = [&](const Message& msg) {
-        const auto button_transition = input::UpdateMouseButtonsAndCounters(
-            msg.buttons,
+        const input::RuntimeMouseMessageContext mouse_context{
             input::RuntimeMouseButtonCounterRefs{
                 &g_mouse_buttons_current,
                 &g_mouse_left_press_count,
                 &g_mouse_right_press_count,
                 &g_mouse_middle_press_count,
-            });
+            },
+            input::RuntimeMousePointerUpdateRefs{
+                &pointer_logical_x,
+                &pointer_logical_y,
+                screen_w,
+                screen_h,
+                g_xhci_hid_auto_enabled,
+                &g_last_absolute_mouse_tick,
+                &pointer_visual_dirty,
+                &last_pointer_move_tick,
+            },
+            input::RuntimeMouseDragRefs{
+                &dragging_window,
+                &drag_offset_x,
+                &drag_offset_y,
+            },
+            input::RuntimeMouseDragStopRefs{
+                &selecting_with_mouse,
+                &dragging_window,
+            },
+            input::RuntimePendingDragRefs{
+                &drag_pending_window,
+                &drag_pending_x,
+                &drag_pending_y,
+                &drag_pending_move,
+                &drag_visual_dirty,
+            },
+        };
+        const auto button_transition = input::UpdateMouseButtonsAndCounters(
+            msg.buttons,
+            mouse_context.button_counters);
         const uint8_t prev_buttons = button_transition.prev_buttons;
         const uint8_t now_buttons = button_transition.now_buttons;
         const uint8_t pressed = button_transition.pressed_buttons;
         if (input::UpdatePointerPositionFromMouseMessage(
                 msg,
                 CurrentTick(),
-                input::RuntimeMousePointerUpdateRefs{
-                    &pointer_logical_x,
-                    &pointer_logical_y,
-                    screen_w,
-                    screen_h,
-                    g_xhci_hid_auto_enabled,
-                    &g_last_absolute_mouse_tick,
-                    &pointer_visual_dirty,
-                    &last_pointer_move_tick,
-                }) == input::RuntimeMousePointerUpdateResult::kIgnoredRelative) {
+                mouse_context.pointer_update) == input::RuntimeMousePointerUpdateResult::kIgnoredRelative) {
             return;  // USB absolute pointer is active; ignore noisy PS/2 relative moves.
         }
         const int pointer_x = pointer_logical_x;
@@ -2897,11 +2917,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 active_window,
                 term_hit,
                 info_hit,
-                input::RuntimeMouseDragRefs{
-                    &dragging_window,
-                    &drag_offset_x,
-                    &drag_offset_y,
-                },
+                mouse_context.drag_refs,
                 ApplyWindowFocus,
                 ClearSelection);
             input::StopMouseDraggingIfNeeded(
@@ -2910,22 +2926,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     prev_buttons,
                     now_buttons,
                 },
-                input::RuntimeMouseDragStopRefs{
-                    &selecting_with_mouse,
-                    &dragging_window,
-                });
+                mouse_context.drag_stop_refs);
             if (input::IsMouseDraggingActive(input::RuntimeMouseDragState{
                     dragging_window,
                     prev_buttons,
                     now_buttons,
                 })) {
-                const input::RuntimePendingDragRefs pending_drag_refs{
-                    &drag_pending_window,
-                    &drag_pending_x,
-                    &drag_pending_y,
-                    &drag_pending_move,
-                    &drag_visual_dirty,
-                };
                 if (dragging_window == 0) {
                     input::ProcessActiveMouseDragMove(
                         0,
@@ -2937,7 +2943,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         screen_h - taskbar_h - term_frame_h,
                         term_frame_layer->GetX(),
                         term_frame_layer->GetY(),
-                        pending_drag_refs);
+                        mouse_context.pending_drag_refs);
                 } else {
                     input::ProcessActiveMouseDragMove(
                         1,
@@ -2949,7 +2955,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         screen_h - taskbar_h - info_frame_h,
                         info_frame_layer->GetX(),
                         info_frame_layer->GetY(),
-                        pending_drag_refs);
+                        mouse_context.pending_drag_refs);
                 }
                 return;
             }
