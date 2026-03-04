@@ -76,6 +76,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "input/key_layout.hpp"
 #include "input/hid_keyboard.hpp"
 #include "input/history.hpp"
+#include "input/ime_logic.hpp"
 #include "input/line_editor.hpp"
 #include "input/line_ops.hpp"
 #include "input/line_render.hpp"
@@ -2736,32 +2737,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (entry == nullptr || entry->count <= 0) {
             return 0;
         }
-        int best_idx = 0;
-        uint16_t best_score = 0;
-        for (int i = 0; i < entry->count && i < 4; ++i) {
-            const char* cand = entry->candidates[i];
-            const char* key = (ime_candidate_source_keys[i][0] != '\0') ? ime_candidate_source_keys[i] : entry->key;
-            const uint16_t score = GetImeLearningScore(key, cand);
-            if (score > best_score) {
-                best_score = score;
-                best_idx = i;
-            }
-        }
-        return best_idx;
+        return input::SelectBestCandidateIndex(entry->key, entry->candidates,
+                                               ime_candidate_source_keys, entry->count,
+                                               GetImeLearningScore);
     };
     auto CycleImeCandidate = [&](int delta) -> bool {
         if (!ime_candidate_active || ime_candidate_entry == nullptr || ime_candidate_entry->count <= 0) {
             return false;
         }
-        int next = ime_candidate_index + delta;
-        const int count = ime_candidate_entry->count;
-        while (next < 0) {
-            next += count;
-        }
-        while (next >= count) {
-            next -= count;
-        }
-        ime_candidate_index = next;
+        ime_candidate_index = input::WrapCandidateIndex(ime_candidate_index, delta, ime_candidate_entry->count);
         ReplaceImeCandidateText();
         return true;
     };
@@ -2860,22 +2844,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (ime_prefix_candidate_view.count <= 0) {
             return nullptr;
         }
-        for (int i = 0; i + 1 < ime_prefix_candidate_view.count; ++i) {
-            for (int j = i + 1; j < ime_prefix_candidate_view.count; ++j) {
-                const uint16_t score_i = GetImeLearningScore(ime_candidate_source_keys[i], ime_prefix_candidate_view.candidates[i]);
-                const uint16_t score_j = GetImeLearningScore(ime_candidate_source_keys[j], ime_prefix_candidate_view.candidates[j]);
-                if (score_j <= score_i) {
-                    continue;
-                }
-                const char* tmp_ptr = ime_prefix_candidate_view.candidates[i];
-                ime_prefix_candidate_view.candidates[i] = ime_prefix_candidate_view.candidates[j];
-                ime_prefix_candidate_view.candidates[j] = tmp_ptr;
-                char tmp_key[32];
-                CopyString(tmp_key, ime_candidate_source_keys[i], static_cast<int>(sizeof(tmp_key)));
-                CopyString(ime_candidate_source_keys[i], ime_candidate_source_keys[j], static_cast<int>(sizeof(ime_candidate_source_keys[i])));
-                CopyString(ime_candidate_source_keys[j], tmp_key, static_cast<int>(sizeof(ime_candidate_source_keys[j])));
-            }
-        }
+        input::SortCandidatesByLearning(ime_prefix_candidate_view.candidates,
+                                        ime_candidate_source_keys,
+                                        ime_prefix_candidate_view.count,
+                                        GetImeLearningScore);
         return &ime_prefix_candidate_view;
     };
 
