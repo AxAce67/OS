@@ -3148,22 +3148,22 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
         input::RegularExecPlan exec_plan{};
-        const RuntimeExecInputRefs refs{
-            ime_candidate_entry,
-            ime_candidate_start,
-            ime_candidate_len,
-            ime_romaji_buffer,
-            static_cast<int>(sizeof(ime_romaji_buffer)),
-            &ime_romaji_len,
-            command_buffer,
-            static_cast<int>(sizeof(command_buffer)),
-            &command_len,
-            &cursor_pos,
-            &rendered_len,
-            &g_ime_enabled,
-            &g_jp_layout,
-            StrLength,
-        };
+        RuntimeExecInputRefs refs{};
+        input::BuildRuntimeExecInputRefs(&refs,
+                                         ime_candidate_entry,
+                                         ime_candidate_start,
+                                         ime_candidate_len,
+                                         ime_romaji_buffer,
+                                         static_cast<int>(sizeof(ime_romaji_buffer)),
+                                         &ime_romaji_len,
+                                         command_buffer,
+                                         static_cast<int>(sizeof(command_buffer)),
+                                         &command_len,
+                                         &cursor_pos,
+                                         &rendered_len,
+                                         &g_ime_enabled,
+                                         &g_jp_layout,
+                                         StrLength);
         if (input::PrepareRegularExecPlanStatus(
                 key,
                 IsCtrlPressed(keyboard_mods),

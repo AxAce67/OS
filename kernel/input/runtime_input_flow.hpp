@@ -124,6 +124,41 @@ struct RuntimeExecInputRefsT {
     int (*str_length)(const char*);
 };
 
+template <class TImeCandidateEntry>
+inline void BuildRuntimeExecInputRefs(RuntimeExecInputRefsT<TImeCandidateEntry>* refs,
+                                      const TImeCandidateEntry* ime_candidate_entry,
+                                      int ime_candidate_start,
+                                      int ime_candidate_len,
+                                      char* ime_romaji_buffer,
+                                      int ime_romaji_capacity,
+                                      int* ime_romaji_len,
+                                      char* command_buffer,
+                                      int command_capacity,
+                                      int* command_len,
+                                      int* cursor_pos,
+                                      int* rendered_len,
+                                      bool* ime_enabled,
+                                      bool* jp_layout,
+                                      int (*str_length)(const char*)) {
+    if (refs == nullptr) {
+        return;
+    }
+    refs->ime_candidate_entry = ime_candidate_entry;
+    refs->ime_candidate_start = ime_candidate_start;
+    refs->ime_candidate_len = ime_candidate_len;
+    refs->ime_romaji_buffer = ime_romaji_buffer;
+    refs->ime_romaji_capacity = ime_romaji_capacity;
+    refs->ime_romaji_len = ime_romaji_len;
+    refs->command_buffer = command_buffer;
+    refs->command_capacity = command_capacity;
+    refs->command_len = command_len;
+    refs->cursor_pos = cursor_pos;
+    refs->rendered_len = rendered_len;
+    refs->ime_enabled = ime_enabled;
+    refs->jp_layout = jp_layout;
+    refs->str_length = str_length;
+}
+
 ExecChainResult ExecuteRegularExecChain(const RegularExecPlan& plan,
                                         const RegularImeActionContext& ime_context,
                                         const RegularClearContext& clear_context,
