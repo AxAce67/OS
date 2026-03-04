@@ -3048,62 +3048,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         decltype(DeleteAtCursor)* delete_at_cursor;
         decltype(HandleTabCompletion)* tab_complete;
     };
-    auto BuildExtendedActionContext = [](InputActionOwner* owner) {
-        return input::ExtendedActionContext{
-            owner,
-            [](void* ctx_owner, int lines) {
-                auto* o = reinterpret_cast<InputActionOwner*>(ctx_owner);
-                o->console->ScrollUp(lines);
-                (*o->refresh_console)();
-            },
-            [](void* ctx_owner, int lines) {
-                auto* o = reinterpret_cast<InputActionOwner*>(ctx_owner);
-                o->console->ScrollDown(lines);
-                (*o->refresh_console)();
-            },
-            [](void* ctx_owner) {
-                auto* o = reinterpret_cast<InputActionOwner*>(ctx_owner);
-                (*o->delete_at_cursor)();
-            },
-            [](void* ctx_owner) {
-                auto* o = reinterpret_cast<InputActionOwner*>(ctx_owner);
-                (*o->browse_history_up)();
-            },
-            [](void* ctx_owner) {
-                auto* o = reinterpret_cast<InputActionOwner*>(ctx_owner);
-                (*o->browse_history_down)();
-            },
-        };
-    };
-    auto BuildRegularActionContext = [](InputActionOwner* owner) {
-        return input::RegularActionContext{
-            owner,
-            [](void* ctx_owner, int direction) -> bool {
-                auto* o = reinterpret_cast<InputActionOwner*>(ctx_owner);
-                return (*o->cycle_candidate)(direction);
-            },
-            [](void* ctx_owner) {
-                auto* o = reinterpret_cast<InputActionOwner*>(ctx_owner);
-                (*o->browse_history_up)();
-            },
-            [](void* ctx_owner) {
-                auto* o = reinterpret_cast<InputActionOwner*>(ctx_owner);
-                (*o->browse_history_down)();
-            },
-            [](void* ctx_owner) {
-                auto* o = reinterpret_cast<InputActionOwner*>(ctx_owner);
-                (*o->backspace_at_cursor)();
-            },
-            [](void* ctx_owner) {
-                auto* o = reinterpret_cast<InputActionOwner*>(ctx_owner);
-                (*o->delete_at_cursor)();
-            },
-            [](void* ctx_owner) {
-                auto* o = reinterpret_cast<InputActionOwner*>(ctx_owner);
-                (*o->tab_complete)();
-            },
-        };
-    };
     struct RegularShortcutOwner {
         decltype(DeleteRangeAt)* delete_range_at;
         decltype(ClearImeCandidate)* clear_ime_candidate;
@@ -3114,90 +3058,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         decltype(ClearSelection)* clear_selection;
         decltype(command_history)* command_history;
         decltype(RepaintPromptAndInput)* repaint_prompt_and_input;
-    };
-    auto BuildRegularImeContext = [](RegularShortcutOwner* owner,
-                                     const ImeCandidateEntry* candidate_entry,
-                                     int candidate_start,
-                                     int candidate_len,
-                                     char* romaji_buffer,
-                                     int romaji_capacity,
-                                     int* romaji_len) {
-        return input::RegularImeActionContext{
-            owner,
-            candidate_entry,
-            candidate_start,
-            candidate_len,
-            romaji_buffer,
-            romaji_capacity,
-            romaji_len,
-            StrLength,
-            [](void* ctx_owner, int start, int len) -> bool {
-                auto* o = reinterpret_cast<RegularShortcutOwner*>(ctx_owner);
-                return (*o->delete_range_at)(start, len);
-            },
-            [](void* ctx_owner) {
-                auto* o = reinterpret_cast<RegularShortcutOwner*>(ctx_owner);
-                (*o->clear_ime_candidate)();
-            },
-        };
-    };
-    auto BuildRegularClearContext = [](RegularShortcutOwner* owner,
-                                       char* command_buffer,
-                                       int command_capacity,
-                                       int* command_len,
-                                       int* cursor_pos,
-                                       int* rendered_len,
-                                       char* romaji_buffer,
-                                       int romaji_capacity,
-                                       int* romaji_len) {
-        return input::RegularClearContext{
-            owner,
-            command_buffer,
-            command_capacity,
-            command_len,
-            cursor_pos,
-            rendered_len,
-            romaji_buffer,
-            romaji_capacity,
-            romaji_len,
-            [](void* ctx_owner) {
-                auto* o = reinterpret_cast<RegularShortcutOwner*>(ctx_owner);
-                o->console->Clear();
-            },
-            [](void* ctx_owner) {
-                auto* o = reinterpret_cast<RegularShortcutOwner*>(ctx_owner);
-                (*o->print_prompt)();
-                *o->input_row = o->console->CursorRow();
-                *o->input_col = o->console->CursorColumn();
-            },
-            [](void* ctx_owner) {
-                auto* o = reinterpret_cast<RegularShortcutOwner*>(ctx_owner);
-                (*o->clear_ime_candidate)();
-            },
-            [](void* ctx_owner) {
-                auto* o = reinterpret_cast<RegularShortcutOwner*>(ctx_owner);
-                (*o->clear_selection)();
-            },
-            [](void* ctx_owner) {
-                auto* o = reinterpret_cast<RegularShortcutOwner*>(ctx_owner);
-                o->command_history->ResetNavigation();
-            },
-        };
-    };
-    auto BuildRegularModeContext = [](RegularShortcutOwner* owner,
-                                      input::RegularShortcutAction mode_action,
-                                      bool* ime_enabled,
-                                      bool* jp_layout) {
-        return input::RegularModeContext{
-            owner,
-            mode_action,
-            ime_enabled,
-            jp_layout,
-            [](void* ctx_owner) {
-                auto* o = reinterpret_cast<RegularShortcutOwner*>(ctx_owner);
-                (*o->repaint_prompt_and_input)();
-            },
-        };
     };
     struct ExtendedExecBundle {
         InputActionOwner owner;
@@ -3332,7 +3192,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         ExtendedExecBundle exec_bundle{};
         BuildExtendedExecBundle(&exec_bundle);
-        const auto action_context = BuildExtendedActionContext(&exec_bundle.owner);
+        const auto action_context = input::BuildExtendedActionContext(&exec_bundle.owner);
         const auto chain_result =
             input::ExecuteExtendedExecChain(exec_plan, action_context, &cursor_pos, command_len);
         if (chain_result == input::ExecChainResult::kHandledNeedsRender) {
@@ -3352,27 +3212,28 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         RegularExecBundle exec_bundle{};
         BuildRegularExecBundle(&exec_bundle);
-        const auto action_context = BuildRegularActionContext(&exec_bundle.action_owner);
-        const auto ime_context = BuildRegularImeContext(&exec_bundle.shortcut_owner,
-                                                        ime_candidate_entry,
-                                                        ime_candidate_start,
-                                                        ime_candidate_len,
-                                                        ime_romaji_buffer,
-                                                        static_cast<int>(sizeof(ime_romaji_buffer)),
-                                                        &ime_romaji_len);
-        const auto clear_context = BuildRegularClearContext(&exec_bundle.shortcut_owner,
-                                                            command_buffer,
-                                                            static_cast<int>(sizeof(command_buffer)),
-                                                            &command_len,
-                                                            &cursor_pos,
-                                                            &rendered_len,
-                                                            ime_romaji_buffer,
-                                                            static_cast<int>(sizeof(ime_romaji_buffer)),
-                                                            &ime_romaji_len);
-        const auto mode_context = BuildRegularModeContext(&exec_bundle.shortcut_owner,
-                                                          exec_plan.mode_action,
-                                                          &g_ime_enabled,
-                                                          &g_jp_layout);
+        const auto action_context = input::BuildRegularActionContext(&exec_bundle.action_owner);
+        const auto ime_context = input::BuildRegularImeContext(&exec_bundle.shortcut_owner,
+                                                               ime_candidate_entry,
+                                                               ime_candidate_start,
+                                                               ime_candidate_len,
+                                                               ime_romaji_buffer,
+                                                               static_cast<int>(sizeof(ime_romaji_buffer)),
+                                                               &ime_romaji_len,
+                                                               StrLength);
+        const auto clear_context = input::BuildRegularClearContext(&exec_bundle.shortcut_owner,
+                                                                   command_buffer,
+                                                                   static_cast<int>(sizeof(command_buffer)),
+                                                                   &command_len,
+                                                                   &cursor_pos,
+                                                                   &rendered_len,
+                                                                   ime_romaji_buffer,
+                                                                   static_cast<int>(sizeof(ime_romaji_buffer)),
+                                                                   &ime_romaji_len);
+        const auto mode_context = input::BuildRegularModeContext(&exec_bundle.shortcut_owner,
+                                                                 exec_plan.mode_action,
+                                                                 &g_ime_enabled,
+                                                                 &g_jp_layout);
         const auto chain_result = input::ExecuteRegularExecChain(exec_plan,
                                                                  ime_context,
                                                                  clear_context,
