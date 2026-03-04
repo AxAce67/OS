@@ -3082,6 +3082,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RenderInputLine();
         RefreshInputLine();
     };
+    auto HandleExecChainResult = [&](input::ExecChainResult chain_result) {
+        if (chain_result == input::ExecChainResult::kHandledNeedsRender) {
+            RenderAndRefreshInput();
+            return true;
+        }
+        if (chain_result == input::ExecChainResult::kHandled) {
+            return true;
+        }
+        return false;
+    };
     auto HandleExtendedKey = [&](uint8_t key) -> bool {
         const input::CandidateNav nav =
             input::DecideCandidateNavOnExtendedKey(key, ime_candidate_active, ime_candidate_entry);
@@ -3115,14 +3125,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         const auto action_context = input::BuildExtendedActionContext(&bundles.extended.owner);
         const auto chain_result =
             input::ExecuteExtendedExecChain(exec_plan, action_context, &cursor_pos, command_len);
-        if (chain_result == input::ExecChainResult::kHandledNeedsRender) {
-            RenderAndRefreshInput();
-            return true;
-        }
-        if (chain_result == input::ExecChainResult::kHandled) {
-            return true;
-        }
-        return false;
+        return HandleExecChainResult(chain_result);
     };
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
@@ -3177,14 +3180,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                                                  action_context,
                                                                  &cursor_pos,
                                                                  command_len);
-        if (chain_result == input::ExecChainResult::kHandledNeedsRender) {
-            RenderAndRefreshInput();
-            return true;
-        }
-        if (chain_result == input::ExecChainResult::kHandled) {
-            return true;
-        }
-        return false;
+        return HandleExecChainResult(chain_result);
     };
 
     while (1) {
