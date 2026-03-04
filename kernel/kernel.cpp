@@ -3084,12 +3084,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RefreshInputLine();
     };
     auto HandleExecChain = [&](auto&& compute_chain_result) -> bool {
-        auto bundles = AcquireRuntimeFlowBundles();
-        const auto chain_result = compute_chain_result(&bundles);
-        if (input::ExecChainNeedsRender(chain_result)) {
-            RenderAndRefreshInput();
-        }
-        return input::ExecChainHandled(chain_result);
+        return input::HandleRuntimeExecChain(AcquireRuntimeFlowBundles,
+                                             RenderAndRefreshInput,
+                                             compute_chain_result);
     };
     auto ExecuteExtendedChainWithContexts = [&](RuntimeFlowBundles* bundles,
                                                 const input::ExtendedExecPlan& exec_plan) {

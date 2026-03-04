@@ -57,6 +57,18 @@ inline bool ExecChainHandled(ExecChainResult result) {
            result == ExecChainResult::kHandledNeedsRender;
 }
 
+template <class TAcquireBundles, class TOnRender, class TComputeChain>
+inline bool HandleRuntimeExecChain(TAcquireBundles&& acquire_bundles,
+                                   TOnRender&& on_render,
+                                   TComputeChain&& compute_chain_result) {
+    auto bundles = acquire_bundles();
+    const auto chain_result = compute_chain_result(&bundles);
+    if (ExecChainNeedsRender(chain_result)) {
+        on_render();
+    }
+    return ExecChainHandled(chain_result);
+}
+
 template <class TRefresh,
           class TCycle, class TBrowseUp, class TBrowseDown,
           class TBackspace, class TDelete, class TTab>
