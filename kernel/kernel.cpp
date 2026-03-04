@@ -2904,14 +2904,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 },
                 ApplyWindowFocus,
                 ClearSelection);
-            if (input::ShouldStopMouseDragging(input::RuntimeMouseDragState{
+            input::StopMouseDraggingIfNeeded(
+                input::RuntimeMouseDragState{
                     dragging_window,
                     prev_buttons,
                     now_buttons,
-                })) {
-                selecting_with_mouse = false;
-                dragging_window = -1;
-            }
+                },
+                input::RuntimeMouseDragStopRefs{
+                    &selecting_with_mouse,
+                    &dragging_window,
+                });
             if (input::IsMouseDraggingActive(input::RuntimeMouseDragState{
                     dragging_window,
                     prev_buttons,

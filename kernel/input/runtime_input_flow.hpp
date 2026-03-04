@@ -258,6 +258,11 @@ struct RuntimeMouseDragRefs {
     int* drag_offset_y;
 };
 
+struct RuntimeMouseDragStopRefs {
+    bool* selecting_with_mouse;
+    int* dragging_window;
+};
+
 struct RuntimeMouseConsoleSelectionRefs {
     bool* selecting_with_mouse;
     int* selection_anchor;
@@ -471,6 +476,18 @@ inline RuntimeMousePointerUpdateResult UpdatePointerPositionFromMouseMessage(
 
 inline bool ShouldStopMouseDragging(const RuntimeMouseDragState& state) {
     return ((state.prev_buttons & 0x01) != 0) && ((state.now_buttons & 0x01) == 0);
+}
+
+inline bool StopMouseDraggingIfNeeded(const RuntimeMouseDragState& state,
+                                      const RuntimeMouseDragStopRefs& refs) {
+    if (!ShouldStopMouseDragging(state) ||
+        refs.selecting_with_mouse == nullptr ||
+        refs.dragging_window == nullptr) {
+        return false;
+    }
+    *refs.selecting_with_mouse = false;
+    *refs.dragging_window = -1;
+    return true;
 }
 
 inline bool IsMouseDraggingActive(const RuntimeMouseDragState& state) {
