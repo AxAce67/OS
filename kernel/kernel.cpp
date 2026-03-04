@@ -2353,6 +2353,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int dragging_window = -1;
     int drag_offset_x = 0;
     int drag_offset_y = 0;
+    constexpr uint64_t kSystemInfoRefreshIntervalTicks = 120;
     uint64_t next_system_info_tick = 0;
     uint64_t last_drag_redraw_tick = 0;
     uint64_t last_pointer_redraw_tick = 0;
@@ -2479,6 +2480,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         layer_manager->Draw(info_content_layer->GetX(), info_content_layer->GetY(), info_content_w, info_content_h);
     };
     RefreshSystemInfo();
+    next_system_info_tick = CurrentTick() + kSystemInfoRefreshIntervalTicks;
 
     auto HasSelection = [&]() {
         return selection_anchor >= 0 && selection_end >= 0 && selection_anchor != selection_end;
@@ -3916,8 +3918,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             last_pointer_redraw_tick = now_tick;
         }
         if (dragging_window < 0 && now_tick >= next_system_info_tick) {
-            RefreshSystemInfo();
-            next_system_info_tick = now_tick + 12;
+            // Reduce periodic UI redraw pressure during normal pointer movement.
+            if (main_queue != nullptr && main_queue->Count() <= 8) {
+                RefreshSystemInfo();
+            }
+            next_system_info_tick = now_tick + kSystemInfoRefreshIntervalTicks;
         }
 
     }
