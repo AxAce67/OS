@@ -53,6 +53,39 @@ int RestoreRomajiFromCandidate(const ImeCandidateEntry* entry,
     return len;
 }
 
+EscCancelState BuildEscCancelState(const ImeCandidateEntry* entry,
+                                   int candidate_start,
+                                   int candidate_len,
+                                   char* romaji_buffer,
+                                   int romaji_capacity,
+                                   int (*str_length)(const char*)) {
+    EscCancelState out{};
+    out.delete_start = candidate_start;
+    out.delete_len = candidate_len;
+    out.cursor_after_delete = candidate_start;
+    out.restored_romaji_len = RestoreRomajiFromCandidate(entry, romaji_buffer, romaji_capacity, str_length);
+    out.valid = (entry != nullptr);
+    return out;
+}
+
+void ResetForCtrlL(char* command_buffer,
+                   int command_capacity,
+                   int* command_len,
+                   int* cursor_pos,
+                   int* rendered_len,
+                   char* romaji_buffer,
+                   int romaji_capacity,
+                   int* romaji_len) {
+    ResetLineForClear(command_buffer,
+                      command_capacity,
+                      command_len,
+                      cursor_pos,
+                      rendered_len,
+                      romaji_buffer,
+                      romaji_capacity,
+                      romaji_len);
+}
+
 void ApplyImeModeState(const ImeModeState& mode,
                        bool* ime_enabled,
                        bool* jp_layout) {
@@ -93,6 +126,43 @@ bool ExecuteRegularNeutralAction(RegularExecKind kind,
         return false;
     default:
         return false;
+    }
+}
+
+ExtendedCursorMoveResult ExecuteExtendedCursorMoveAction(ExtendedExecKind kind,
+                                                         int* cursor_pos,
+                                                         int command_len) {
+    ExtendedCursorMoveResult out{false, false};
+    if (cursor_pos == nullptr) {
+        return out;
+    }
+    switch (kind) {
+    case ExtendedExecKind::kMoveCursorLeft:
+        out.handled = true;
+        if (*cursor_pos > 0) {
+            --(*cursor_pos);
+            out.should_render = true;
+        }
+        return out;
+    case ExtendedExecKind::kMoveCursorRight:
+        out.handled = true;
+        if (*cursor_pos < command_len) {
+            ++(*cursor_pos);
+            out.should_render = true;
+        }
+        return out;
+    case ExtendedExecKind::kMoveCursorStart:
+        out.handled = true;
+        *cursor_pos = 0;
+        out.should_render = true;
+        return out;
+    case ExtendedExecKind::kMoveCursorEnd:
+        out.handled = true;
+        *cursor_pos = command_len;
+        out.should_render = true;
+        return out;
+    default:
+        return out;
     }
 }
 

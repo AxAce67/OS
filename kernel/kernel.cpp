@@ -3078,30 +3078,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         case input::ExtendedExecKind::kDelete:
             DeleteAtCursor();
             return true;
-        case input::ExtendedExecKind::kMoveCursorLeft:
-            if (cursor_pos > 0) {
-                --cursor_pos;
-                RenderInputLine();
-                RefreshInputLine();
-            }
-            return true;
-        case input::ExtendedExecKind::kMoveCursorRight:
-            if (cursor_pos < command_len) {
-                ++cursor_pos;
-                RenderInputLine();
-                RefreshInputLine();
-            }
-            return true;
-        case input::ExtendedExecKind::kMoveCursorStart:
-            cursor_pos = 0;
-            RenderInputLine();
-            RefreshInputLine();
-            return true;
-        case input::ExtendedExecKind::kMoveCursorEnd:
-            cursor_pos = command_len;
-            RenderInputLine();
-            RefreshInputLine();
-            return true;
         case input::ExtendedExecKind::kHistoryUp:
             BrowseHistoryUp();
             return true;
@@ -3109,6 +3085,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             BrowseHistoryDown();
             return true;
         default:
+            const auto cursor_move =
+                input::ExecuteExtendedCursorMoveAction(exec_plan.kind, &cursor_pos, command_len);
+            if (cursor_move.handled) {
+                if (cursor_move.should_render) {
+                    RenderInputLine();
+                    RefreshInputLine();
+                }
+                return true;
+            }
             return false;
         }
     };
