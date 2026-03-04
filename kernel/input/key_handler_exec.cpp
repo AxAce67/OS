@@ -156,6 +156,40 @@ RegularImeExecResult ExecuteRegularImeActionWithContext(RegularExecKind kind,
     }
 }
 
+bool ExecuteRegularClearActionWithContext(RegularExecKind kind,
+                                          const RegularClearContext& context) {
+    if (kind != RegularExecKind::kClearScreenAndResetInput) {
+        return false;
+    }
+    if (context.command_buffer == nullptr ||
+        context.command_len == nullptr ||
+        context.cursor_pos == nullptr ||
+        context.rendered_len == nullptr ||
+        context.romaji_buffer == nullptr ||
+        context.romaji_len == nullptr ||
+        context.clear_console == nullptr ||
+        context.print_prompt_and_capture_origin == nullptr ||
+        context.clear_candidate == nullptr ||
+        context.clear_selection == nullptr ||
+        context.reset_history_navigation == nullptr) {
+        return false;
+    }
+    context.clear_console(context.owner);
+    context.print_prompt_and_capture_origin(context.owner);
+    ResetForCtrlL(context.command_buffer,
+                  context.command_capacity,
+                  context.command_len,
+                  context.cursor_pos,
+                  context.rendered_len,
+                  context.romaji_buffer,
+                  context.romaji_capacity,
+                  context.romaji_len);
+    context.clear_candidate(context.owner);
+    context.clear_selection(context.owner);
+    context.reset_history_navigation(context.owner);
+    return true;
+}
+
 bool ExecuteRegularActionWithContext(RegularExecKind kind,
                                      const RegularActionContext& context) {
     switch (kind) {

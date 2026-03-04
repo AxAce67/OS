@@ -78,6 +78,26 @@ RegularImeExecResult ExecuteRegularImeActionWithContext(RegularExecKind kind,
                                                         const RegularImeActionContext& context,
                                                         int* cursor_pos);
 
+struct RegularClearContext {
+    void* owner;
+    char* command_buffer;
+    int command_capacity;
+    int* command_len;
+    int* cursor_pos;
+    int* rendered_len;
+    char* romaji_buffer;
+    int romaji_capacity;
+    int* romaji_len;
+    void (*clear_console)(void* owner);
+    void (*print_prompt_and_capture_origin)(void* owner);
+    void (*clear_candidate)(void* owner);
+    void (*clear_selection)(void* owner);
+    void (*reset_history_navigation)(void* owner);
+};
+
+bool ExecuteRegularClearActionWithContext(RegularExecKind kind,
+                                          const RegularClearContext& context);
+
 struct RegularActionContext {
     void* owner;
     bool (*cycle_candidate)(void* owner, int direction);

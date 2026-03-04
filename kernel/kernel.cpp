@@ -3230,6 +3230,60 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RenderAndRefreshInput();
                 return true;
             }
+            struct RegularClearOwner {
+                Console* console;
+                int* input_row;
+                int* input_col;
+                decltype(PrintPrompt)* print_prompt;
+                decltype(ClearImeCandidate)* clear_ime_candidate;
+                decltype(ClearSelection)* clear_selection;
+                decltype(command_history)* command_history;
+            } clear_owner{
+                console,
+                &input_row,
+                &input_col,
+                &PrintPrompt,
+                &ClearImeCandidate,
+                &ClearSelection,
+                &command_history,
+            };
+            const input::RegularClearContext clear_context{
+                &clear_owner,
+                command_buffer,
+                static_cast<int>(sizeof(command_buffer)),
+                &command_len,
+                &cursor_pos,
+                &rendered_len,
+                ime_romaji_buffer,
+                static_cast<int>(sizeof(ime_romaji_buffer)),
+                &ime_romaji_len,
+                [](void* owner) {
+                    auto* o = reinterpret_cast<RegularClearOwner*>(owner);
+                    o->console->Clear();
+                },
+                [](void* owner) {
+                    auto* o = reinterpret_cast<RegularClearOwner*>(owner);
+                    (*o->print_prompt)();
+                    *o->input_row = o->console->CursorRow();
+                    *o->input_col = o->console->CursorColumn();
+                },
+                [](void* owner) {
+                    auto* o = reinterpret_cast<RegularClearOwner*>(owner);
+                    (*o->clear_ime_candidate)();
+                },
+                [](void* owner) {
+                    auto* o = reinterpret_cast<RegularClearOwner*>(owner);
+                    (*o->clear_selection)();
+                },
+                [](void* owner) {
+                    auto* o = reinterpret_cast<RegularClearOwner*>(owner);
+                    o->command_history->ResetNavigation();
+                },
+            };
+            if (input::ExecuteRegularClearActionWithContext(exec_plan.kind, clear_context)) {
+                RenderAndRefreshInput();
+                return true;
+            }
             switch (exec_plan.kind) {
             case input::RegularExecKind::kApplyImeModeAndRepaint: {
                 const auto mode = input::ApplyImeModeAction(exec_plan.mode_action, g_ime_enabled, g_jp_layout);
@@ -3237,24 +3291,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RepaintPromptAndInput();
                 return true;
             }
-            case input::RegularExecKind::kClearScreenAndResetInput:
-                console->Clear();
-                PrintPrompt();
-                input_row = console->CursorRow();
-                input_col = console->CursorColumn();
-                input::ResetForCtrlL(command_buffer,
-                                     static_cast<int>(sizeof(command_buffer)),
-                                     &command_len,
-                                     &cursor_pos,
-                                     &rendered_len,
-                                     ime_romaji_buffer,
-                                     static_cast<int>(sizeof(ime_romaji_buffer)),
-                                     &ime_romaji_len);
-                ClearImeCandidate();
-                ClearSelection();
-                command_history.ResetNavigation();
-                RenderAndRefreshInput();
-                return true;
             default:
                 if (input::ExecuteRegularActionWithContext(exec_plan.kind, action_context)) {
                     return true;
