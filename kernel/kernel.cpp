@@ -2852,24 +2852,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         {
             const int frame_x = term_frame_layer->GetX();
             const int frame_y = term_frame_layer->GetY();
-            const int local_frame_x = pointer_x - frame_x;
-            const int local_frame_y = pointer_y - frame_y;
-            const bool on_term_title =
-                local_frame_x >= 0 && local_frame_x < term_frame_w &&
-                local_frame_y >= 0 && local_frame_y < term_title_h;
-            const bool in_term_frame =
-                local_frame_x >= 0 && local_frame_x < term_frame_w &&
-                local_frame_y >= 0 && local_frame_y < term_frame_h;
+            const auto term_hit = input::ComputeWindowHitTest(
+                pointer_x, pointer_y, frame_x, frame_y, term_frame_w, term_frame_h, term_title_h);
             const int info_x = info_frame_layer->GetX();
             const int info_y = info_frame_layer->GetY();
-            const int local_info_x = pointer_x - info_x;
-            const int local_info_y = pointer_y - info_y;
-            const bool on_info_title =
-                local_info_x >= 0 && local_info_x < info_frame_w &&
-                local_info_y >= 0 && local_info_y < info_title_h;
-            const bool in_info_frame =
-                local_info_x >= 0 && local_info_x < info_frame_w &&
-                local_info_y >= 0 && local_info_y < info_frame_h;
+            const auto info_hit = input::ComputeWindowHitTest(
+                pointer_x, pointer_y, info_x, info_y, info_frame_w, info_frame_h, info_title_h);
             auto ApplyWindowFocus = [&](int which) {
                 if (which == active_window) {
                     return;
@@ -2905,32 +2893,21 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 focus_visual_dirty = true;
             };
             if ((pressed & 0x01) != 0) {
-                int hit_window = -1;
-                if (active_window == 0) {
-                    if (in_term_frame) {
-                        hit_window = 0;
-                    } else if (in_info_frame) {
-                        hit_window = 1;
-                    }
-                } else {
-                    if (in_info_frame) {
-                        hit_window = 1;
-                    } else if (in_term_frame) {
-                        hit_window = 0;
-                    }
-                }
+                const int hit_window = input::DecideMouseHitWindow(active_window,
+                                                                   term_hit.in_frame,
+                                                                   info_hit.in_frame);
                 if (hit_window >= 0) {
                     ApplyWindowFocus(hit_window);
                 }
-                if (hit_window == 0 && on_term_title) {
+                if (hit_window == 0 && term_hit.on_title) {
                     dragging_window = 0;
-                    drag_offset_x = local_frame_x;
-                    drag_offset_y = local_frame_y;
+                    drag_offset_x = term_hit.local_x;
+                    drag_offset_y = term_hit.local_y;
                     ClearSelection();
-                } else if (hit_window == 1 && on_info_title) {
+                } else if (hit_window == 1 && info_hit.on_title) {
                     dragging_window = 1;
-                    drag_offset_x = local_info_x;
-                    drag_offset_y = local_info_y;
+                    drag_offset_x = info_hit.local_x;
+                    drag_offset_y = info_hit.local_y;
                     ClearSelection();
                 }
             }

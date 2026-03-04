@@ -212,6 +212,13 @@ struct RuntimeMouseDragState {
     uint8_t now_buttons;
 };
 
+struct RuntimeWindowHitTestResult {
+    int local_x;
+    int local_y;
+    bool in_frame;
+    bool on_title;
+};
+
 template <class TCandidateEntry>
 struct RuntimeImeCandidateStartRefsT {
     char* romaji_buffer;
@@ -419,6 +426,48 @@ inline bool ShouldStopMouseDragging(const RuntimeMouseDragState& state) {
 
 inline bool IsMouseDraggingActive(const RuntimeMouseDragState& state) {
     return (state.now_buttons & 0x01) != 0 && state.dragging_window >= 0;
+}
+
+inline RuntimeWindowHitTestResult ComputeWindowHitTest(int pointer_x,
+                                                       int pointer_y,
+                                                       int frame_x,
+                                                       int frame_y,
+                                                       int frame_w,
+                                                       int frame_h,
+                                                       int title_h) {
+    const int local_x = pointer_x - frame_x;
+    const int local_y = pointer_y - frame_y;
+    const bool in_frame = local_x >= 0 && local_x < frame_w &&
+                          local_y >= 0 && local_y < frame_h;
+    const bool on_title = local_x >= 0 && local_x < frame_w &&
+                          local_y >= 0 && local_y < title_h;
+    return RuntimeWindowHitTestResult{
+        local_x,
+        local_y,
+        in_frame,
+        on_title,
+    };
+}
+
+inline int DecideMouseHitWindow(int active_window,
+                                bool in_term_frame,
+                                bool in_info_frame) {
+    if (active_window == 0) {
+        if (in_term_frame) {
+            return 0;
+        }
+        if (in_info_frame) {
+            return 1;
+        }
+        return -1;
+    }
+    if (in_info_frame) {
+        return 1;
+    }
+    if (in_term_frame) {
+        return 0;
+    }
+    return -1;
 }
 
 template <class TQueueCount, class TQueuePeek, class TQueuePop>
