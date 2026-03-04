@@ -213,4 +213,5 @@ if ($hasOvmf) {
 $qemuArgs += @("-drive", "format=raw,file=fat:rw:disk")
 $qemuArgs = $qemuArgs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
 
-Start-Process -FilePath $qemu -ArgumentList $qemuArgs | Out-Null
+# Foreground run: keep terminal attached so behavior is obvious.
+& $qemu @qemuArgs
