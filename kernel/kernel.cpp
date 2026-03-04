@@ -3315,72 +3315,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RenderInputLine();
         RefreshInputLine();
     };
-    auto ExecuteRegularShortcutExecs = [&](const input::RegularExecPlan& exec_plan,
-                                           const input::RegularActionContext& action_context,
-                                           RegularShortcutOwner* shortcut_owner,
-                                           auto&& render_and_refresh_input) -> bool {
-        const auto ime_context = BuildRegularImeContext(shortcut_owner,
-                                                        ime_candidate_entry,
-                                                        ime_candidate_start,
-                                                        ime_candidate_len,
-                                                        ime_romaji_buffer,
-                                                        static_cast<int>(sizeof(ime_romaji_buffer)),
-                                                        &ime_romaji_len);
-        const auto ime_exec_result =
-            input::ExecuteRegularImeActionWithContext(exec_plan.kind, ime_context, &cursor_pos);
-        if (ime_exec_result == input::RegularImeExecResult::kFailed) {
-            return false;
-        }
-        if (ime_exec_result == input::RegularImeExecResult::kHandledNeedsRender) {
-            render_and_refresh_input();
-            return true;
-        }
-        const auto clear_context = BuildRegularClearContext(shortcut_owner,
-                                                            command_buffer,
-                                                            static_cast<int>(sizeof(command_buffer)),
-                                                            &command_len,
-                                                            &cursor_pos,
-                                                            &rendered_len,
-                                                            ime_romaji_buffer,
-                                                            static_cast<int>(sizeof(ime_romaji_buffer)),
-                                                            &ime_romaji_len);
-        if (input::ExecuteRegularClearActionWithContext(exec_plan.kind, clear_context)) {
-            render_and_refresh_input();
-            return true;
-        }
-        const auto mode_context = BuildRegularModeContext(shortcut_owner,
-                                                          exec_plan.mode_action,
-                                                          &g_ime_enabled,
-                                                          &g_jp_layout);
-        if (input::ExecuteRegularModeActionWithContext(exec_plan.kind, mode_context)) {
-            return true;
-        }
-        if (input::ExecuteRegularActionWithContext(exec_plan.kind, action_context)) {
-            return true;
-        }
-        if (input::ExecuteRegularNeutralAction(exec_plan.kind, &cursor_pos, command_len)) {
-            render_and_refresh_input();
-            return true;
-        }
-        return false;
-    };
-    auto ExecuteExtendedShortcutExecs = [&](const input::ExtendedExecPlan& exec_plan,
-                                            const input::ExtendedActionContext& action_context,
-                                            auto&& render_and_refresh_input) -> bool {
-        if (input::ExecuteExtendedActionWithContext(exec_plan.kind, action_context)) {
-            return true;
-        }
-        const auto cursor_move =
-            input::ExecuteExtendedCursorMoveAction(exec_plan.kind, &cursor_pos, command_len);
-        if (!cursor_move.handled) {
-            return false;
-        }
-        if (cursor_move.should_render) {
-            render_and_refresh_input();
-        }
-        return true;
-    };
-
     auto HandleExtendedKey = [&](uint8_t key) -> bool {
         const input::CandidateNav nav =
             input::DecideCandidateNavOnExtendedKey(key, ime_candidate_active, ime_candidate_entry);
@@ -3399,7 +3333,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         ExtendedExecBundle exec_bundle{};
         BuildExtendedExecBundle(&exec_bundle);
         const auto action_context = BuildExtendedActionContext(&exec_bundle.owner);
-        if (ExecuteExtendedShortcutExecs(exec_plan, action_context, RenderAndRefreshInput)) {
+        const auto chain_result =
+            input::ExecuteExtendedExecChain(exec_plan, action_context, &cursor_pos, command_len);
+        if (chain_result == input::ExecChainResult::kHandledNeedsRender) {
+            RenderAndRefreshInput();
+            return true;
+        }
+        if (chain_result == input::ExecChainResult::kHandled) {
             return true;
         }
         return false;
@@ -3413,10 +3353,38 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RegularExecBundle exec_bundle{};
         BuildRegularExecBundle(&exec_bundle);
         const auto action_context = BuildRegularActionContext(&exec_bundle.action_owner);
-        if (ExecuteRegularShortcutExecs(exec_plan,
-                                        action_context,
-                                        &exec_bundle.shortcut_owner,
-                                        RenderAndRefreshInput)) {
+        const auto ime_context = BuildRegularImeContext(&exec_bundle.shortcut_owner,
+                                                        ime_candidate_entry,
+                                                        ime_candidate_start,
+                                                        ime_candidate_len,
+                                                        ime_romaji_buffer,
+                                                        static_cast<int>(sizeof(ime_romaji_buffer)),
+                                                        &ime_romaji_len);
+        const auto clear_context = BuildRegularClearContext(&exec_bundle.shortcut_owner,
+                                                            command_buffer,
+                                                            static_cast<int>(sizeof(command_buffer)),
+                                                            &command_len,
+                                                            &cursor_pos,
+                                                            &rendered_len,
+                                                            ime_romaji_buffer,
+                                                            static_cast<int>(sizeof(ime_romaji_buffer)),
+                                                            &ime_romaji_len);
+        const auto mode_context = BuildRegularModeContext(&exec_bundle.shortcut_owner,
+                                                          exec_plan.mode_action,
+                                                          &g_ime_enabled,
+                                                          &g_jp_layout);
+        const auto chain_result = input::ExecuteRegularExecChain(exec_plan,
+                                                                 ime_context,
+                                                                 clear_context,
+                                                                 mode_context,
+                                                                 action_context,
+                                                                 &cursor_pos,
+                                                                 command_len);
+        if (chain_result == input::ExecChainResult::kHandledNeedsRender) {
+            RenderAndRefreshInput();
+            return true;
+        }
+        if (chain_result == input::ExecChainResult::kHandled) {
             return true;
         }
         return false;

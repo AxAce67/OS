@@ -41,5 +41,52 @@ ExtendedPlanPrepResult PrepareExtendedExecPlan(uint8_t key,
     return out;
 }
 
-}  // namespace input
+ExecChainResult ExecuteRegularExecChain(const RegularExecPlan& plan,
+                                        const RegularImeActionContext& ime_context,
+                                        const RegularClearContext& clear_context,
+                                        const RegularModeContext& mode_context,
+                                        const RegularActionContext& action_context,
+                                        int* cursor_pos,
+                                        int command_len) {
+    const auto ime_exec_result =
+        ExecuteRegularImeActionWithContext(plan.kind, ime_context, cursor_pos);
+    if (ime_exec_result == RegularImeExecResult::kFailed) {
+        return ExecChainResult::kFailed;
+    }
+    if (ime_exec_result == RegularImeExecResult::kHandledNeedsRender) {
+        return ExecChainResult::kHandledNeedsRender;
+    }
+    if (ExecuteRegularClearActionWithContext(plan.kind, clear_context)) {
+        return ExecChainResult::kHandledNeedsRender;
+    }
+    if (ExecuteRegularModeActionWithContext(plan.kind, mode_context)) {
+        return ExecChainResult::kHandled;
+    }
+    if (ExecuteRegularActionWithContext(plan.kind, action_context)) {
+        return ExecChainResult::kHandled;
+    }
+    if (ExecuteRegularNeutralAction(plan.kind, cursor_pos, command_len)) {
+        return ExecChainResult::kHandledNeedsRender;
+    }
+    return ExecChainResult::kNotHandled;
+}
 
+ExecChainResult ExecuteExtendedExecChain(const ExtendedExecPlan& plan,
+                                         const ExtendedActionContext& action_context,
+                                         int* cursor_pos,
+                                         int command_len) {
+    if (ExecuteExtendedActionWithContext(plan.kind, action_context)) {
+        return ExecChainResult::kHandled;
+    }
+    const auto cursor_move =
+        ExecuteExtendedCursorMoveAction(plan.kind, cursor_pos, command_len);
+    if (!cursor_move.handled) {
+        return ExecChainResult::kNotHandled;
+    }
+    if (cursor_move.should_render) {
+        return ExecChainResult::kHandledNeedsRender;
+    }
+    return ExecChainResult::kHandled;
+}
+
+}  // namespace input
