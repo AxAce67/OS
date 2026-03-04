@@ -3930,6 +3930,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             FlushPendingDrag();
             // During drag, use a single cursor update path after window redraw to avoid flicker.
             mouse_cursor->SetPosition(pointer_logical_x - 1, pointer_logical_y - 1);
+            // If position is unchanged, SetPosition may early-return; force top-most redraw.
+            mouse_cursor->Redraw();
             pointer_visual_dirty = false;
             last_pointer_redraw_tick = now_tick;
             drag_visual_dirty = false;
