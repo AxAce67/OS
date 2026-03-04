@@ -2830,26 +2830,31 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         DrawFrameTitle(info_frame_window, info_frame_border, info_title_h, info_frame_w, "System", focused);
         info_frame_window->FillRectangle(info_frame_w - 20, 6, 12, 12, {104, 108, 126});
     };
-    auto ApplyWindowFocus = [&](int which) {
-        if (which == active_window) {
-            return;
-        }
-        active_window = which;
+    auto ApplyFocusLayerOrder = [&](int which) {
         if (which == 0) {
             layer_manager->UpDown(info_frame_layer, 2);
             layer_manager->UpDown(info_content_layer, 3);
             layer_manager->UpDown(term_frame_layer, 4);
             layer_manager->UpDown(term_console_layer, 5);
-            SetTerminalFocusVisual(true);
-            SetSystemFocusVisual(false);
-        } else {
-            layer_manager->UpDown(term_frame_layer, 2);
-            layer_manager->UpDown(term_console_layer, 3);
-            layer_manager->UpDown(info_frame_layer, 4);
-            layer_manager->UpDown(info_content_layer, 5);
-            SetTerminalFocusVisual(false);
-            SetSystemFocusVisual(true);
+            return;
         }
+        layer_manager->UpDown(term_frame_layer, 2);
+        layer_manager->UpDown(term_console_layer, 3);
+        layer_manager->UpDown(info_frame_layer, 4);
+        layer_manager->UpDown(info_content_layer, 5);
+    };
+    auto ApplyFocusVisualState = [&](int which) {
+        const bool terminal_focused = (which == 0);
+        SetTerminalFocusVisual(terminal_focused);
+        SetSystemFocusVisual(!terminal_focused);
+    };
+    auto ApplyWindowFocus = [&](int which) {
+        if (which == active_window) {
+            return;
+        }
+        active_window = which;
+        ApplyFocusLayerOrder(which);
+        ApplyFocusVisualState(which);
         focus_visual_dirty = true;
     };
     auto ScrollConsoleUp = [&](int lines) { console->ScrollUp(lines); };
