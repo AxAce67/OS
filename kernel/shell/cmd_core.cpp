@@ -12,6 +12,7 @@ extern bool g_jp_layout;
 extern bool g_ime_enabled;
 extern bool g_boot_mouse_auto_enabled;
 extern bool g_xhci_hid_decode_keyboard;
+extern bool g_has_halfwidth_kana_font;
 extern ShellPair g_vars[16];
 extern ShellPair g_aliases[16];
 extern char g_cwd[96];
@@ -267,6 +268,8 @@ bool ExecuteInputStatCommand() {
     console->Print(g_jp_layout ? "jp" : "us");
     console->Print(" ime=");
     console->Print(g_ime_enabled ? "on" : "off");
+    console->Print(" ime.font=");
+    console->Print(g_has_halfwidth_kana_font ? "halfkana" : "ascii");
     console->Print(" hid.kbd=");
     console->Print(g_xhci_hid_decode_keyboard ? "on" : "off");
     console->Print("\n");

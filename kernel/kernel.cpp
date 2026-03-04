@@ -110,6 +110,7 @@ ShellFile g_files[64];
 bool g_key_repeat_enabled = true;
 bool g_jp_layout = true;
 bool g_ime_enabled = false;
+bool g_has_halfwidth_kana_font = false;
 uint64_t g_keyboard_irq_count = 0;
 uint8_t g_keyboard_last_raw = 0;
 uint8_t g_keyboard_last_key = 0;
@@ -526,6 +527,22 @@ bool HandleXHCIAutoPollOnIdle() {
 
 bool IsPrintableAscii(char c) {
     return c >= 0x20 && c <= 0x7e;
+}
+
+bool HasHalfwidthKanaFont() {
+    for (int ch = 0xA1; ch <= 0xDF; ++ch) {
+        bool nonzero = false;
+        for (int row = 0; row < 16; ++row) {
+            if (kFont[ch][row] != 0) {
+                nonzero = true;
+                break;
+            }
+        }
+        if (!nonzero) {
+            return false;
+        }
+    }
+    return true;
 }
 
 char ToLowerAscii(char c) {
@@ -1320,7 +1337,11 @@ void PrintPrompt() {
     console->Print("os:");
     console->Print(g_cwd);
     if (g_jp_layout) {
-        console->Print(g_ime_enabled ? "[jp-ime]" : "[jp]");
+        if (g_ime_enabled) {
+            console->Print(g_has_halfwidth_kana_font ? "[jp-ime]" : "[jp-ime-ascii]");
+        } else {
+            console->Print("[jp]");
+        }
     } else {
         console->Print(g_ime_enabled ? "[us-ime]" : "[us]");
     }
@@ -1610,11 +1631,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     console->Print("Initializing LAPIC timer...\n");
     InitializeLAPICTimer();
 
+    g_has_halfwidth_kana_font = HasHalfwidthKanaFont();
+
     console->Print("Waiting for hardware interrupts (Keyboard/Mouse/LAPIC Timer)...\n");
     console->Print("Input mode: layout=");
     console->Print(g_jp_layout ? "jp" : "us");
     console->Print(" ime=");
     console->Print(g_ime_enabled ? "on" : "off");
+    console->Print(" ime.font=");
+    console->Print(g_has_halfwidth_kana_font ? "halfkana" : "ascii-fallback");
     console->Print("\n");
     PrintPrompt();
 
@@ -2422,7 +2447,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 if (ch != 0) {
                     EnsureLiveConsole();
                     bool full_refresh = false;
-                    if (g_ime_enabled && g_jp_layout) {
+                    if (g_ime_enabled && g_jp_layout && g_has_halfwidth_kana_font) {
                         char lower = ToLowerAscii(ch);
                         const bool is_alpha = (lower >= 'a' && lower <= 'z');
                         if (is_alpha) {
