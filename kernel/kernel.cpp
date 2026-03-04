@@ -3302,16 +3302,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             if (input::ExecuteRegularModeActionWithContext(exec_plan.kind, mode_context)) {
                 return true;
             }
-            switch (exec_plan.kind) {
-            default:
-                if (input::ExecuteRegularActionWithContext(exec_plan.kind, action_context)) {
-                    return true;
-                }
-                if (input::ExecuteRegularNeutralAction(exec_plan.kind, &cursor_pos, command_len)) {
-                    RenderAndRefreshInput();
-                    return true;
-                }
-                break;
+            if (input::ExecuteRegularActionWithContext(exec_plan.kind, action_context)) {
+                return true;
+            }
+            if (input::ExecuteRegularNeutralAction(exec_plan.kind, &cursor_pos, command_len)) {
+                RenderAndRefreshInput();
+                return true;
             }
         }
         return false;
