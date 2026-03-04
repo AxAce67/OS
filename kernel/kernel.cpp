@@ -2413,6 +2413,22 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RenderInputLine();
         RefreshInputLine();
     };
+    auto CycleImeCandidate = [&](int delta) -> bool {
+        if (!ime_candidate_active || ime_candidate_entry == nullptr || ime_candidate_entry->count <= 0) {
+            return false;
+        }
+        int next = ime_candidate_index + delta;
+        const int count = ime_candidate_entry->count;
+        while (next < 0) {
+            next += count;
+        }
+        while (next >= count) {
+            next -= count;
+        }
+        ime_candidate_index = next;
+        ReplaceImeCandidateText();
+        return true;
+    };
 
     auto FlushImeRomaji = [&](bool finalize) -> bool {
         if (ime_romaji_len <= 0) {
@@ -2542,6 +2558,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleExtendedKey = [&](uint8_t key) -> bool {
+        if (ime_candidate_active && ime_candidate_entry != nullptr) {
+            if (key == 0x48) { // Arrow Up
+                EnsureLiveConsole();
+                return CycleImeCandidate(-1);
+            }
+            if (key == 0x50) { // Arrow Down
+                EnsureLiveConsole();
+                return CycleImeCandidate(1);
+            }
+        }
         if (g_ime_enabled && ime_romaji_len > 0) {
             FlushImeRomaji(true);
         }
@@ -2705,6 +2731,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 FlushImeRomaji(true);
             }
             EnsureLiveConsole();
+            if (CycleImeCandidate(-1)) {
+                return true;
+            }
             BrowseHistoryUp();
             return true;
         }
@@ -2724,6 +2753,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 FlushImeRomaji(true);
             }
             EnsureLiveConsole();
+            if (CycleImeCandidate(1)) {
+                return true;
+            }
             BrowseHistoryDown();
             return true;
         }

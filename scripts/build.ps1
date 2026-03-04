@@ -1,11 +1,16 @@
 # build.ps1
 # WindowsネイティブでのUEFI（PE32+）ビルドスクリプト
+param(
+    [switch]$NoRun
+)
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
 
-Write-Host "Stopping existing QEMU processes..." -ForegroundColor Yellow
-Stop-Process -Name qemu-system-x86_64 -Force -ErrorAction SilentlyContinue
+if (-Not $NoRun) {
+    Write-Host "Stopping existing QEMU processes..." -ForegroundColor Yellow
+    Stop-Process -Name qemu-system-x86_64 -Force -ErrorAction SilentlyContinue
+}
 
 # 1. コンパイラとリンカのパス（LLVM）
 $clang = "C:\Program Files\LLVM\bin\clang.exe"
@@ -137,6 +142,11 @@ Copy-Item "main.efi" -Destination "disk\EFI\BOOT\BOOTX64.EFI"   # ブートロ�
 Copy-Item "kernel.elf" -Destination "disk\kernel.elf"           # カーネル本体 (ELF)
 if (Test-Path "ime.dic") {
     Copy-Item "ime.dic" -Destination "disk\ime.dic"
+}
+
+if ($NoRun) {
+    Write-Host "Build completed. (NoRun mode: QEMU launch skipped)" -ForegroundColor Green
+    exit 0
 }
 
 Write-Host "Starting QEMU..." -ForegroundColor Cyan
