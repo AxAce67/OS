@@ -206,6 +206,12 @@ enum class RuntimeMousePointerUpdateResult : uint8_t {
     kIgnoredRelative,
 };
 
+struct RuntimeMouseDragState {
+    int dragging_window;
+    uint8_t prev_buttons;
+    uint8_t now_buttons;
+};
+
 template <class TCandidateEntry>
 struct RuntimeImeCandidateStartRefsT {
     char* romaji_buffer;
@@ -405,6 +411,14 @@ inline RuntimeMousePointerUpdateResult UpdatePointerPositionFromMouseMessage(
         *refs.last_pointer_move_tick = now_tick;
     }
     return RuntimeMousePointerUpdateResult::kHandled;
+}
+
+inline bool ShouldStopMouseDragging(const RuntimeMouseDragState& state) {
+    return ((state.prev_buttons & 0x01) != 0) && ((state.now_buttons & 0x01) == 0);
+}
+
+inline bool IsMouseDraggingActive(const RuntimeMouseDragState& state) {
+    return (state.now_buttons & 0x01) != 0 && state.dragging_window >= 0;
 }
 
 template <class TQueueCount, class TQueuePeek, class TQueuePop>

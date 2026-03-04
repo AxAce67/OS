@@ -2934,11 +2934,19 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     ClearSelection();
                 }
             }
-            if (((prev_buttons & 0x01) != 0) && ((now_buttons & 0x01) == 0)) {
+            if (input::ShouldStopMouseDragging(input::RuntimeMouseDragState{
+                    dragging_window,
+                    prev_buttons,
+                    now_buttons,
+                })) {
                 selecting_with_mouse = false;
                 dragging_window = -1;
             }
-            if ((now_buttons & 0x01) != 0 && dragging_window >= 0) {
+            if (input::IsMouseDraggingActive(input::RuntimeMouseDragState{
+                    dragging_window,
+                    prev_buttons,
+                    now_buttons,
+                })) {
                 if (dragging_window == 0) {
                     int new_frame_x = pointer_x - drag_offset_x;
                     int new_frame_y = pointer_y - drag_offset_y;
