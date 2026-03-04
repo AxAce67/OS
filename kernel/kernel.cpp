@@ -2933,6 +2933,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             command_len
         );
     };
+    auto ScrollConsoleUp = [&](int lines) { console->ScrollUp(lines); };
+    auto ScrollConsoleDown = [&](int lines) { console->ScrollDown(lines); };
 
     auto HandleMouseMessage = [&](const Message& msg) {
         input::RuntimeMouseMessageContext mouse_context{};
@@ -2951,8 +2953,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             EnsureLiveConsole,
             RenderInputLine,
             RefreshInputLine,
-            [&](int lines) { console->ScrollUp(lines); },
-            [&](int lines) { console->ScrollDown(lines); },
+            ScrollConsoleUp,
+            ScrollConsoleDown,
             RefreshConsole);
     };
 
@@ -3150,6 +3152,26 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             &ime_romaji_len,
         };
     };
+    auto ResolveImeCandidateEntryFromRomaji = [&](const char* romaji,
+                                                   int romaji_len,
+                                                   char* keybuf,
+                                                   int keybuf_capacity) {
+        return input::ResolveCandidateEntryFromRomaji(
+            romaji,
+            romaji_len,
+            keybuf,
+            keybuf_capacity,
+            ToLowerAscii,
+            FindImeCandidateEntry);
+    };
+    auto StartImeCandidateSessionForEntry = [&](const ImeCandidateEntry* entry) {
+        input::StartImeCandidateSession(
+            entry, cursor_pos, ime_candidate_source_keys,
+            FindBestImeCandidateIndex(entry),
+            &ime_candidate_index, &ime_candidate_start, &ime_candidate_len,
+            &ime_candidate_active,
+            CopyString);
+    };
     auto HandleKeyboardMessage = [&](const Message& msg) {
         const auto enter_refs = BuildEnterCommandRefs();
         const auto reset_refs = BuildCommandResetRefs();
@@ -3170,27 +3192,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             FlushImeRomaji,
             RenderInputLine,
             RefreshInputLine,
-            [&](const char* romaji, int romaji_len, char* keybuf, int keybuf_capacity) {
-                return input::ResolveCandidateEntryFromRomaji(
-                    romaji,
-                    romaji_len,
-                    keybuf,
-                    keybuf_capacity,
-                    ToLowerAscii,
-                    FindImeCandidateEntry);
-            },
+            ResolveImeCandidateEntryFromRomaji,
             TryBuildPrefixCandidateEntry,
             [](const ImeCandidateEntry* entry) { return entry != nullptr && entry->count > 0; },
             [&]() { return input::HasSelection(selection_anchor, selection_end); },
             DeleteSelection,
-            [&](const ImeCandidateEntry* entry) {
-                input::StartImeCandidateSession(
-                    entry, cursor_pos, ime_candidate_source_keys,
-                    FindBestImeCandidateIndex(entry),
-                    &ime_candidate_index, &ime_candidate_start, &ime_candidate_len,
-                    &ime_candidate_active,
-                    CopyString);
-            },
+            StartImeCandidateSessionForEntry,
             IsPrintableAscii,
             [&]() {
                 input::ProcessEnterCommandAction(
