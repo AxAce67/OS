@@ -3193,21 +3193,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (!input::DecodeKeyboardMessageAndTrack(msg.keycode, decode_refs, &key_event)) {
             return;
         }
-        if (key_event.kind == KeyEventKind::kModifier) {
-            return;
-        }
         const input::RuntimeKeyDownRefs key_down_refs{key_down_extended, key_down_normal};
-        if (input::TryConsumeReleasedKey(key_event, key_down_refs)) {
+        if (!input::PrepareKeyboardEventForDispatch(
+                key_event,
+                g_key_repeat_enabled,
+                key_down_refs,
+                HandleExtendedKey)) {
             return;
         }
         const uint8_t key = key_event.keycode;
-        if (!input::ShouldProcessAfterExtendedKey(key_event, key, HandleExtendedKey)) {
-            return;
-        }
-        if (input::ShouldSkipRepeatedKeyDown(key_event, g_key_repeat_enabled, key_down_refs)) {
-            return;
-        }
-        input::MarkKeyDownIfTrackable(key_event, key_down_refs);
         if (HandleRegularKeyShortcut(key)) {
             return;
         }

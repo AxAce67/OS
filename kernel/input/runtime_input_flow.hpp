@@ -210,6 +210,32 @@ inline void MarkKeyDownIfTrackable(const KeyEvent& key_event,
     }
 }
 
+template <class THandleExtendedKey>
+inline bool ShouldProcessAfterExtendedKey(const KeyEvent& key_event,
+                                          uint8_t key,
+                                          THandleExtendedKey&& handle_extended_key);
+
+template <class THandleExtendedKey>
+inline bool PrepareKeyboardEventForDispatch(const KeyEvent& key_event,
+                                            bool key_repeat_enabled,
+                                            const RuntimeKeyDownRefs& key_down_refs,
+                                            THandleExtendedKey&& handle_extended_key) {
+    if (key_event.kind == KeyEventKind::kModifier) {
+        return false;
+    }
+    if (TryConsumeReleasedKey(key_event, key_down_refs)) {
+        return false;
+    }
+    if (!ShouldProcessAfterExtendedKey(key_event, key_event.keycode, handle_extended_key)) {
+        return false;
+    }
+    if (ShouldSkipRepeatedKeyDown(key_event, key_repeat_enabled, key_down_refs)) {
+        return false;
+    }
+    MarkKeyDownIfTrackable(key_event, key_down_refs);
+    return true;
+}
+
 inline bool DecodeKeyboardMessageAndTrack(uint8_t raw_scancode,
                                           const RuntimeKeyboardDecodeRefs& refs,
                                           KeyEvent* out_key_event) {
