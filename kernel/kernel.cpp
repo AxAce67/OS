@@ -3393,11 +3393,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             RenderInputLine();
                         }
                     }
-                    if (full_refresh) {
-                        RefreshConsole();
-                    } else {
-                        RefreshInputLine();
-                    }
+                    input::RefreshAfterKeyboardCharInput(full_refresh, RefreshConsole, RefreshInputLine);
                 }
                 break;
             }

@@ -196,6 +196,17 @@ inline bool ShouldProcessAfterExtendedKey(const KeyEvent& key_event,
     return key == 0x1C || key == 0x35;
 }
 
+template <class TRefreshConsole, class TRefreshInputLine>
+inline void RefreshAfterKeyboardCharInput(bool full_refresh,
+                                          TRefreshConsole&& refresh_console,
+                                          TRefreshInputLine&& refresh_input_line) {
+    if (full_refresh) {
+        refresh_console();
+        return;
+    }
+    refresh_input_line();
+}
+
 template <class TImeCandidateEntry>
 inline void BuildRuntimeExecInputRefs(RuntimeExecInputRefsT<TImeCandidateEntry>* refs,
                                       const TImeCandidateEntry* ime_candidate_entry,
