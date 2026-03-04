@@ -76,6 +76,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "input/key_layout.hpp"
 #include "input/hid_keyboard.hpp"
 #include "input/history.hpp"
+#include "input/line_editor.hpp"
 #include "input/line_ops.hpp"
 #include "input/line_render.hpp"
 #include "input/selection.hpp"
@@ -2552,26 +2553,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto DeleteSelection = [&]() -> bool {
-        if (!input::HasSelection(selection_anchor, selection_end)) {
+        if (!input::DeleteSelection(command_buffer, static_cast<int>(sizeof(command_buffer)),
+                                    &command_len, &cursor_pos,
+                                    &selection_anchor, &selection_end, &selecting_with_mouse)) {
             return false;
         }
-        int sel_start = input::SelectionStart(selection_anchor, selection_end);
-        int sel_end = input::SelectionEnd(selection_anchor, selection_end);
-        if (sel_start < 0) sel_start = 0;
-        if (sel_end > command_len) sel_end = command_len;
-        const int remove_len = sel_end - sel_start;
-        if (remove_len <= 0) {
-            ClearSelection();
-            return false;
-        }
-        for (int i = sel_start; i + remove_len <= command_len; ++i) {
-            command_buffer[i] = command_buffer[i + remove_len];
-        }
-        command_len -= remove_len;
-        if (command_len < 0) command_len = 0;
-        command_buffer[command_len] = '\0';
-        cursor_pos = sel_start;
-        ClearSelection();
         RenderInputLine();
         RefreshInputLine();
         return true;
@@ -2609,32 +2595,19 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (DeleteSelection()) {
             return;
         }
-        if (cursor_pos <= 0 || command_len <= 0) {
-            return;
+        if (input::BackspaceAtCursor(command_buffer, static_cast<int>(sizeof(command_buffer)),
+                                     &command_len, &cursor_pos)) {
+            RenderInputLine();
+            RefreshInputLine();
         }
-        for (int i = cursor_pos - 1; i < command_len; ++i) {
-            command_buffer[i] = command_buffer[i + 1];
-        }
-        --command_len;
-        --cursor_pos;
-        command_buffer[command_len] = '\0';
-        RenderInputLine();
-        RefreshInputLine();
     };
 
     auto DeleteAtCursor = [&]() {
         if (DeleteSelection()) {
             return;
         }
-        if (command_len <= 0) {
-            return;
-        }
-        if (cursor_pos < command_len) {
-            for (int i = cursor_pos; i < command_len; ++i) {
-                command_buffer[i] = command_buffer[i + 1];
-            }
-            --command_len;
-            command_buffer[command_len] = '\0';
+        if (input::DeleteAtCursor(command_buffer, static_cast<int>(sizeof(command_buffer)),
+                                  &command_len, &cursor_pos)) {
             RenderInputLine();
             RefreshInputLine();
             return;
