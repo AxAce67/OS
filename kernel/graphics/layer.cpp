@@ -3,14 +3,6 @@
 #include "boot_info.h" // FrameBufferConfig
 
 namespace {
-inline PixelColor ReadFrameBufferPixel(const FrameBufferConfig& config, int x, int y) {
-    const uint32_t index = (static_cast<uint32_t>(y) * config.pixels_per_scan_line + static_cast<uint32_t>(x)) * 4;
-    if (config.pixel_format == kPixelRGBResv8BitPerColor) {
-        return PixelColor{config.frame_buffer[index], config.frame_buffer[index + 1], config.frame_buffer[index + 2]};
-    }
-    return PixelColor{config.frame_buffer[index + 2], config.frame_buffer[index + 1], config.frame_buffer[index]};
-}
-
 inline void WriteFrameBufferPixel(const FrameBufferConfig& config, int x, int y, const PixelColor& c) {
     const uint32_t index = (static_cast<uint32_t>(y) * config.pixels_per_scan_line + static_cast<uint32_t>(x)) * 4;
     if (config.pixel_format == kPixelRGBResv8BitPerColor) {
@@ -200,10 +192,11 @@ void LayerManager::Draw(int x, int y, int width, int height) const {
         return;
     }
 
-    // 1) 既存VRAMをバックバッファへ取り込み（部分更新時の土台）。
+    // 1) バックバッファ領域をクリア。
+    // 背景レイヤーが全画面を覆うため、VRAMからの読み戻しは不要。
     for (int py = draw_start_y; py < draw_end_y; ++py) {
         for (int px = draw_start_x; px < draw_end_x; ++px) {
-            back_buffer_[py * back_buffer_width_ + px] = ReadFrameBufferPixel(config_, px, py);
+            back_buffer_[py * back_buffer_width_ + px] = PixelColor{0, 0, 0};
         }
     }
 

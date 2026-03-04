@@ -3145,12 +3145,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 }
                 const int term_frame_x0 = term_frame_layer->GetX();
                 const int term_frame_y0 = term_frame_layer->GetY();
-                const int term_console_x0 = term_console_layer->GetX();
-                const int term_console_y0 = term_console_layer->GetY();
                 const int info_frame_x0 = info_frame_layer->GetX();
                 const int info_frame_y0 = info_frame_layer->GetY();
-                const int info_content_x0 = info_content_layer->GetX();
-                const int info_content_y0 = info_content_layer->GetY();
                 active_window = which;
                 if (which == 0) {
                     layer_manager->UpDown(info_frame_layer, 2);
@@ -3172,9 +3168,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     info_frame_window->FillRectangle(info_frame_w - 20, 6, 12, 12, {104, 108, 126});
                 }
                 layer_manager->Draw(term_frame_x0, term_frame_y0, term_frame_w, term_frame_h);
-                layer_manager->Draw(term_console_x0, term_console_y0, term_content_w, term_content_h);
                 layer_manager->Draw(info_frame_x0, info_frame_y0, info_frame_w, info_frame_h);
-                layer_manager->Draw(info_content_x0, info_content_y0, info_content_w, info_content_h);
             };
             if ((pressed & 0x01) != 0) {
                 int hit_window = -1;
@@ -3221,14 +3215,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     if (new_frame_x != term_frame_layer->GetX() || new_frame_y != term_frame_layer->GetY()) {
                         const int old_frame_x = term_frame_layer->GetX();
                         const int old_frame_y = term_frame_layer->GetY();
-                        const int old_console_x = term_console_layer->GetX();
-                        const int old_console_y = term_console_layer->GetY();
                         term_frame_layer->Move(new_frame_x, new_frame_y);
                         term_console_layer->Move(new_frame_x + term_frame_border, new_frame_y + term_title_h);
                         layer_manager->Draw(old_frame_x, old_frame_y, term_frame_w, term_frame_h);
-                        layer_manager->Draw(old_console_x, old_console_y, term_content_w, term_content_h);
                         layer_manager->Draw(new_frame_x, new_frame_y, term_frame_w, term_frame_h);
-                        layer_manager->Draw(new_frame_x + term_frame_border, new_frame_y + term_title_h, term_content_w, term_content_h);
                     }
                 } else {
                     int new_info_x = pointer_x - drag_offset_x;
@@ -3240,14 +3230,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     if (new_info_x != info_frame_layer->GetX() || new_info_y != info_frame_layer->GetY()) {
                         const int old_info_x = info_frame_layer->GetX();
                         const int old_info_y = info_frame_layer->GetY();
-                        const int old_content_x = info_content_layer->GetX();
-                        const int old_content_y = info_content_layer->GetY();
                         info_frame_layer->Move(new_info_x, new_info_y);
                         info_content_layer->Move(new_info_x + info_frame_border, new_info_y + info_title_h);
                         layer_manager->Draw(old_info_x, old_info_y, info_frame_w, info_frame_h);
-                        layer_manager->Draw(old_content_x, old_content_y, info_content_w, info_content_h);
                         layer_manager->Draw(new_info_x, new_info_y, info_frame_w, info_frame_h);
-                        layer_manager->Draw(new_info_x + info_frame_border, new_info_y + info_title_h, info_content_w, info_content_h);
                     }
                 }
                 return;
