@@ -3119,8 +3119,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             ime_romaji_len,
             ime_candidate_active,
             ime_candidate_entry != nullptr,
-            [&]() { CommitImeCandidateLearning(); },
-            [&]() { ClearImeCandidate(); },
+            [&]() {
+                CommitImeCandidateLearning();
+                ClearImeCandidate();
+            },
             ApplyRegularKeySideEffects,
             out_plan);
     };

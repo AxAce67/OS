@@ -174,7 +174,7 @@ inline bool TryPrepareExtendedExecPlan(uint8_t key,
     return true;
 }
 
-template <class TCommitCandidate, class TClearCandidate, class TApplySideEffects>
+template <class TOnCommitActiveCandidate, class TApplySideEffects>
 inline bool TryPrepareRegularExecPlan(uint8_t key,
                                       bool ctrl_pressed,
                                       bool num_lock,
@@ -182,8 +182,7 @@ inline bool TryPrepareRegularExecPlan(uint8_t key,
                                       int ime_romaji_len,
                                       bool candidate_active,
                                       bool has_candidate_entry,
-                                      TCommitCandidate&& commit_candidate,
-                                      TClearCandidate&& clear_candidate,
+                                      TOnCommitActiveCandidate&& on_commit_active_candidate,
                                       TApplySideEffects&& apply_side_effects,
                                       RegularExecPlan* out_plan) {
     if (out_plan == nullptr) {
@@ -197,8 +196,7 @@ inline bool TryPrepareRegularExecPlan(uint8_t key,
                                              candidate_active,
                                              has_candidate_entry);
     if (prep.should_commit_active_candidate) {
-        commit_candidate();
-        clear_candidate();
+        on_commit_active_candidate();
     }
     if (!prep.handled || prep.missing_required_candidate) {
         return false;
