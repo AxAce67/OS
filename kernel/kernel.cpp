@@ -1845,6 +1845,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (g_ime_enabled && ime_romaji_len > 0) {
             --ime_romaji_len;
             ime_romaji_buffer[ime_romaji_len] = '\0';
+            RenderInputLine();
+            RefreshInputLine();
             return;
         }
         if (DeleteSelection()) {
@@ -2063,6 +2065,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (ime_romaji_len <= 0) {
             return false;
         }
+        const int before_len = ime_romaji_len;
         bool inserted = false;
         if (HasSelection()) {
             DeleteSelection();
@@ -2106,6 +2109,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             ime_romaji_buffer[0] = '\0';
         }
         if (inserted) {
+            RenderInputLine();
+            RefreshInputLine();
+        } else if (ime_romaji_len != before_len) {
             RenderInputLine();
             RefreshInputLine();
         }
@@ -2472,7 +2478,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             if (ime_romaji_len + 1 < static_cast<int>(sizeof(ime_romaji_buffer))) {
                                 ime_romaji_buffer[ime_romaji_len++] = lower;
                                 ime_romaji_buffer[ime_romaji_len] = '\0';
-                                FlushImeRomaji(false);
+                                if (!FlushImeRomaji(false)) {
+                                    RenderInputLine();
+                                    RefreshInputLine();
+                                }
                             }
                             break;
                         }
