@@ -2355,7 +2355,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int drag_offset_y = 0;
     uint64_t next_system_info_tick = 0;
     uint64_t last_drag_redraw_tick = 0;
+    uint64_t last_pointer_redraw_tick = 0;
     bool drag_visual_dirty = false;
+    int pointer_logical_x = mouse_cursor->X() + 1;
+    int pointer_logical_y = mouse_cursor->Y() + 1;
+    bool pointer_visual_dirty = false;
     int drag_pending_window = -1;  // 0=terminal, 1=system-info
     int drag_pending_x = 0;
     int drag_pending_y = 0;
@@ -2394,6 +2398,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         drag_pending_move = false;
         drag_pending_window = -1;
+    };
+    auto FlushPointerVisual = [&]() {
+        if (!pointer_visual_dirty) {
+            return;
+        }
+        mouse_cursor->SetPosition(pointer_logical_x - 1, pointer_logical_y - 1);
+        pointer_visual_dirty = false;
     };
     auto RefreshConsole = [&]() {
         layer_manager->Draw(term_console_layer->GetX(),
@@ -3173,8 +3184,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleMouseMessage = [&](const Message& msg) {
-        const int kMouseHotspotX = 1;
-        const int kMouseHotspotY = 1;
         const uint8_t prev_buttons = g_mouse_buttons_current;
         const uint8_t now_buttons = msg.buttons;
         const uint8_t pressed = static_cast<uint8_t>((~prev_buttons) & now_buttons);
@@ -3183,11 +3192,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if ((pressed & 0x04) != 0) { ++g_mouse_middle_press_count; }
         g_mouse_buttons_current = now_buttons;
 
-        int pointer_x = 0;
-        int pointer_y = 0;
+        int pointer_x = pointer_logical_x;
+        int pointer_y = pointer_logical_y;
         if (msg.pointer_mode == Message::PointerMode::kAbsolute) {
             g_last_absolute_mouse_tick = CurrentTick();
-            mouse_cursor->SetPosition(msg.x - kMouseHotspotX, msg.y - kMouseHotspotY);
             pointer_x = msg.x;
             pointer_y = msg.y;
         } else {
@@ -3195,9 +3203,17 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 (CurrentTick() - g_last_absolute_mouse_tick) < 1000) {
                 return;  // USB absolute pointer is active; ignore noisy PS/2 relative moves.
             }
-            mouse_cursor->Move(msg.dx, msg.dy);
-            pointer_x = mouse_cursor->X() + kMouseHotspotX;
-            pointer_y = mouse_cursor->Y() + kMouseHotspotY;
+            pointer_x += msg.dx;
+            pointer_y += msg.dy;
+        }
+        if (pointer_x < 0) pointer_x = 0;
+        if (pointer_y < 0) pointer_y = 0;
+        if (pointer_x >= screen_w) pointer_x = screen_w - 1;
+        if (pointer_y >= screen_h) pointer_y = screen_h - 1;
+        if (pointer_x != pointer_logical_x || pointer_y != pointer_logical_y) {
+            pointer_logical_x = pointer_x;
+            pointer_logical_y = pointer_y;
+            pointer_visual_dirty = true;
         }
 
         {
@@ -3882,6 +3898,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
 
         const uint64_t now_tick = CurrentTick();
+        if (pointer_visual_dirty && now_tick != last_pointer_redraw_tick) {
+            FlushPointerVisual();
+            last_pointer_redraw_tick = now_tick;
+        }
         if (drag_visual_dirty && now_tick != last_drag_redraw_tick) {
             FlushPendingDrag();
             drag_visual_dirty = false;
