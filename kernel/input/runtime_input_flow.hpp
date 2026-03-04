@@ -5,6 +5,8 @@
 #include "input/key_handler.hpp"
 #include "input/key_handler_exec.hpp"
 
+class Console;
+
 namespace input {
 
 struct RegularPlanPrepResult {
@@ -202,6 +204,71 @@ inline RegularModeContext BuildRegularModeContext(TRegularShortcutOwner* owner,
             (*o->repaint_prompt_and_input)();
         },
     };
+}
+
+template <class TExtendedExecBundle, class TRefresh, class TBrowseUp, class TBrowseDown, class TDelete>
+inline void BuildExtendedExecBundle(TExtendedExecBundle* bundle,
+                                    Console* console,
+                                    TRefresh* refresh_console,
+                                    TBrowseUp* browse_history_up,
+                                    TBrowseDown* browse_history_down,
+                                    TDelete* delete_at_cursor) {
+    if (bundle == nullptr) {
+        return;
+    }
+    bundle->owner.console = console;
+    bundle->owner.refresh_console = refresh_console;
+    bundle->owner.cycle_candidate = nullptr;
+    bundle->owner.browse_history_up = browse_history_up;
+    bundle->owner.browse_history_down = browse_history_down;
+    bundle->owner.backspace_at_cursor = nullptr;
+    bundle->owner.delete_at_cursor = delete_at_cursor;
+    bundle->owner.tab_complete = nullptr;
+}
+
+template <class TRegularExecBundle,
+          class TRefresh, class TCycle, class TBrowseUp, class TBrowseDown,
+          class TBackspace, class TDelete, class TTab,
+          class TDeleteRange, class TClearCandidate, class TPrintPrompt,
+          class TClearSelection, class THistory, class TRepaintPromptAndInput>
+inline void BuildRegularExecBundle(TRegularExecBundle* bundle,
+                                   Console* console,
+                                   TRefresh* refresh_console,
+                                   TCycle* cycle_candidate,
+                                   TBrowseUp* browse_history_up,
+                                   TBrowseDown* browse_history_down,
+                                   TBackspace* backspace_at_cursor,
+                                   TDelete* delete_at_cursor,
+                                   TTab* tab_complete,
+                                   TDeleteRange* delete_range_at,
+                                   TClearCandidate* clear_ime_candidate,
+                                   int* input_row,
+                                   int* input_col,
+                                   TPrintPrompt* print_prompt,
+                                   TClearSelection* clear_selection,
+                                   THistory* command_history,
+                                   TRepaintPromptAndInput* repaint_prompt_and_input) {
+    if (bundle == nullptr) {
+        return;
+    }
+    bundle->action_owner.console = console;
+    bundle->action_owner.refresh_console = refresh_console;
+    bundle->action_owner.cycle_candidate = cycle_candidate;
+    bundle->action_owner.browse_history_up = browse_history_up;
+    bundle->action_owner.browse_history_down = browse_history_down;
+    bundle->action_owner.backspace_at_cursor = backspace_at_cursor;
+    bundle->action_owner.delete_at_cursor = delete_at_cursor;
+    bundle->action_owner.tab_complete = tab_complete;
+
+    bundle->shortcut_owner.delete_range_at = delete_range_at;
+    bundle->shortcut_owner.clear_ime_candidate = clear_ime_candidate;
+    bundle->shortcut_owner.console = console;
+    bundle->shortcut_owner.input_row = input_row;
+    bundle->shortcut_owner.input_col = input_col;
+    bundle->shortcut_owner.print_prompt = print_prompt;
+    bundle->shortcut_owner.clear_selection = clear_selection;
+    bundle->shortcut_owner.command_history = command_history;
+    bundle->shortcut_owner.repaint_prompt_and_input = repaint_prompt_and_input;
 }
 
 }  // namespace input

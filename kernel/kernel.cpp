@@ -3062,45 +3062,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     struct ExtendedExecBundle {
         InputActionOwner owner;
     };
-    auto BuildExtendedExecBundle = [&](ExtendedExecBundle* bundle) {
-        if (bundle == nullptr) {
-            return;
-        }
-        bundle->owner.console = console;
-        bundle->owner.refresh_console = &RefreshConsole;
-        bundle->owner.cycle_candidate = nullptr;
-        bundle->owner.browse_history_up = &BrowseHistoryUp;
-        bundle->owner.browse_history_down = &BrowseHistoryDown;
-        bundle->owner.backspace_at_cursor = nullptr;
-        bundle->owner.delete_at_cursor = &DeleteAtCursor;
-        bundle->owner.tab_complete = nullptr;
-    };
     struct RegularExecBundle {
         InputActionOwner action_owner;
         RegularShortcutOwner shortcut_owner;
-    };
-    auto BuildRegularExecBundle = [&](RegularExecBundle* bundle) {
-        if (bundle == nullptr) {
-            return;
-        }
-        bundle->action_owner.console = console;
-        bundle->action_owner.refresh_console = &RefreshConsole;
-        bundle->action_owner.cycle_candidate = &CycleImeCandidate;
-        bundle->action_owner.browse_history_up = &BrowseHistoryUp;
-        bundle->action_owner.browse_history_down = &BrowseHistoryDown;
-        bundle->action_owner.backspace_at_cursor = &BackspaceAtCursor;
-        bundle->action_owner.delete_at_cursor = &DeleteAtCursor;
-        bundle->action_owner.tab_complete = &HandleTabCompletion;
-
-        bundle->shortcut_owner.delete_range_at = &DeleteRangeAt;
-        bundle->shortcut_owner.clear_ime_candidate = &ClearImeCandidate;
-        bundle->shortcut_owner.console = console;
-        bundle->shortcut_owner.input_row = &input_row;
-        bundle->shortcut_owner.input_col = &input_col;
-        bundle->shortcut_owner.print_prompt = &PrintPrompt;
-        bundle->shortcut_owner.clear_selection = &ClearSelection;
-        bundle->shortcut_owner.command_history = &command_history;
-        bundle->shortcut_owner.repaint_prompt_and_input = &RepaintPromptAndInput;
     };
     auto ApplyExtendedPlanSideEffects = [&](const input::ExtendedExecPlan& plan) {
         if (plan.flush_romaji) {
@@ -3191,7 +3155,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return false;
         }
         ExtendedExecBundle exec_bundle{};
-        BuildExtendedExecBundle(&exec_bundle);
+        input::BuildExtendedExecBundle(&exec_bundle,
+                                       console,
+                                       &RefreshConsole,
+                                       &BrowseHistoryUp,
+                                       &BrowseHistoryDown,
+                                       &DeleteAtCursor);
         const auto action_context = input::BuildExtendedActionContext(&exec_bundle.owner);
         const auto chain_result =
             input::ExecuteExtendedExecChain(exec_plan, action_context, &cursor_pos, command_len);
@@ -3211,7 +3180,23 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return false;
         }
         RegularExecBundle exec_bundle{};
-        BuildRegularExecBundle(&exec_bundle);
+        input::BuildRegularExecBundle(&exec_bundle,
+                                      console,
+                                      &RefreshConsole,
+                                      &CycleImeCandidate,
+                                      &BrowseHistoryUp,
+                                      &BrowseHistoryDown,
+                                      &BackspaceAtCursor,
+                                      &DeleteAtCursor,
+                                      &HandleTabCompletion,
+                                      &DeleteRangeAt,
+                                      &ClearImeCandidate,
+                                      &input_row,
+                                      &input_col,
+                                      &PrintPrompt,
+                                      &ClearSelection,
+                                      &command_history,
+                                      &RepaintPromptAndInput);
         const auto action_context = input::BuildRegularActionContext(&exec_bundle.action_owner);
         const auto ime_context = input::BuildRegularImeContext(&exec_bundle.shortcut_owner,
                                                                ime_candidate_entry,
