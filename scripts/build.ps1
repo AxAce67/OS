@@ -136,7 +136,14 @@ if ($LASTEXITCODE -ne 0) { Write-Host "Kernel Link Error!" -ForegroundColor Red;
 Write-Host "Build Success! -> main.efi & kernel.elf" -ForegroundColor Green
 
 # 5. QEMU用のディスク構造の準備
-if (Test-Path "disk") { Remove-Item -Recurse -Force "disk" }
+if (Test-Path "disk") {
+    try {
+        Remove-Item -Recurse -Force "disk" -ErrorAction Stop
+    }
+    catch {
+        Write-Host "Warning: failed to clean disk/ (file lock). continuing with existing directory." -ForegroundColor Yellow
+    }
+}
 New-Item -ItemType Directory -Path "disk\EFI\BOOT" | Out-Null
 Copy-Item "main.efi" -Destination "disk\EFI\BOOT\BOOTX64.EFI"   # ブートローダー
 Copy-Item "kernel.elf" -Destination "disk\kernel.elf"           # カーネル本体 (ELF)

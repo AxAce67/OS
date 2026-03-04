@@ -3106,17 +3106,29 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 layer_manager->Draw();
             };
             if ((pressed & 0x01) != 0) {
-                if (in_info_frame) {
-                    ApplyWindowFocus(1);
-                } else if (in_term_frame) {
-                    ApplyWindowFocus(0);
+                int hit_window = -1;
+                if (active_window == 0) {
+                    if (in_term_frame) {
+                        hit_window = 0;
+                    } else if (in_info_frame) {
+                        hit_window = 1;
+                    }
+                } else {
+                    if (in_info_frame) {
+                        hit_window = 1;
+                    } else if (in_term_frame) {
+                        hit_window = 0;
+                    }
                 }
-                if (on_term_title) {
+                if (hit_window >= 0) {
+                    ApplyWindowFocus(hit_window);
+                }
+                if (hit_window == 0 && on_term_title) {
                     dragging_window = 0;
                     drag_offset_x = local_frame_x;
                     drag_offset_y = local_frame_y;
                     ClearSelection();
-                } else if (on_info_title) {
+                } else if (hit_window == 1 && on_info_title) {
                     dragging_window = 1;
                     drag_offset_x = local_info_x;
                     drag_offset_y = local_info_y;
@@ -3136,9 +3148,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     if (new_frame_x > screen_w - term_frame_w) new_frame_x = screen_w - term_frame_w;
                     if (new_frame_y > screen_h - taskbar_h - term_frame_h) new_frame_y = screen_h - taskbar_h - term_frame_h;
                     if (new_frame_x != term_frame_layer->GetX() || new_frame_y != term_frame_layer->GetY()) {
+                        const int old_frame_x = term_frame_layer->GetX();
+                        const int old_frame_y = term_frame_layer->GetY();
+                        const int old_console_x = term_console_layer->GetX();
+                        const int old_console_y = term_console_layer->GetY();
                         term_frame_layer->Move(new_frame_x, new_frame_y);
                         term_console_layer->Move(new_frame_x + term_frame_border, new_frame_y + term_title_h);
-                        layer_manager->Draw();
+                        layer_manager->Draw(old_frame_x, old_frame_y, term_frame_w, term_frame_h);
+                        layer_manager->Draw(old_console_x, old_console_y, term_content_w, term_content_h);
+                        layer_manager->Draw(new_frame_x, new_frame_y, term_frame_w, term_frame_h);
+                        layer_manager->Draw(new_frame_x + term_frame_border, new_frame_y + term_title_h, term_content_w, term_content_h);
                     }
                 } else {
                     int new_info_x = pointer_x - drag_offset_x;
@@ -3148,9 +3167,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     if (new_info_x > screen_w - info_frame_w) new_info_x = screen_w - info_frame_w;
                     if (new_info_y > screen_h - taskbar_h - info_frame_h) new_info_y = screen_h - taskbar_h - info_frame_h;
                     if (new_info_x != info_frame_layer->GetX() || new_info_y != info_frame_layer->GetY()) {
+                        const int old_info_x = info_frame_layer->GetX();
+                        const int old_info_y = info_frame_layer->GetY();
+                        const int old_content_x = info_content_layer->GetX();
+                        const int old_content_y = info_content_layer->GetY();
                         info_frame_layer->Move(new_info_x, new_info_y);
                         info_content_layer->Move(new_info_x + info_frame_border, new_info_y + info_title_h);
-                        layer_manager->Draw();
+                        layer_manager->Draw(old_info_x, old_info_y, info_frame_w, info_frame_h);
+                        layer_manager->Draw(old_content_x, old_content_y, info_content_w, info_content_h);
+                        layer_manager->Draw(new_info_x, new_info_y, info_frame_w, info_frame_h);
+                        layer_manager->Draw(new_info_x + info_frame_border, new_info_y + info_title_h, info_content_w, info_content_h);
                     }
                 }
                 return;
