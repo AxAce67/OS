@@ -3098,6 +3098,58 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
     };
 
+    struct RegularActionCtx {
+        decltype(CycleImeCandidate)* cycle_candidate;
+        decltype(BrowseHistoryUp)* browse_history_up;
+        decltype(BrowseHistoryDown)* browse_history_down;
+        decltype(BackspaceAtCursor)* backspace_at_cursor;
+        decltype(DeleteAtCursor)* delete_at_cursor;
+        decltype(HandleTabCompletion)* tab_complete;
+    };
+    struct RegularActionDispatch {
+        RegularActionCtx ctx;
+        input::RegularActionCallbacks callbacks;
+    };
+    auto BuildRegularActionDispatch = [&]() {
+        RegularActionDispatch dispatch{
+            {
+                &CycleImeCandidate,
+                &BrowseHistoryUp,
+                &BrowseHistoryDown,
+                &BackspaceAtCursor,
+                &DeleteAtCursor,
+                &HandleTabCompletion,
+            },
+            {
+                [](void* ctx, int direction) -> bool {
+                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
+                    return (*c->cycle_candidate)(direction);
+                },
+                [](void* ctx, int direction) {
+                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
+                    if (direction < 0) {
+                        (*c->browse_history_up)();
+                        return;
+                    }
+                    (*c->browse_history_down)();
+                },
+                [](void* ctx) {
+                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
+                    (*c->backspace_at_cursor)();
+                },
+                [](void* ctx) {
+                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
+                    (*c->delete_at_cursor)();
+                },
+                [](void* ctx) {
+                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
+                    (*c->tab_complete)();
+                },
+            },
+        };
+        return dispatch;
+    };
+
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
         auto RenderAndRefreshInput = [&]() {
             RenderInputLine();
@@ -3134,47 +3186,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     input::SetCursorValue(c->cursor_pos, target);
                 },
             };
-            struct RegularActionCtx {
-                decltype(CycleImeCandidate)* cycle_candidate;
-                decltype(BrowseHistoryUp)* browse_history_up;
-                decltype(BrowseHistoryDown)* browse_history_down;
-                decltype(BackspaceAtCursor)* backspace_at_cursor;
-                decltype(DeleteAtCursor)* delete_at_cursor;
-                decltype(HandleTabCompletion)* tab_complete;
-            } action_ctx{
-                &CycleImeCandidate,
-                &BrowseHistoryUp,
-                &BrowseHistoryDown,
-                &BackspaceAtCursor,
-                &DeleteAtCursor,
-                &HandleTabCompletion,
-            };
-            const input::RegularActionCallbacks action_callbacks{
-                [](void* ctx, int direction) -> bool {
-                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
-                    return (*c->cycle_candidate)(direction);
-                },
-                [](void* ctx, int direction) {
-                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
-                    if (direction < 0) {
-                        (*c->browse_history_up)();
-                        return;
-                    }
-                    (*c->browse_history_down)();
-                },
-                [](void* ctx) {
-                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
-                    (*c->backspace_at_cursor)();
-                },
-                [](void* ctx) {
-                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
-                    (*c->delete_at_cursor)();
-                },
-                [](void* ctx) {
-                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
-                    (*c->tab_complete)();
-                },
-            };
+            auto action_dispatch = BuildRegularActionDispatch();
             switch (exec_plan.kind) {
             case input::RegularExecKind::kApplyImeModeAndRepaint: {
                 const auto mode = input::ApplyImeModeAction(exec_plan.mode_action, g_ime_enabled, g_jp_layout);
@@ -3227,7 +3239,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RenderAndRefreshInput();
                 return true;
             default:
-                if (input::ExecuteRegularAction(exec_plan.kind, action_callbacks, &action_ctx)) {
+                if (input::ExecuteRegularAction(exec_plan.kind,
+                                               action_dispatch.callbacks,
+                                               &action_dispatch.ctx)) {
                     return true;
                 }
                 if (input::ExecuteRegularNeutralAction(exec_plan.kind,
