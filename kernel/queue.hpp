@@ -33,6 +33,15 @@ public:
         return true;
     }
 
+    // キュー先頭を取り出さず参照する
+    bool Peek(T& out_value) const {
+        if (count_ == 0) {
+            return false;
+        }
+        out_value = data_[read_pos_];
+        return true;
+    }
+
     // キューのデータ数を返す
     int Count() const {
         return count_;

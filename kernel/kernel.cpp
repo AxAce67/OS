@@ -1710,7 +1710,6 @@ char WaitPagerKey() {
             } else {
                 mouse_cursor->Move(msg.dx, msg.dy);
             }
-            layer_manager->Draw();
             continue;
         }
         if (msg.type != Message::Type::kInterruptKeyboard) {
@@ -3519,6 +3518,23 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         // キューにデータが入っていたら、メッセージを1つ取り出す
         Message msg;
         main_queue->Pop(msg);
+        if (msg.type == Message::Type::kInterruptMouse &&
+            msg.pointer_mode == Message::PointerMode::kRelative &&
+            msg.wheel == 0) {
+            Message next;
+            int merged = 0;
+            while (merged < 64 &&
+                   main_queue->Peek(next) &&
+                   next.type == Message::Type::kInterruptMouse &&
+                   next.pointer_mode == Message::PointerMode::kRelative &&
+                   next.wheel == 0 &&
+                   next.buttons == msg.buttons) {
+                main_queue->Pop(next);
+                msg.dx += next.dx;
+                msg.dy += next.dy;
+                ++merged;
+            }
+        }
         
         // 取り出し終わったら割り込みを再開する
         __asm__ volatile("sti");
