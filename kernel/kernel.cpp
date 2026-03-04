@@ -2355,6 +2355,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int drag_offset_y = 0;
     constexpr uint64_t kSystemInfoRefreshIntervalTicks = 120;
     constexpr uint64_t kSystemInfoPointerIdleTicks = 90;
+    constexpr uint64_t kSystemInfoBackgroundIntervalTicks = 480;
     uint64_t next_system_info_tick = 0;
     uint64_t last_pointer_move_tick = 0;
     uint64_t last_drag_redraw_tick = 0;
@@ -2442,43 +2443,54 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             RefreshConsole();
         }
     };
+    bool system_info_static_drawn = false;
     auto RefreshSystemInfo = [&]() {
-        info_content_window->FillRectangle(0, 0, info_content_w, info_content_h, {14, 16, 22});
-        info_content_window->DrawString(12, 12, "System Monitor", {220, 224, 232});
+        const PixelColor kBg{14, 16, 22};
+        const PixelColor kLabel{180, 188, 204};
+        const PixelColor kValue{236, 238, 242};
+        const PixelColor kTitle{220, 224, 232};
+        const PixelColor kSubtle{160, 170, 190};
+        if (!system_info_static_drawn) {
+            info_content_window->FillRectangle(0, 0, info_content_w, info_content_h, kBg);
+            info_content_window->DrawString(12, 12, "System Monitor", kTitle);
+            info_content_window->DrawString(12, 34, "tick:", kLabel);
+            info_content_window->DrawString(12, 52, "free:", kLabel);
+            info_content_window->DrawString(152, 52, "MiB", kLabel);
+            info_content_window->DrawString(12, 70, "queue:", kLabel);
+            info_content_window->DrawString(12, 88, "kbd_drop:", kLabel);
+            info_content_window->DrawString(12, 106, "mouse_drop:", kLabel);
+            info_content_window->DrawString(12, 124, "layout:", kLabel);
+            info_content_window->DrawString(128, 124, "ime:", kLabel);
+            info_content_window->DrawString(12, 146, "drag/window input optimized", kSubtle);
+            system_info_static_drawn = true;
+        }
+        auto DrawValue = [&](int x, int y, int w, const char* text) {
+            info_content_window->FillRectangle(x, y, w, 16, kBg);
+            info_content_window->DrawString(x, y, text, kValue);
+        };
 
         char num[40];
-        info_content_window->DrawString(12, 34, "tick:", {180, 188, 204});
         UInt64ToDecimalString(CurrentTick(), num, static_cast<int>(sizeof(num)));
-        info_content_window->DrawString(88, 34, num, {236, 238, 242});
+        DrawValue(88, 34, 120, num);
 
         uint64_t free_mib = 0;
         if (memory_manager != nullptr) {
             free_mib = (memory_manager->CountFreePages() * kPageSize) / kMiB;
         }
-        info_content_window->DrawString(12, 52, "free:", {180, 188, 204});
         UInt64ToDecimalString(free_mib, num, static_cast<int>(sizeof(num)));
-        info_content_window->DrawString(88, 52, num, {236, 238, 242});
-        info_content_window->DrawString(152, 52, "MiB", {180, 188, 204});
+        DrawValue(88, 52, 60, num);
 
-        info_content_window->DrawString(12, 70, "queue:", {180, 188, 204});
         UIntToDecimalString(static_cast<uint32_t>((main_queue != nullptr) ? main_queue->Count() : 0),
                             num, static_cast<int>(sizeof(num)));
-        info_content_window->DrawString(88, 70, num, {236, 238, 242});
+        DrawValue(88, 70, 60, num);
 
-        info_content_window->DrawString(12, 88, "kbd_drop:", {180, 188, 204});
         UInt64ToDecimalString(g_keyboard_dropped_events, num, static_cast<int>(sizeof(num)));
-        info_content_window->DrawString(88, 88, num, {236, 238, 242});
+        DrawValue(88, 88, 120, num);
 
-        info_content_window->DrawString(12, 106, "mouse_drop:", {180, 188, 204});
         UInt64ToDecimalString(g_mouse_dropped_events, num, static_cast<int>(sizeof(num)));
-        info_content_window->DrawString(88, 106, num, {236, 238, 242});
-
-        info_content_window->DrawString(12, 124, "layout:", {180, 188, 204});
-        info_content_window->DrawString(88, 124, g_jp_layout ? "jp" : "us", {236, 238, 242});
-        info_content_window->DrawString(128, 124, "ime:", {180, 188, 204});
-        info_content_window->DrawString(168, 124, g_ime_enabled ? "on" : "off", {236, 238, 242});
-
-        info_content_window->DrawString(12, 146, "drag/window input optimized", {160, 170, 190});
+        DrawValue(88, 106, 120, num);
+        DrawValue(88, 124, 32, g_jp_layout ? "jp" : "us");
+        DrawValue(168, 124, 32, g_ime_enabled ? "on" : "off");
         layer_manager->Draw(info_content_layer->GetX(), info_content_layer->GetY(), info_content_w, info_content_h);
     };
     RefreshSystemInfo();
@@ -3922,11 +3934,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         if (dragging_window < 0 && now_tick >= next_system_info_tick) {
             // Avoid periodic hitch while pointer is actively moving.
-            if ((now_tick - last_pointer_move_tick) >= kSystemInfoPointerIdleTicks &&
+            if ((active_window == 1 || (now_tick - last_pointer_move_tick) >= kSystemInfoPointerIdleTicks) &&
                 main_queue != nullptr && main_queue->Count() <= 8) {
                 RefreshSystemInfo();
             }
-            next_system_info_tick = now_tick + kSystemInfoRefreshIntervalTicks;
+            next_system_info_tick = now_tick + ((active_window == 1)
+                ? kSystemInfoRefreshIntervalTicks
+                : kSystemInfoBackgroundIntervalTicks);
         }
 
     }
