@@ -129,6 +129,49 @@ bool ExecuteRegularNeutralAction(RegularExecKind kind,
     }
 }
 
+bool ExecuteRegularAction(RegularExecKind kind,
+                          const RegularActionCallbacks& callbacks,
+                          void* ctx) {
+    switch (kind) {
+    case RegularExecKind::kHistoryUpWithCandidate:
+        if (callbacks.cycle_candidate == nullptr || callbacks.browse_history == nullptr) {
+            return false;
+        }
+        if (ShouldBrowseHistoryAfterCycle(callbacks.cycle_candidate(ctx, -1))) {
+            callbacks.browse_history(ctx, -1);
+        }
+        return true;
+    case RegularExecKind::kHistoryDownWithCandidate:
+        if (callbacks.cycle_candidate == nullptr || callbacks.browse_history == nullptr) {
+            return false;
+        }
+        if (ShouldBrowseHistoryAfterCycle(callbacks.cycle_candidate(ctx, 1))) {
+            callbacks.browse_history(ctx, 1);
+        }
+        return true;
+    case RegularExecKind::kBackspace:
+        if (callbacks.backspace_at_cursor == nullptr) {
+            return false;
+        }
+        callbacks.backspace_at_cursor(ctx);
+        return true;
+    case RegularExecKind::kDelete:
+        if (callbacks.delete_at_cursor == nullptr) {
+            return false;
+        }
+        callbacks.delete_at_cursor(ctx);
+        return true;
+    case RegularExecKind::kTab:
+        if (callbacks.tab_complete == nullptr) {
+            return false;
+        }
+        callbacks.tab_complete(ctx);
+        return true;
+    default:
+        return false;
+    }
+}
+
 ExtendedCursorMoveResult ExecuteExtendedCursorMoveAction(ExtendedExecKind kind,
                                                          int* cursor_pos,
                                                          int command_len) {

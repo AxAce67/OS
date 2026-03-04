@@ -3134,6 +3134,47 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     input::SetCursorValue(c->cursor_pos, target);
                 },
             };
+            struct RegularActionCtx {
+                decltype(CycleImeCandidate)* cycle_candidate;
+                decltype(BrowseHistoryUp)* browse_history_up;
+                decltype(BrowseHistoryDown)* browse_history_down;
+                decltype(BackspaceAtCursor)* backspace_at_cursor;
+                decltype(DeleteAtCursor)* delete_at_cursor;
+                decltype(HandleTabCompletion)* tab_complete;
+            } action_ctx{
+                &CycleImeCandidate,
+                &BrowseHistoryUp,
+                &BrowseHistoryDown,
+                &BackspaceAtCursor,
+                &DeleteAtCursor,
+                &HandleTabCompletion,
+            };
+            const input::RegularActionCallbacks action_callbacks{
+                [](void* ctx, int direction) -> bool {
+                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
+                    return (*c->cycle_candidate)(direction);
+                },
+                [](void* ctx, int direction) {
+                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
+                    if (direction < 0) {
+                        (*c->browse_history_up)();
+                        return;
+                    }
+                    (*c->browse_history_down)();
+                },
+                [](void* ctx) {
+                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
+                    (*c->backspace_at_cursor)();
+                },
+                [](void* ctx) {
+                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
+                    (*c->delete_at_cursor)();
+                },
+                [](void* ctx) {
+                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
+                    (*c->tab_complete)();
+                },
+            };
             switch (exec_plan.kind) {
             case input::RegularExecKind::kApplyImeModeAndRepaint: {
                 const auto mode = input::ApplyImeModeAction(exec_plan.mode_action, g_ime_enabled, g_jp_layout);
@@ -3185,26 +3226,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 command_history.ResetNavigation();
                 RenderAndRefreshInput();
                 return true;
-            case input::RegularExecKind::kHistoryUpWithCandidate:
-                if (input::ShouldBrowseHistoryAfterCycle(CycleImeCandidate(-1))) {
-                    BrowseHistoryUp();
-                }
-                return true;
-            case input::RegularExecKind::kHistoryDownWithCandidate:
-                if (input::ShouldBrowseHistoryAfterCycle(CycleImeCandidate(1))) {
-                    BrowseHistoryDown();
-                }
-                return true;
-            case input::RegularExecKind::kBackspace:
-                BackspaceAtCursor();
-                return true;
-            case input::RegularExecKind::kDelete:
-                DeleteAtCursor();
-                return true;
-            case input::RegularExecKind::kTab:
-                HandleTabCompletion();
-                return true;
             default:
+                if (input::ExecuteRegularAction(exec_plan.kind, action_callbacks, &action_ctx)) {
+                    return true;
+                }
                 if (input::ExecuteRegularNeutralAction(exec_plan.kind,
                                                        neutral_ctx.command_len,
                                                        neutral_callbacks,

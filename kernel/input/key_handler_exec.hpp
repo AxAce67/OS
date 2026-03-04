@@ -62,6 +62,18 @@ bool ExecuteRegularNeutralAction(RegularExecKind kind,
                                  const RegularNeutralCallbacks& callbacks,
                                  void* ctx);
 
+struct RegularActionCallbacks {
+    bool (*cycle_candidate)(void* ctx, int direction);
+    void (*browse_history)(void* ctx, int direction);
+    void (*backspace_at_cursor)(void* ctx);
+    void (*delete_at_cursor)(void* ctx);
+    void (*tab_complete)(void* ctx);
+};
+
+bool ExecuteRegularAction(RegularExecKind kind,
+                          const RegularActionCallbacks& callbacks,
+                          void* ctx);
+
 struct ExtendedCursorMoveResult {
     bool handled;
     bool should_render;
