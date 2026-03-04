@@ -1940,6 +1940,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int ime_candidate_index = 0;
     int ime_candidate_start = 0;
     int ime_candidate_len = 0;
+    ImeCandidateEntry ime_prefix_candidate_view = {};
+    const char* ime_prefix_candidate_ptrs[4] = {nullptr, nullptr, nullptr, nullptr};
+    char ime_prefix_candidate_key[32];
+    char ime_prefix_candidate_texts[4][32];
     bool e0_prefix = false;
     bool key_down_normal[128];
     bool key_down_extended[128];
@@ -2047,6 +2051,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         ime_candidate_index = 0;
         ime_candidate_start = 0;
         ime_candidate_len = 0;
+        ime_prefix_candidate_view.key = nullptr;
+        ime_prefix_candidate_view.count = 0;
+        for (int i = 0; i < 4; ++i) {
+            ime_prefix_candidate_ptrs[i] = nullptr;
+            ime_prefix_candidate_texts[i][0] = '\0';
+            ime_prefix_candidate_view.candidates[i] = nullptr;
+        }
+        ime_prefix_candidate_key[0] = '\0';
     };
 
     auto ReplaceInputLine = [&](const char* text) {
@@ -2428,6 +2440,72 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         ime_candidate_index = next;
         ReplaceImeCandidateText();
         return true;
+    };
+    auto TryBuildPrefixCandidateEntry = [&](const char* prefix) -> const ImeCandidateEntry* {
+        if (prefix == nullptr || prefix[0] == '\0') {
+            return nullptr;
+        }
+        CopyString(ime_prefix_candidate_key, prefix, static_cast<int>(sizeof(ime_prefix_candidate_key)));
+        ime_prefix_candidate_view.key = ime_prefix_candidate_key;
+        ime_prefix_candidate_view.count = 0;
+        for (int i = 0; i < 4; ++i) {
+            ime_prefix_candidate_ptrs[i] = nullptr;
+            ime_prefix_candidate_texts[i][0] = '\0';
+            ime_prefix_candidate_view.candidates[i] = nullptr;
+        }
+        auto append_unique_candidates = [&](const ImeCandidateEntry* src) {
+            if (src == nullptr || src->count <= 0) {
+                return;
+            }
+            for (int i = 0; i < src->count; ++i) {
+                const char* cand = src->candidates[i];
+                if (cand == nullptr || cand[0] == '\0') {
+                    continue;
+                }
+                bool exists = false;
+                for (int j = 0; j < ime_prefix_candidate_view.count; ++j) {
+                    if (StrEqual(ime_prefix_candidate_ptrs[j], cand)) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (exists) {
+                    continue;
+                }
+                if (ime_prefix_candidate_view.count >= 4) {
+                    return;
+                }
+                const int dst_index = ime_prefix_candidate_view.count;
+                CopyString(ime_prefix_candidate_texts[dst_index], cand, static_cast<int>(sizeof(ime_prefix_candidate_texts[dst_index])));
+                ime_prefix_candidate_ptrs[dst_index] = ime_prefix_candidate_texts[dst_index];
+                ime_prefix_candidate_view.candidates[dst_index] = ime_prefix_candidate_ptrs[dst_index];
+                ++ime_prefix_candidate_view.count;
+            }
+        };
+        for (int i = 0; i < static_cast<int>(sizeof(g_ime_user_candidate_views) / sizeof(g_ime_user_candidate_views[0])); ++i) {
+            const ImeCandidateEntry* e = &g_ime_user_candidate_views[i];
+            if (e->key == nullptr || !StrStartsWith(e->key, prefix)) {
+                continue;
+            }
+            append_unique_candidates(e);
+            if (ime_prefix_candidate_view.count >= 4) {
+                return &ime_prefix_candidate_view;
+            }
+        }
+        for (int i = 0; i < static_cast<int>(sizeof(kImeCandidateTable) / sizeof(kImeCandidateTable[0])); ++i) {
+            const ImeCandidateEntry* e = &kImeCandidateTable[i];
+            if (!StrStartsWith(e->key, prefix)) {
+                continue;
+            }
+            append_unique_candidates(e);
+            if (ime_prefix_candidate_view.count >= 4) {
+                break;
+            }
+        }
+        if (ime_prefix_candidate_view.count <= 0) {
+            return nullptr;
+        }
+        return &ime_prefix_candidate_view;
     };
 
     auto FlushImeRomaji = [&](bool finalize) -> bool {
@@ -2919,6 +2997,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                 keybuf[i + 1] = '\0';
                             }
                             const ImeCandidateEntry* entry = FindImeCandidateEntry(keybuf);
+                            if (entry == nullptr) {
+                                entry = TryBuildPrefixCandidateEntry(keybuf);
+                            }
                             if (entry != nullptr && entry->count > 0) {
                                 if (HasSelection()) {
                                     DeleteSelection();
