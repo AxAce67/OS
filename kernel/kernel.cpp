@@ -3082,6 +3082,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RenderInputLine();
         RefreshInputLine();
     };
+    auto HandleExecChain = [&](auto&& compute_chain_result) -> bool {
+        auto bundles = AcquireRuntimeFlowBundles();
+        const auto chain_result = compute_chain_result(&bundles);
+        if (input::ExecChainNeedsRender(chain_result)) {
+            RenderAndRefreshInput();
+        }
+        return input::ExecChainHandled(chain_result);
+    };
     auto ApplyExtendedKeySideEffects = [&](const input::ExtendedExecPlan& plan) {
         input::ApplyExtendedPlanSideEffects(
             plan,
@@ -3120,14 +3128,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             input::PlanPrepareStatus::kReady) {
             return false;
         }
-        auto bundles = AcquireRuntimeFlowBundles();
-        const auto action_context = input::BuildExtendedActionContext(&bundles.extended.owner);
-        const auto chain_result =
-            input::ExecuteExtendedExecChain(exec_plan, action_context, &cursor_pos, command_len);
-        if (input::ExecChainNeedsRender(chain_result)) {
-            RenderAndRefreshInput();
-        }
-        return input::ExecChainHandled(chain_result);
+        return HandleExecChain([&](RuntimeFlowBundles* bundles) {
+            const auto action_context = input::BuildExtendedActionContext(&bundles->extended.owner);
+            return input::ExecuteExtendedExecChain(exec_plan, action_context, &cursor_pos, command_len);
+        });
     };
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
@@ -3148,40 +3152,37 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 &exec_plan) != input::PlanPrepareStatus::kReady) {
             return false;
         }
-        auto bundles = AcquireRuntimeFlowBundles();
-        const auto action_context = input::BuildRegularActionContext(&bundles.regular.action_owner);
-        const auto ime_context = input::BuildRegularImeContext(&bundles.regular.shortcut_owner,
-                                                               ime_candidate_entry,
-                                                               ime_candidate_start,
-                                                               ime_candidate_len,
-                                                               ime_romaji_buffer,
-                                                               static_cast<int>(sizeof(ime_romaji_buffer)),
-                                                               &ime_romaji_len,
-                                                               StrLength);
-        const auto clear_context = input::BuildRegularClearContext(&bundles.regular.shortcut_owner,
-                                                                   command_buffer,
-                                                                   static_cast<int>(sizeof(command_buffer)),
-                                                                   &command_len,
-                                                                   &cursor_pos,
-                                                                   &rendered_len,
+        return HandleExecChain([&](RuntimeFlowBundles* bundles) {
+            const auto action_context = input::BuildRegularActionContext(&bundles->regular.action_owner);
+            const auto ime_context = input::BuildRegularImeContext(&bundles->regular.shortcut_owner,
+                                                                   ime_candidate_entry,
+                                                                   ime_candidate_start,
+                                                                   ime_candidate_len,
                                                                    ime_romaji_buffer,
                                                                    static_cast<int>(sizeof(ime_romaji_buffer)),
-                                                                   &ime_romaji_len);
-        const auto mode_context = input::BuildRegularModeContext(&bundles.regular.shortcut_owner,
-                                                                 exec_plan.mode_action,
-                                                                 &g_ime_enabled,
-                                                                 &g_jp_layout);
-        const auto chain_result = input::ExecuteRegularExecChain(exec_plan,
-                                                                 ime_context,
-                                                                 clear_context,
-                                                                 mode_context,
-                                                                 action_context,
-                                                                 &cursor_pos,
-                                                                 command_len);
-        if (input::ExecChainNeedsRender(chain_result)) {
-            RenderAndRefreshInput();
-        }
-        return input::ExecChainHandled(chain_result);
+                                                                   &ime_romaji_len,
+                                                                   StrLength);
+            const auto clear_context = input::BuildRegularClearContext(&bundles->regular.shortcut_owner,
+                                                                       command_buffer,
+                                                                       static_cast<int>(sizeof(command_buffer)),
+                                                                       &command_len,
+                                                                       &cursor_pos,
+                                                                       &rendered_len,
+                                                                       ime_romaji_buffer,
+                                                                       static_cast<int>(sizeof(ime_romaji_buffer)),
+                                                                       &ime_romaji_len);
+            const auto mode_context = input::BuildRegularModeContext(&bundles->regular.shortcut_owner,
+                                                                     exec_plan.mode_action,
+                                                                     &g_ime_enabled,
+                                                                     &g_jp_layout);
+            return input::ExecuteRegularExecChain(exec_plan,
+                                                  ime_context,
+                                                  clear_context,
+                                                  mode_context,
+                                                  action_context,
+                                                  &cursor_pos,
+                                                  command_len);
+        });
     };
 
     while (1) {
