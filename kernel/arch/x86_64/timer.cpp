@@ -11,7 +11,9 @@ constexpr uint32_t kLapicRegTimerDivide = 0x3E0;
 constexpr uint32_t kLapicTimerVector = 0x40;
 constexpr uint32_t kLapicTimerPeriodic = 1U << 17;
 constexpr uint32_t kLapicDivideBy16 = 0x3;
-constexpr uint32_t kLapicInitialCount = 10'000'000;
+// Raise timer frequency to improve UI/input scheduling granularity.
+// In virtualized environments this gives noticeably smoother drag/refresh pacing.
+constexpr uint32_t kLapicInitialCount = 250'000;
 
 volatile uint64_t timer_tick = 0;
 
@@ -40,4 +42,3 @@ void NotifyTimerTick() {
 uint64_t CurrentTick() {
     return timer_tick;
 }
-
