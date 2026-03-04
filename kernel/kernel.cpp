@@ -2354,7 +2354,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int drag_offset_x = 0;
     int drag_offset_y = 0;
     constexpr uint64_t kSystemInfoRefreshIntervalTicks = 120;
+    constexpr uint64_t kSystemInfoPointerIdleTicks = 90;
     uint64_t next_system_info_tick = 0;
+    uint64_t last_pointer_move_tick = 0;
     uint64_t last_drag_redraw_tick = 0;
     uint64_t last_pointer_redraw_tick = 0;
     bool drag_visual_dirty = false;
@@ -3217,6 +3219,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             pointer_logical_x = pointer_x;
             pointer_logical_y = pointer_y;
             pointer_visual_dirty = true;
+            last_pointer_move_tick = CurrentTick();
             // Cursor now uses direct-draw path; flush immediately for smoother motion.
             FlushPointerVisual();
         }
@@ -3918,8 +3921,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             last_pointer_redraw_tick = now_tick;
         }
         if (dragging_window < 0 && now_tick >= next_system_info_tick) {
-            // Reduce periodic UI redraw pressure during normal pointer movement.
-            if (main_queue != nullptr && main_queue->Count() <= 8) {
+            // Avoid periodic hitch while pointer is actively moving.
+            if ((now_tick - last_pointer_move_tick) >= kSystemInfoPointerIdleTicks &&
+                main_queue != nullptr && main_queue->Count() <= 8) {
                 RefreshSystemInfo();
             }
             next_system_info_tick = now_tick + kSystemInfoRefreshIntervalTicks;
