@@ -601,6 +601,10 @@ inline bool IsLeftMousePressed(uint8_t pressed_buttons) {
     return (pressed_buttons & 0x01) != 0;
 }
 
+inline bool IsPrimaryClickTriggered(uint8_t pressed_buttons) {
+    return IsLeftMousePressed(pressed_buttons);
+}
+
 inline bool ShouldClearSelectionOnOutsideConsoleClick(bool in_console,
                                                       uint8_t pressed_buttons) {
     return !in_console && IsLeftMousePressed(pressed_buttons);

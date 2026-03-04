@@ -2892,7 +2892,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 (void)info_frame_y0;
                 focus_visual_dirty = true;
             };
-            if ((pressed & 0x01) != 0) {
+            if (input::IsPrimaryClickTriggered(pressed)) {
                 const int hit_window = input::DecideMouseHitWindow(active_window,
                                                                    term_hit.in_frame,
                                                                    info_hit.in_frame);
