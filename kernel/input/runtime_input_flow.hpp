@@ -263,6 +263,14 @@ struct RuntimeMouseDragStopRefs {
     int* dragging_window;
 };
 
+struct RuntimePendingDragRefs {
+    int* drag_pending_window;
+    int* drag_pending_x;
+    int* drag_pending_y;
+    bool* drag_pending_move;
+    bool* drag_visual_dirty;
+};
+
 struct RuntimeMouseConsoleSelectionRefs {
     bool* selecting_with_mouse;
     int* selection_anchor;
@@ -685,6 +693,34 @@ inline bool QueuePendingDragMoveIfNeeded(int active_drag_window,
     *drag_pending_move = true;
     *drag_visual_dirty = true;
     return true;
+}
+
+inline void ProcessActiveMouseDragMove(int active_drag_window,
+                                       int pointer_x,
+                                       int pointer_y,
+                                       int drag_offset_x,
+                                       int drag_offset_y,
+                                       int max_x,
+                                       int max_y,
+                                       int current_x,
+                                       int current_y,
+                                       const RuntimePendingDragRefs& refs) {
+    const auto new_pos = ComputeClampedDragPosition(pointer_x,
+                                                    pointer_y,
+                                                    drag_offset_x,
+                                                    drag_offset_y,
+                                                    max_x,
+                                                    max_y);
+    QueuePendingDragMoveIfNeeded(active_drag_window,
+                                 current_x,
+                                 current_y,
+                                 new_pos.x,
+                                 new_pos.y,
+                                 refs.drag_pending_window,
+                                 refs.drag_pending_x,
+                                 refs.drag_pending_y,
+                                 refs.drag_pending_move,
+                                 refs.drag_visual_dirty);
 }
 
 inline bool IsLeftMousePressed(uint8_t pressed_buttons) {

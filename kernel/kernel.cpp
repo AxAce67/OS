@@ -2919,48 +2919,37 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     prev_buttons,
                     now_buttons,
                 })) {
+                const input::RuntimePendingDragRefs pending_drag_refs{
+                    &drag_pending_window,
+                    &drag_pending_x,
+                    &drag_pending_y,
+                    &drag_pending_move,
+                    &drag_visual_dirty,
+                };
                 if (dragging_window == 0) {
-                    const auto new_pos = input::ComputeClampedDragPosition(
+                    input::ProcessActiveMouseDragMove(
+                        0,
                         pointer_x,
                         pointer_y,
                         drag_offset_x,
                         drag_offset_y,
                         screen_w - term_frame_w,
-                        screen_h - taskbar_h - term_frame_h);
-                    const int new_frame_x = new_pos.x;
-                    const int new_frame_y = new_pos.y;
-                    input::QueuePendingDragMoveIfNeeded(
-                        0,
+                        screen_h - taskbar_h - term_frame_h,
                         term_frame_layer->GetX(),
                         term_frame_layer->GetY(),
-                        new_frame_x,
-                        new_frame_y,
-                        &drag_pending_window,
-                        &drag_pending_x,
-                        &drag_pending_y,
-                        &drag_pending_move,
-                        &drag_visual_dirty);
+                        pending_drag_refs);
                 } else {
-                    const auto new_pos = input::ComputeClampedDragPosition(
+                    input::ProcessActiveMouseDragMove(
+                        1,
                         pointer_x,
                         pointer_y,
                         drag_offset_x,
                         drag_offset_y,
                         screen_w - info_frame_w,
-                        screen_h - taskbar_h - info_frame_h);
-                    const int new_info_x = new_pos.x;
-                    const int new_info_y = new_pos.y;
-                    input::QueuePendingDragMoveIfNeeded(
-                        1,
+                        screen_h - taskbar_h - info_frame_h,
                         info_frame_layer->GetX(),
                         info_frame_layer->GetY(),
-                        new_info_x,
-                        new_info_y,
-                        &drag_pending_window,
-                        &drag_pending_x,
-                        &drag_pending_y,
-                        &drag_pending_move,
-                        &drag_visual_dirty);
+                        pending_drag_refs);
                 }
                 return;
             }
