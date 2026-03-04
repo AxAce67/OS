@@ -3925,6 +3925,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         const uint64_t now_tick = CurrentTick();
         if (drag_visual_dirty && now_tick != last_drag_redraw_tick) {
             FlushPendingDrag();
+            // Drag redraw can overwrite cursor; draw cursor on top every drag frame.
+            mouse_cursor->Redraw();
             drag_visual_dirty = false;
             last_drag_redraw_tick = now_tick;
         }

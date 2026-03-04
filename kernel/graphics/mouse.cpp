@@ -110,6 +110,10 @@ void MouseCursor::SetPosition(int x, int y) {
     DrawCursorAt(x_, y_);
 }
 
+void MouseCursor::Redraw() {
+    DrawCursorAt(x_, y_);
+}
+
 int MouseCursor::X() const {
     return x_;
 }
