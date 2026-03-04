@@ -80,6 +80,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "input/ime_engine.hpp"
 #include "input/ime_logic.hpp"
 #include "input/ime_session.hpp"
+#include "input/key_handler.hpp"
 #include "input/key_flow.hpp"
 #include "input/line_editor.hpp"
 #include "input/line_ops.hpp"
@@ -3052,19 +3053,20 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (input::ShouldClearCandidateBeforeExtendedKey(ime_candidate_active, nav)) {
             ClearImeCandidate();
         }
-        if (key == 0x49) { // Page Up
+        const input::ExtendedKeyAction action = input::DecideExtendedKeyAction(key);
+        if (action == input::ExtendedKeyAction::kPageUp) {
             console->ScrollUp(3);
             RefreshConsole();
             return true;
-        } else if (key == 0x51) { // Page Down
+        } else if (action == input::ExtendedKeyAction::kPageDown) {
             console->ScrollDown(3);
             RefreshConsole();
             return true;
-        } else if (key == 0x53) { // Delete
+        } else if (action == input::ExtendedKeyAction::kDelete) {
             EnsureLiveConsole();
             DeleteAtCursor();
             return true;
-        } else if (key == 0x4B) { // Arrow Left
+        } else if (action == input::ExtendedKeyAction::kLeft) {
             EnsureLiveConsole();
             if (cursor_pos > 0) {
                 ClearSelection();
@@ -3073,7 +3075,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RefreshInputLine();
             }
             return true;
-        } else if (key == 0x4D) { // Arrow Right
+        } else if (action == input::ExtendedKeyAction::kRight) {
             EnsureLiveConsole();
             if (cursor_pos < command_len) {
                 ClearSelection();
@@ -3082,25 +3084,25 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RefreshInputLine();
             }
             return true;
-        } else if (key == 0x47) { // Home
+        } else if (action == input::ExtendedKeyAction::kHome) {
             EnsureLiveConsole();
             ClearSelection();
             cursor_pos = 0;
             RenderInputLine();
             RefreshInputLine();
             return true;
-        } else if (key == 0x4F) { // End
+        } else if (action == input::ExtendedKeyAction::kEnd) {
             EnsureLiveConsole();
             ClearSelection();
             cursor_pos = command_len;
             RenderInputLine();
             RefreshInputLine();
             return true;
-        } else if (key == 0x48) { // Arrow Up
+        } else if (action == input::ExtendedKeyAction::kUp) {
             EnsureLiveConsole();
             BrowseHistoryUp();
             return true;
-        } else if (key == 0x50) { // Arrow Down
+        } else if (action == input::ExtendedKeyAction::kDown) {
             EnsureLiveConsole();
             BrowseHistoryDown();
             return true;
@@ -3113,7 +3115,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             CommitImeCandidateLearning();
             ClearImeCandidate();
         }
-        if (key == 0x01) { // Esc
+        const input::RegularShortcutAction action =
+            input::DecideRegularShortcutAction(key, IsCtrlPressed(keyboard_mods), keyboard_mods.num_lock);
+        if (action == input::RegularShortcutAction::kEsc) {
             if (ime_candidate_active && ime_candidate_entry != nullptr) {
                 cursor_pos = ime_candidate_start;
                 DeleteRangeAt(ime_candidate_start, ime_candidate_len);
@@ -3136,61 +3140,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 return true;
             }
         }
-        if (IsCtrlPressed(keyboard_mods)) {
-            if (key == 0x39) { // Ctrl + Space => IME toggle fallback
-                FlushImeRomaji(true);
-                g_ime_enabled = !g_ime_enabled;
-                if (g_ime_enabled) {
-                    g_jp_layout = true;
-                }
-                RepaintPromptAndInput();
-                return true;
+        if (action == input::RegularShortcutAction::kCtrlSpace) {
+            FlushImeRomaji(true);
+            g_ime_enabled = !g_ime_enabled;
+            if (g_ime_enabled) {
+                g_jp_layout = true;
             }
-            if (key == 0x1E) { // Ctrl + A
-                if (input::ShouldFlushRomajiForCursorShortcut(g_ime_enabled, ime_romaji_len)) {
-                    FlushImeRomaji(true);
-                }
-                EnsureLiveConsole();
-                ClearSelection();
-                cursor_pos = 0;
-                RenderInputLine();
-                RefreshInputLine();
-                return true;
-            }
-            if (key == 0x12) { // Ctrl + E
-                if (input::ShouldFlushRomajiForCursorShortcut(g_ime_enabled, ime_romaji_len)) {
-                    FlushImeRomaji(true);
-                }
-                EnsureLiveConsole();
-                ClearSelection();
-                cursor_pos = command_len;
-                RenderInputLine();
-                RefreshInputLine();
-                return true;
-            }
-            if (key == 0x26) { // Ctrl + L
-                if (g_ime_enabled && ime_romaji_len > 0) {
-                    FlushImeRomaji(true);
-                }
-                console->Clear();
-                PrintPrompt();
-                input_row = console->CursorRow();
-                input_col = console->CursorColumn();
-                rendered_len = 0;
-                command_len = 0;
-                cursor_pos = 0;
-                command_buffer[0] = '\0';
-                ime_romaji_len = 0;
-                ime_romaji_buffer[0] = '\0';
-                ClearImeCandidate();
-                ClearSelection();
-                command_history.ResetNavigation();
-                RenderInputLine();
-                RefreshInputLine();
-                return true;
-            }
+            RepaintPromptAndInput();
+            return true;
         }
-        if (!keyboard_mods.num_lock && key == 0x47) { // Home (non-E0 fallback)
+        if (action == input::RegularShortcutAction::kCtrlA) {
             if (input::ShouldFlushRomajiForCursorShortcut(g_ime_enabled, ime_romaji_len)) {
                 FlushImeRomaji(true);
             }
@@ -3201,18 +3160,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             RefreshInputLine();
             return true;
         }
-        if (!keyboard_mods.num_lock && key == 0x48) { // Arrow Up (non-E0 fallback)
-            if (g_ime_enabled && ime_romaji_len > 0) {
-                FlushImeRomaji(true);
-            }
-            EnsureLiveConsole();
-            if (CycleImeCandidate(-1)) {
-                return true;
-            }
-            BrowseHistoryUp();
-            return true;
-        }
-        if (!keyboard_mods.num_lock && key == 0x4F) { // End (non-E0 fallback)
+        if (action == input::RegularShortcutAction::kCtrlE) {
             if (input::ShouldFlushRomajiForCursorShortcut(g_ime_enabled, ime_romaji_len)) {
                 FlushImeRomaji(true);
             }
@@ -3223,7 +3171,61 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             RefreshInputLine();
             return true;
         }
-        if (!keyboard_mods.num_lock && key == 0x50) { // Arrow Down (non-E0 fallback)
+        if (action == input::RegularShortcutAction::kCtrlL) {
+            if (g_ime_enabled && ime_romaji_len > 0) {
+                FlushImeRomaji(true);
+            }
+            console->Clear();
+            PrintPrompt();
+            input_row = console->CursorRow();
+            input_col = console->CursorColumn();
+            rendered_len = 0;
+            command_len = 0;
+            cursor_pos = 0;
+            command_buffer[0] = '\0';
+            ime_romaji_len = 0;
+            ime_romaji_buffer[0] = '\0';
+            ClearImeCandidate();
+            ClearSelection();
+            command_history.ResetNavigation();
+            RenderInputLine();
+            RefreshInputLine();
+            return true;
+        }
+        if (action == input::RegularShortcutAction::kHomeFallback) {
+            if (input::ShouldFlushRomajiForCursorShortcut(g_ime_enabled, ime_romaji_len)) {
+                FlushImeRomaji(true);
+            }
+            EnsureLiveConsole();
+            ClearSelection();
+            cursor_pos = 0;
+            RenderInputLine();
+            RefreshInputLine();
+            return true;
+        }
+        if (action == input::RegularShortcutAction::kUpFallback) {
+            if (g_ime_enabled && ime_romaji_len > 0) {
+                FlushImeRomaji(true);
+            }
+            EnsureLiveConsole();
+            if (CycleImeCandidate(-1)) {
+                return true;
+            }
+            BrowseHistoryUp();
+            return true;
+        }
+        if (action == input::RegularShortcutAction::kEndFallback) {
+            if (input::ShouldFlushRomajiForCursorShortcut(g_ime_enabled, ime_romaji_len)) {
+                FlushImeRomaji(true);
+            }
+            EnsureLiveConsole();
+            ClearSelection();
+            cursor_pos = command_len;
+            RenderInputLine();
+            RefreshInputLine();
+            return true;
+        }
+        if (action == input::RegularShortcutAction::kDownFallback) {
             if (g_ime_enabled && ime_romaji_len > 0) {
                 FlushImeRomaji(true);
             }
@@ -3234,19 +3236,20 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             BrowseHistoryDown();
             return true;
         }
-        if (key == 0x0E || ((!keyboard_mods.num_lock) && (key == 0x53 || key == 0x71))) { // Backspace/Delete
-            if (key != 0x0E && g_ime_enabled && ime_romaji_len > 0) {
+        if (action == input::RegularShortcutAction::kBackspace ||
+            action == input::RegularShortcutAction::kDelete) {
+            if (action == input::RegularShortcutAction::kDelete && g_ime_enabled && ime_romaji_len > 0) {
                 FlushImeRomaji(true);
             }
             EnsureLiveConsole();
-            if (key == 0x0E) {
+            if (action == input::RegularShortcutAction::kBackspace) {
                 BackspaceAtCursor();
             } else {
                 DeleteAtCursor();
             }
             return true;
         }
-        if (key == 0x0F) { // Tab
+        if (action == input::RegularShortcutAction::kTab) {
             if (g_ime_enabled && ime_romaji_len > 0) {
                 FlushImeRomaji(true);
             }
@@ -3254,14 +3257,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             HandleTabCompletion();
             return true;
         }
-        if (key == 0x29) { // Hankaku/Zenkaku (JP)
+        if (action == input::RegularShortcutAction::kHankakuZenkaku) {
             FlushImeRomaji(true);
             g_ime_enabled = !g_ime_enabled;
             g_jp_layout = true;
             RepaintPromptAndInput();
             return true;
         }
-        if (key == 0x70) { // Kana
+        if (action == input::RegularShortcutAction::kKana) {
             FlushImeRomaji(true);
             g_ime_enabled = !g_ime_enabled;
             if (g_ime_enabled) {
@@ -3270,9 +3273,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             RepaintPromptAndInput();
             return true;
         }
-        if (key == 0x79 || key == 0x7B) { // Henkan / Muhenkan
+        if (action == input::RegularShortcutAction::kHenkan ||
+            action == input::RegularShortcutAction::kMuhenkan) {
             FlushImeRomaji(true);
-            g_ime_enabled = (key == 0x79);
+            g_ime_enabled = (action == input::RegularShortcutAction::kHenkan);
             if (g_ime_enabled) {
                 g_jp_layout = true;
             }
