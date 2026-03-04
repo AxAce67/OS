@@ -37,11 +37,6 @@ const ImeCandidateEntry* ResolveCandidateEntryFromRomaji(
 
 bool ShouldCommitActiveCandidateBeforeShortcut(bool candidate_active, uint8_t key);
 
-int RestoreRomajiFromActiveCandidate(const ImeCandidateEntry* entry,
-                                     char* romaji_buffer,
-                                     int romaji_capacity,
-                                     int (*str_length)(const char*));
-
 struct ImeCharDecision {
     bool ime_path;
     bool cycle_candidate;

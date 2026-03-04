@@ -93,25 +93,6 @@ bool ShouldCommitActiveCandidateBeforeShortcut(bool candidate_active, uint8_t ke
     return key != 0x39 && key != 0x01;
 }
 
-int RestoreRomajiFromActiveCandidate(const ImeCandidateEntry* entry,
-                                     char* romaji_buffer,
-                                     int romaji_capacity,
-                                     int (*str_length)(const char*)) {
-    if (entry == nullptr || entry->key == nullptr ||
-        romaji_buffer == nullptr || romaji_capacity <= 0 ||
-        str_length == nullptr) {
-        return 0;
-    }
-    const int src_len = str_length(entry->key);
-    int len = 0;
-    for (int i = 0; i < src_len && i + 1 < romaji_capacity; ++i) {
-        romaji_buffer[i] = entry->key[i];
-        len = i + 1;
-    }
-    romaji_buffer[len] = '\0';
-    return len;
-}
-
 ImeCharDecision DecideImeCharHandling(char ch,
                                       bool ime_enabled,
                                       bool jp_layout,
