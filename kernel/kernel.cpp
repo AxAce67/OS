@@ -3260,6 +3260,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             ClearSelection();
         }
     };
+    auto RenderAndRefreshInput = [&]() {
+        RenderInputLine();
+        RefreshInputLine();
+    };
     auto ExecuteRegularShortcutExecs = [&](const input::RegularExecPlan& exec_plan,
                                            const input::RegularActionContext& action_context,
                                            RegularShortcutOwner* shortcut_owner,
@@ -3346,10 +3350,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         ApplyExtendedPlanSideEffects(exec_plan);
         auto action_owner = BuildExtendedInputActionOwner();
         const auto action_context = BuildExtendedActionContext(&action_owner);
-        auto RenderAndRefreshInput = [&]() {
-            RenderInputLine();
-            RefreshInputLine();
-        };
         if (ExecuteExtendedShortcutExecs(exec_plan, action_context, RenderAndRefreshInput)) {
             return true;
         }
@@ -3357,10 +3357,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
-        auto RenderAndRefreshInput = [&]() {
-            RenderInputLine();
-            RefreshInputLine();
-        };
         if (input::ShouldCommitActiveCandidateBeforeKey(ime_candidate_active, key)) {
             CommitImeCandidateLearning();
             ClearImeCandidate();
