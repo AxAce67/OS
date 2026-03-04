@@ -2870,14 +2870,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         const int pointer_x = pointer_logical_x;
         const int pointer_y = pointer_logical_y;
         {
-            const int frame_x = term_frame_layer->GetX();
-            const int frame_y = term_frame_layer->GetY();
-            const auto term_hit = input::ComputeWindowHitTest(
-                pointer_x, pointer_y, frame_x, frame_y, term_frame_w, term_frame_h, term_title_h);
-            const int info_x = info_frame_layer->GetX();
-            const int info_y = info_frame_layer->GetY();
-            const auto info_hit = input::ComputeWindowHitTest(
-                pointer_x, pointer_y, info_x, info_y, info_frame_w, info_frame_h, info_title_h);
             auto ApplyWindowFocus = [&](int which) {
                 if (which == active_window) {
                     return;
@@ -2912,51 +2904,38 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 (void)info_frame_y0;
                 focus_visual_dirty = true;
             };
-            input::ProcessPrimaryClickWindowInteractions(
-                pressed,
+            if (input::ProcessMouseWindowFocusAndDrag(
+                pointer_x,
+                pointer_y,
                 active_window,
-                term_hit,
-                info_hit,
-                mouse_context.drag_refs,
-                ApplyWindowFocus,
-                ClearSelection);
-            input::StopMouseDraggingIfNeeded(
-                input::RuntimeMouseDragState{
-                    dragging_window,
-                    prev_buttons,
-                    now_buttons,
+                prev_buttons,
+                now_buttons,
+                pressed,
+                input::RuntimeMouseWindowGeometry{
+                    term_frame_layer->GetX(),
+                    term_frame_layer->GetY(),
+                    term_frame_w,
+                    term_frame_h,
+                    term_title_h,
+                    info_frame_layer->GetX(),
+                    info_frame_layer->GetY(),
+                    info_frame_w,
+                    info_frame_h,
+                    info_title_h,
+                    screen_w - term_frame_w,
+                    screen_h - taskbar_h - term_frame_h,
+                    screen_w - info_frame_w,
+                    screen_h - taskbar_h - info_frame_h,
+                    term_frame_layer->GetX(),
+                    term_frame_layer->GetY(),
+                    info_frame_layer->GetX(),
+                    info_frame_layer->GetY(),
                 },
-                mouse_context.drag_stop_refs);
-            if (input::IsMouseDraggingActive(input::RuntimeMouseDragState{
-                    dragging_window,
-                    prev_buttons,
-                    now_buttons,
-                })) {
-                if (dragging_window == 0) {
-                    input::ProcessActiveMouseDragMove(
-                        0,
-                        pointer_x,
-                        pointer_y,
-                        drag_offset_x,
-                        drag_offset_y,
-                        screen_w - term_frame_w,
-                        screen_h - taskbar_h - term_frame_h,
-                        term_frame_layer->GetX(),
-                        term_frame_layer->GetY(),
-                        mouse_context.pending_drag_refs);
-                } else {
-                    input::ProcessActiveMouseDragMove(
-                        1,
-                        pointer_x,
-                        pointer_y,
-                        drag_offset_x,
-                        drag_offset_y,
-                        screen_w - info_frame_w,
-                        screen_h - taskbar_h - info_frame_h,
-                        info_frame_layer->GetX(),
-                        info_frame_layer->GetY(),
-                        mouse_context.pending_drag_refs);
-                }
+                mouse_context.drag_refs,
+                mouse_context.drag_stop_refs,
+                mouse_context.pending_drag_refs,
+                ApplyWindowFocus,
+                ClearSelection)) {
                 return;
             }
 

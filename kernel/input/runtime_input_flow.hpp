@@ -289,6 +289,27 @@ struct RuntimeMouseMessageContext {
     RuntimePendingDragRefs pending_drag_refs;
 };
 
+struct RuntimeMouseWindowGeometry {
+    int term_frame_x;
+    int term_frame_y;
+    int term_frame_w;
+    int term_frame_h;
+    int term_title_h;
+    int info_frame_x;
+    int info_frame_y;
+    int info_frame_w;
+    int info_frame_h;
+    int info_title_h;
+    int term_drag_max_x;
+    int term_drag_max_y;
+    int info_drag_max_x;
+    int info_drag_max_y;
+    int term_current_x;
+    int term_current_y;
+    int info_current_x;
+    int info_current_y;
+};
+
 template <class TCandidateEntry>
 struct RuntimeImeCandidateStartRefsT {
     char* romaji_buffer;
@@ -729,6 +750,85 @@ inline void ProcessActiveMouseDragMove(int active_drag_window,
                                  refs.drag_pending_y,
                                  refs.drag_pending_move,
                                  refs.drag_visual_dirty);
+}
+
+template <class TApplyWindowFocus, class TClearSelection>
+inline bool ProcessMouseWindowFocusAndDrag(
+    int pointer_x,
+    int pointer_y,
+    int active_window,
+    uint8_t prev_buttons,
+    uint8_t now_buttons,
+    uint8_t pressed_buttons,
+    const RuntimeMouseWindowGeometry& geometry,
+    const RuntimeMouseDragRefs& drag_refs,
+    const RuntimeMouseDragStopRefs& drag_stop_refs,
+    const RuntimePendingDragRefs& pending_drag_refs,
+    TApplyWindowFocus&& apply_window_focus,
+    TClearSelection&& clear_selection) {
+    if (drag_refs.dragging_window == nullptr ||
+        drag_refs.drag_offset_x == nullptr ||
+        drag_refs.drag_offset_y == nullptr) {
+        return false;
+    }
+    const auto term_hit = ComputeWindowHitTest(pointer_x,
+                                               pointer_y,
+                                               geometry.term_frame_x,
+                                               geometry.term_frame_y,
+                                               geometry.term_frame_w,
+                                               geometry.term_frame_h,
+                                               geometry.term_title_h);
+    const auto info_hit = ComputeWindowHitTest(pointer_x,
+                                               pointer_y,
+                                               geometry.info_frame_x,
+                                               geometry.info_frame_y,
+                                               geometry.info_frame_w,
+                                               geometry.info_frame_h,
+                                               geometry.info_title_h);
+    ProcessPrimaryClickWindowInteractions(pressed_buttons,
+                                          active_window,
+                                          term_hit,
+                                          info_hit,
+                                          drag_refs,
+                                          apply_window_focus,
+                                          clear_selection);
+    StopMouseDraggingIfNeeded(RuntimeMouseDragState{
+                                  *drag_refs.dragging_window,
+                                  prev_buttons,
+                                  now_buttons,
+                              },
+                              drag_stop_refs);
+    if (!IsMouseDraggingActive(RuntimeMouseDragState{
+            *drag_refs.dragging_window,
+            prev_buttons,
+            now_buttons,
+        })) {
+        return false;
+    }
+    if (*drag_refs.dragging_window == 0) {
+        ProcessActiveMouseDragMove(0,
+                                   pointer_x,
+                                   pointer_y,
+                                   *drag_refs.drag_offset_x,
+                                   *drag_refs.drag_offset_y,
+                                   geometry.term_drag_max_x,
+                                   geometry.term_drag_max_y,
+                                   geometry.term_current_x,
+                                   geometry.term_current_y,
+                                   pending_drag_refs);
+    } else {
+        ProcessActiveMouseDragMove(1,
+                                   pointer_x,
+                                   pointer_y,
+                                   *drag_refs.drag_offset_x,
+                                   *drag_refs.drag_offset_y,
+                                   geometry.info_drag_max_x,
+                                   geometry.info_drag_max_y,
+                                   geometry.info_current_x,
+                                   geometry.info_current_y,
+                                   pending_drag_refs);
+    }
+    return true;
 }
 
 inline bool IsLeftMousePressed(uint8_t pressed_buttons) {
