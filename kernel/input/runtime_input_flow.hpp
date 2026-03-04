@@ -224,6 +224,23 @@ struct RuntimeDragClampedPosition {
     int y;
 };
 
+struct RuntimeConsoleGridMetrics {
+    int origin_x;
+    int origin_y;
+    int width;
+    int height;
+    int margin_x;
+    int margin_y;
+    int cell_w;
+    int cell_h;
+};
+
+struct RuntimeConsoleCellHit {
+    bool in_console;
+    int click_col;
+    int click_row;
+};
+
 template <class TCandidateEntry>
 struct RuntimeImeCandidateStartRefsT {
     char* romaji_buffer;
@@ -488,6 +505,36 @@ inline RuntimeDragClampedPosition ComputeClampedDragPosition(int pointer_x,
     if (x > max_x) x = max_x;
     if (y > max_y) y = max_y;
     return RuntimeDragClampedPosition{x, y};
+}
+
+inline RuntimeConsoleCellHit ComputeConsoleCellHit(int pointer_x,
+                                                   int pointer_y,
+                                                   const RuntimeConsoleGridMetrics& metrics) {
+    const bool in_console =
+        pointer_x >= metrics.origin_x && pointer_x < metrics.origin_x + metrics.width &&
+        pointer_y >= metrics.origin_y && pointer_y < metrics.origin_y + metrics.height;
+    if (!in_console) {
+        return RuntimeConsoleCellHit{false, 0, 0};
+    }
+    const int click_col = (pointer_x - metrics.origin_x - metrics.margin_x) / metrics.cell_w;
+    const int click_row = (pointer_y - metrics.origin_y - metrics.margin_y) / metrics.cell_h;
+    return RuntimeConsoleCellHit{true, click_col, click_row};
+}
+
+inline bool IsConsoleInputRowHit(int click_row,
+                                 int click_col,
+                                 int input_row,
+                                 int input_col) {
+    return click_row == input_row && click_col >= input_col;
+}
+
+inline int ComputeClampedInputCursorFromClick(int click_col,
+                                              int input_col,
+                                              int command_len) {
+    int next_cursor = click_col - input_col;
+    if (next_cursor < 0) next_cursor = 0;
+    if (next_cursor > command_len) next_cursor = command_len;
+    return next_cursor;
 }
 
 template <class TQueueCount, class TQueuePeek, class TQueuePop>

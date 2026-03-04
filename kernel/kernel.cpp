@@ -2968,23 +2968,31 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
 
             const int console_x = term_console_layer->GetX();
             const int console_y = term_console_layer->GetY();
-            const bool in_terminal_console =
-                pointer_x >= console_x && pointer_x < console_x + term_content_w &&
-                pointer_y >= console_y && pointer_y < console_y + term_content_h;
-            if (!in_terminal_console) {
+            const auto console_hit = input::ComputeConsoleCellHit(
+                pointer_x,
+                pointer_y,
+                input::RuntimeConsoleGridMetrics{
+                    console_x,
+                    console_y,
+                    term_content_w,
+                    term_content_h,
+                    Console::kMarginX,
+                    Console::kMarginY,
+                    Console::kCellWidth,
+                    Console::kCellHeight,
+                });
+            if (!console_hit.in_console) {
                 if ((pressed & 0x01) != 0) {
                     ClearSelection();
                 }
                 return;
             }
-            const int click_col = (pointer_x - console_x - Console::kMarginX) / Console::kCellWidth;
-            const int click_row = (pointer_y - console_y - Console::kMarginY) / Console::kCellHeight;
+            const int click_col = console_hit.click_col;
+            const int click_row = console_hit.click_row;
             if ((pressed & 0x01) != 0) {
                 selecting_with_mouse = true;
-                if (click_row == input_row && click_col >= input_col) {
-                    int at = click_col - input_col;
-                    if (at < 0) at = 0;
-                    if (at > command_len) at = command_len;
+                if (input::IsConsoleInputRowHit(click_row, click_col, input_row, input_col)) {
+                    const int at = input::ComputeClampedInputCursorFromClick(click_col, input_col, command_len);
                     selection_anchor = at;
                     selection_end = at;
                 } else {
@@ -2992,10 +3000,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 }
             }
             if ((now_buttons & 0x01) != 0 && selecting_with_mouse &&
-                click_row == input_row && click_col >= input_col) {
-                int next_cursor = click_col - input_col;
-                if (next_cursor < 0) next_cursor = 0;
-                if (next_cursor > command_len) next_cursor = command_len;
+                input::IsConsoleInputRowHit(click_row, click_col, input_row, input_col)) {
+                const int next_cursor =
+                    input::ComputeClampedInputCursorFromClick(click_col, input_col, command_len);
                 selection_end = next_cursor;
                 if (next_cursor != cursor_pos) {
                     EnsureLiveConsole();
@@ -3006,10 +3013,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             }
             if ((pressed & 0x01) != 0 && !input::HasSelection(selection_anchor, selection_end)) {  // Left click
                 EnsureLiveConsole();
-                if (click_row == input_row && click_col >= input_col) {
-                    int next_cursor = click_col - input_col;
-                    if (next_cursor < 0) next_cursor = 0;
-                    if (next_cursor > command_len) next_cursor = command_len;
+                if (input::IsConsoleInputRowHit(click_row, click_col, input_row, input_col)) {
+                    const int next_cursor =
+                        input::ComputeClampedInputCursorFromClick(click_col, input_col, command_len);
                     cursor_pos = next_cursor;
                     RenderInputLine();
                     RefreshInputLine();
