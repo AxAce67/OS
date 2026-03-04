@@ -3281,6 +3281,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (out_plan == nullptr) {
             return false;
         }
+        if (input::ShouldCommitActiveCandidateBeforeKey(ime_candidate_active, key)) {
+            CommitImeCandidateLearning();
+            ClearImeCandidate();
+        }
         const input::RegularShortcutAction action =
             input::DecideRegularShortcutAction(key, IsCtrlPressed(keyboard_mods), keyboard_mods.num_lock);
         const auto plan =
@@ -3390,10 +3394,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
-        if (input::ShouldCommitActiveCandidateBeforeKey(ime_candidate_active, key)) {
-            CommitImeCandidateLearning();
-            ClearImeCandidate();
-        }
         input::RegularExecPlan exec_plan{};
         if (!TryPrepareRegularExecPlan(key, &exec_plan)) {
             return false;
