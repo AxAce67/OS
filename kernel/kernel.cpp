@@ -2365,7 +2365,18 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     auto RefreshInputLine = [&]() {
         int x = term_console_layer->GetX() + Console::kMarginX + input_col * Console::kCellWidth;
         int y = term_console_layer->GetY() + Console::kMarginY + input_row * Console::kCellHeight;
-        int w = (console->Columns() - input_col) * Console::kCellWidth;
+        int draw_cells = rendered_len + 2;
+        if (draw_cells < cursor_pos + 1) {
+            draw_cells = cursor_pos + 1;
+        }
+        const int max_cells = console->Columns() - input_col;
+        if (draw_cells > max_cells) {
+            draw_cells = max_cells;
+        }
+        if (draw_cells < 1) {
+            draw_cells = 1;
+        }
+        int w = draw_cells * Console::kCellWidth;
         int h = Console::kCellHeight;
         if (w < 1) w = 1;
         if (h < 1) h = 1;
@@ -2434,7 +2445,37 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto RenderInputLine = [&]() {
-        const int clear_len = console->Columns() - input_col - 1;
+        auto CountU32Digits = [](uint32_t v) {
+            int n = 1;
+            while (v >= 10) {
+                v /= 10;
+                ++n;
+            }
+            return n;
+        };
+        int visual_len = command_len;
+        if (g_ime_enabled && ime_romaji_len > 0) {
+            visual_len += ime_romaji_len + 2; // [romaji]
+        }
+        if (ime_candidate_active && ime_candidate_entry != nullptr && ime_candidate_entry->count > 0) {
+            visual_len += 8; // " [cand "
+            visual_len += CountU32Digits(static_cast<uint32_t>(ime_candidate_index + 1));
+            visual_len += 1; // '/'
+            visual_len += CountU32Digits(static_cast<uint32_t>(ime_candidate_entry->count));
+            visual_len += 1; // ']'
+        }
+        int clear_len = rendered_len;
+        if (clear_len < visual_len) {
+            clear_len = visual_len;
+        }
+        clear_len += 2; // trailing safety
+        const int max_clear = console->Columns() - input_col - 1;
+        if (clear_len > max_clear) {
+            clear_len = max_clear;
+        }
+        if (clear_len < 0) {
+            clear_len = 0;
+        }
         console->SetCursorPosition(input_row, input_col);
         for (int i = 0; i < clear_len; ++i) {
             console->Print(" ");
@@ -2474,7 +2515,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 win->DrawCharScaled(px, py, c, {0, 0, 0}, Console::kFontScale);
             }
         }
-        rendered_len = command_len;
+        rendered_len = visual_len;
         console->SetCursorPosition(input_row, input_col + cursor_pos);
     };
 
@@ -3232,7 +3273,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         term_console_layer->Move(new_frame_x + term_frame_border, new_frame_y + term_title_h);
                         drag_visual_dirty = true;
                         const uint64_t now = CurrentTick();
-                        if (now != last_drag_redraw_tick) {
+                        const bool queue_light = main_queue->Count() < 8;
+                        if (queue_light || now != last_drag_redraw_tick) {
                             DrawMovedUnion(old_frame_x, old_frame_y, new_frame_x, new_frame_y, term_frame_w, term_frame_h);
                             last_drag_redraw_tick = now;
                             drag_visual_dirty = false;
@@ -3252,7 +3294,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         info_content_layer->Move(new_info_x + info_frame_border, new_info_y + info_title_h);
                         drag_visual_dirty = true;
                         const uint64_t now = CurrentTick();
-                        if (now != last_drag_redraw_tick) {
+                        const bool queue_light = main_queue->Count() < 8;
+                        if (queue_light || now != last_drag_redraw_tick) {
                             DrawMovedUnion(old_info_x, old_info_y, new_info_x, new_info_y, info_frame_w, info_frame_h);
                             last_drag_redraw_tick = now;
                             drag_visual_dirty = false;
@@ -3593,17 +3636,28 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             msg.wheel == 0) {
             Message next;
             int merged = 0;
-            while (merged < 64 &&
+            int total_dx = msg.dx;
+            int total_dy = msg.dy;
+            while (merged < 128 &&
                    main_queue->Peek(next) &&
                    next.type == Message::Type::kInterruptMouse &&
                    next.pointer_mode == Message::PointerMode::kRelative &&
-                   next.wheel == 0 &&
-                   next.buttons == msg.buttons) {
+                   next.wheel == 0) {
                 main_queue->Pop(next);
-                msg.dx += next.dx;
-                msg.dy += next.dy;
                 ++merged;
+                // Keep interaction state fresh first: latest button state wins.
+                msg.buttons = next.buttons;
+                // If backlog grows, drop stale deltas to avoid "post-release drift".
+                if (merged <= 8) {
+                    total_dx += next.dx;
+                    total_dy += next.dy;
+                } else {
+                    total_dx = next.dx;
+                    total_dy = next.dy;
+                }
             }
+            msg.dx = total_dx;
+            msg.dy = total_dy;
         }
         
         // 取り出し終わったら割り込みを再開する
