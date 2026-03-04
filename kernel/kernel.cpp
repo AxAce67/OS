@@ -3235,6 +3235,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             // During drag, flush at frame tail after window redraw to avoid cursor overwrite flicker.
             if (dragging_window < 0) {
                 FlushPointerVisual();
+            } else {
+                // Keep cursor visible during drag even before next drag frame flush.
+                mouse_cursor->SetPosition(pointer_logical_x - 1, pointer_logical_y - 1);
+                pointer_visual_dirty = false;
+                last_pointer_redraw_tick = last_pointer_move_tick;
             }
         }
         {
