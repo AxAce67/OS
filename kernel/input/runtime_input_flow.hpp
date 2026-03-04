@@ -5,6 +5,7 @@
 #include "input/history.hpp"
 #include "input/key_handler.hpp"
 #include "input/key_handler_exec.hpp"
+#include "input/key_event.hpp"
 #include "input/key_flow.hpp"
 
 class Console;
@@ -136,6 +137,50 @@ struct RuntimeExecInputRefsT {
     bool* jp_layout;
     int (*str_length)(const char*);
 };
+
+struct RuntimeKeyDownRefs {
+    bool* key_down_extended;
+    bool* key_down_normal;
+};
+
+inline bool TryConsumeReleasedKey(const KeyEvent& key_event,
+                                  const RuntimeKeyDownRefs& refs) {
+    if (!key_event.released) {
+        return false;
+    }
+    if (key_event.keycode < 128) {
+        if (key_event.extended) {
+            refs.key_down_extended[key_event.keycode] = false;
+        } else {
+            refs.key_down_normal[key_event.keycode] = false;
+        }
+    }
+    return true;
+}
+
+inline bool ShouldSkipRepeatedKeyDown(const KeyEvent& key_event,
+                                      bool key_repeat_enabled,
+                                      const RuntimeKeyDownRefs& refs) {
+    if (key_repeat_enabled || key_event.keycode >= 128) {
+        return false;
+    }
+    const bool already_down = key_event.extended
+                                  ? refs.key_down_extended[key_event.keycode]
+                                  : refs.key_down_normal[key_event.keycode];
+    return already_down;
+}
+
+inline void MarkKeyDownIfTrackable(const KeyEvent& key_event,
+                                   const RuntimeKeyDownRefs& refs) {
+    if (key_event.keycode >= 128) {
+        return;
+    }
+    if (key_event.extended) {
+        refs.key_down_extended[key_event.keycode] = true;
+    } else {
+        refs.key_down_normal[key_event.keycode] = true;
+    }
+}
 
 template <class TImeCandidateEntry>
 inline void BuildRuntimeExecInputRefs(RuntimeExecInputRefsT<TImeCandidateEntry>* refs,

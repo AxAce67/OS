@@ -3269,14 +3269,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 if (key_event.kind == KeyEventKind::kModifier) {
                     break;
                 }
-                if (key_event.released) {
-                    if (key_event.keycode < 128) {
-                        if (key_event.extended) {
-                            key_down_extended[key_event.keycode] = false;
-                        } else {
-                            key_down_normal[key_event.keycode] = false;
-                        }
-                    }
+                const input::RuntimeKeyDownRefs key_down_refs{key_down_extended, key_down_normal};
+                if (input::TryConsumeReleasedKey(key_event, key_down_refs)) {
                     break;
                 }
                 const uint8_t key = key_event.keycode;
@@ -3289,19 +3283,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         break;
                     }
                 }
-                if (key < 128 && !g_key_repeat_enabled) {
-                    const bool already_down = key_event.extended ? key_down_extended[key] : key_down_normal[key];
-                    if (already_down) {
-                        break;
-                    }
+                if (input::ShouldSkipRepeatedKeyDown(key_event, g_key_repeat_enabled, key_down_refs)) {
+                    break;
                 }
-                if (key < 128) {
-                    if (key_event.extended) {
-                        key_down_extended[key] = true;
-                    } else {
-                        key_down_normal[key] = true;
-                    }
-                }
+                input::MarkKeyDownIfTrackable(key_event, key_down_refs);
                 if (HandleRegularKeyShortcut(key)) {
                     break;
                 }
