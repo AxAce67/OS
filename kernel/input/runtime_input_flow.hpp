@@ -572,6 +572,11 @@ inline bool IsLeftMousePressed(uint8_t pressed_buttons) {
     return (pressed_buttons & 0x01) != 0;
 }
 
+inline bool ShouldClearSelectionOnOutsideConsoleClick(bool in_console,
+                                                      uint8_t pressed_buttons) {
+    return !in_console && IsLeftMousePressed(pressed_buttons);
+}
+
 template <class TClearSelection>
 inline void BeginMouseConsoleSelectionIfPressed(uint8_t pressed_buttons,
                                                 int click_row,

@@ -2996,7 +2996,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     Console::kCellHeight,
                 });
             if (!console_hit.in_console) {
-                if ((pressed & 0x01) != 0) {
+                if (input::ShouldClearSelectionOnOutsideConsoleClick(console_hit.in_console, pressed)) {
                     ClearSelection();
                 }
                 return;
