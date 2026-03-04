@@ -76,6 +76,8 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "input/key_layout.hpp"
 #include "input/hid_keyboard.hpp"
 #include "input/history.hpp"
+#include "input/ime_candidate.hpp"
+#include "input/ime_engine.hpp"
 #include "input/ime_logic.hpp"
 #include "input/line_editor.hpp"
 #include "input/line_ops.hpp"
@@ -572,12 +574,6 @@ struct RomajiKanaEntry {
     const char* roma;
     uint8_t bytes[3];
     uint8_t len;
-};
-
-struct ImeCandidateEntry {
-    const char* key;             // romaji source
-    const char* candidates[4];   // display/insert text (single-byte font space)
-    int count;
 };
 
 struct ImeUserCandidateEntry {
@@ -2750,105 +2746,23 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         return true;
     };
     auto TryBuildPrefixCandidateEntry = [&](const char* prefix) -> const ImeCandidateEntry* {
-        if (prefix == nullptr || prefix[0] == '\0') {
-            return nullptr;
-        }
-        const int prefix_len = StrLength(prefix);
-        CopyString(ime_prefix_candidate_key, prefix, static_cast<int>(sizeof(ime_prefix_candidate_key)));
-        ime_prefix_candidate_view.key = ime_prefix_candidate_key;
-        ime_prefix_candidate_view.count = 0;
-        for (int i = 0; i < 4; ++i) {
-            ime_prefix_candidate_ptrs[i] = nullptr;
-            ime_prefix_candidate_texts[i][0] = '\0';
-            ime_prefix_candidate_view.candidates[i] = nullptr;
-        }
-        auto append_unique_candidates = [&](const ImeCandidateEntry* src) {
-            if (src == nullptr || src->count <= 0) {
-                return;
-            }
-            for (int i = 0; i < src->count; ++i) {
-                const char* cand = src->candidates[i];
-                if (cand == nullptr || cand[0] == '\0') {
-                    continue;
-                }
-                bool exists = false;
-                for (int j = 0; j < ime_prefix_candidate_view.count; ++j) {
-                    if (StrEqual(ime_prefix_candidate_ptrs[j], cand)) {
-                        exists = true;
-                        break;
-                    }
-                }
-                if (exists) {
-                    continue;
-                }
-                if (ime_prefix_candidate_view.count >= 4) {
-                    return;
-                }
-                const int dst_index = ime_prefix_candidate_view.count;
-                CopyString(ime_prefix_candidate_texts[dst_index], cand, static_cast<int>(sizeof(ime_prefix_candidate_texts[dst_index])));
-                ime_prefix_candidate_ptrs[dst_index] = ime_prefix_candidate_texts[dst_index];
-                ime_prefix_candidate_view.candidates[dst_index] = ime_prefix_candidate_ptrs[dst_index];
-                CopyString(ime_candidate_source_keys[dst_index], src->key, static_cast<int>(sizeof(ime_candidate_source_keys[dst_index])));
-                ++ime_prefix_candidate_view.count;
-            }
-        };
-        int max_key_len = prefix_len;
-        for (int i = 0; i < static_cast<int>(sizeof(g_ime_user_candidate_views) / sizeof(g_ime_user_candidate_views[0])); ++i) {
-            const ImeCandidateEntry* e = &g_ime_user_candidate_views[i];
-            if (e->key == nullptr || !StrStartsWith(e->key, prefix)) {
-                continue;
-            }
-            const int key_len = StrLength(e->key);
-            if (key_len > max_key_len) {
-                max_key_len = key_len;
-            }
-        }
-        for (int i = 0; i < static_cast<int>(sizeof(kImeCandidateTable) / sizeof(kImeCandidateTable[0])); ++i) {
-            const ImeCandidateEntry* e = &kImeCandidateTable[i];
-            if (!StrStartsWith(e->key, prefix)) {
-                continue;
-            }
-            const int key_len = StrLength(e->key);
-            if (key_len > max_key_len) {
-                max_key_len = key_len;
-            }
-        }
-        for (int target_len = max_key_len; target_len >= prefix_len; --target_len) {
-            for (int i = 0; i < static_cast<int>(sizeof(g_ime_user_candidate_views) / sizeof(g_ime_user_candidate_views[0])); ++i) {
-                const ImeCandidateEntry* e = &g_ime_user_candidate_views[i];
-                if (e->key == nullptr || !StrStartsWith(e->key, prefix)) {
-                    continue;
-                }
-                if (StrLength(e->key) != target_len) {
-                    continue;
-                }
-                append_unique_candidates(e);
-                if (ime_prefix_candidate_view.count >= 4) {
-                    return &ime_prefix_candidate_view;
-                }
-            }
-            for (int i = 0; i < static_cast<int>(sizeof(kImeCandidateTable) / sizeof(kImeCandidateTable[0])); ++i) {
-                const ImeCandidateEntry* e = &kImeCandidateTable[i];
-                if (!StrStartsWith(e->key, prefix)) {
-                    continue;
-                }
-                if (StrLength(e->key) != target_len) {
-                    continue;
-                }
-                append_unique_candidates(e);
-                if (ime_prefix_candidate_view.count >= 4) {
-                    return &ime_prefix_candidate_view;
-                }
-            }
-        }
-        if (ime_prefix_candidate_view.count <= 0) {
-            return nullptr;
-        }
-        input::SortCandidatesByLearning(ime_prefix_candidate_view.candidates,
-                                        ime_candidate_source_keys,
-                                        ime_prefix_candidate_view.count,
-                                        GetImeLearningScore);
-        return &ime_prefix_candidate_view;
+        return input::BuildPrefixCandidateEntry(
+            prefix,
+            g_ime_user_candidate_views,
+            static_cast<int>(sizeof(g_ime_user_candidate_views) / sizeof(g_ime_user_candidate_views[0])),
+            kImeCandidateTable,
+            static_cast<int>(sizeof(kImeCandidateTable) / sizeof(kImeCandidateTable[0])),
+            &ime_prefix_candidate_view,
+            ime_prefix_candidate_key,
+            static_cast<int>(sizeof(ime_prefix_candidate_key)),
+            ime_prefix_candidate_ptrs,
+            ime_prefix_candidate_texts,
+            ime_candidate_source_keys,
+            StrStartsWith,
+            StrLength,
+            StrEqual,
+            CopyString,
+            GetImeLearningScore);
     };
 
     auto FlushImeRomaji = [&](bool finalize) -> bool {
