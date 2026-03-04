@@ -99,6 +99,100 @@ ExecChainResult ExecuteExtendedExecChain(const ExtendedExecPlan& plan,
                                          int* cursor_pos,
                                          int command_len);
 
+template <class TFlushRomaji, class TClearCandidate, class TEnsureLiveConsole, class TClearSelection>
+inline void ApplyExtendedPlanSideEffects(const ExtendedExecPlan& plan,
+                                         TFlushRomaji&& flush_romaji,
+                                         TClearCandidate&& clear_candidate,
+                                         TEnsureLiveConsole&& ensure_live_console,
+                                         TClearSelection&& clear_selection) {
+    if (plan.flush_romaji) {
+        flush_romaji();
+    }
+    if (plan.clear_candidate) {
+        clear_candidate();
+    }
+    if (plan.ensure_live_console) {
+        ensure_live_console();
+    }
+    if (plan.clear_selection) {
+        clear_selection();
+    }
+}
+
+template <class TFlushRomaji, class TEnsureLiveConsole, class TClearSelection>
+inline void ApplyRegularPlanSideEffects(const RegularExecPlan& plan,
+                                        TFlushRomaji&& flush_romaji,
+                                        TEnsureLiveConsole&& ensure_live_console,
+                                        TClearSelection&& clear_selection) {
+    if (plan.flush_romaji) {
+        flush_romaji();
+    }
+    if (plan.ensure_live_console) {
+        ensure_live_console();
+    }
+    if (plan.clear_selection) {
+        clear_selection();
+    }
+}
+
+template <class TApplySideEffects>
+inline bool TryPrepareExtendedExecPlan(uint8_t key,
+                                       bool ime_enabled,
+                                       int ime_romaji_len,
+                                       bool candidate_active,
+                                       bool has_candidate_nav,
+                                       TApplySideEffects&& apply_side_effects,
+                                       ExtendedExecPlan* out_plan) {
+    if (out_plan == nullptr) {
+        return false;
+    }
+    const auto prep = PrepareExtendedExecPlan(key,
+                                              ime_enabled,
+                                              ime_romaji_len,
+                                              candidate_active,
+                                              has_candidate_nav);
+    if (!prep.handled) {
+        return false;
+    }
+    apply_side_effects(prep.plan);
+    *out_plan = prep.plan;
+    return true;
+}
+
+template <class TCommitCandidate, class TClearCandidate, class TApplySideEffects>
+inline bool TryPrepareRegularExecPlan(uint8_t key,
+                                      bool ctrl_pressed,
+                                      bool num_lock,
+                                      bool ime_enabled,
+                                      int ime_romaji_len,
+                                      bool candidate_active,
+                                      bool has_candidate_entry,
+                                      TCommitCandidate&& commit_candidate,
+                                      TClearCandidate&& clear_candidate,
+                                      TApplySideEffects&& apply_side_effects,
+                                      RegularExecPlan* out_plan) {
+    if (out_plan == nullptr) {
+        return false;
+    }
+    const auto prep = PrepareRegularExecPlan(key,
+                                             ctrl_pressed,
+                                             num_lock,
+                                             ime_enabled,
+                                             ime_romaji_len,
+                                             candidate_active,
+                                             has_candidate_entry);
+    if (prep.should_commit_active_candidate) {
+        commit_candidate();
+        clear_candidate();
+    }
+    if (!prep.handled || prep.missing_required_candidate) {
+        return false;
+    }
+    apply_side_effects(prep.plan);
+    *out_plan = prep.plan;
+    return true;
+}
+
 template <class TInputActionOwner>
 inline ExtendedActionContext BuildExtendedActionContext(TInputActionOwner* owner) {
     return ExtendedActionContext{

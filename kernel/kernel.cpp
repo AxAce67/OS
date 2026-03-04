@@ -3056,75 +3056,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     using ExtendedExecBundle = input::RuntimeExtendedExecBundleT<InputActionOwner>;
     using RegularExecBundle = input::RuntimeRegularExecBundleT<InputActionOwner, RegularShortcutOwner>;
 
-    auto ApplyExtendedPlanSideEffects = [&](const input::ExtendedExecPlan& plan) {
-        if (plan.flush_romaji) {
-            FlushImeRomaji(true);
-        }
-        if (plan.clear_candidate) {
-            ClearImeCandidate();
-        }
-        if (plan.ensure_live_console) {
-            EnsureLiveConsole();
-        }
-        if (plan.clear_selection) {
-            ClearSelection();
-        }
-    };
-    auto ApplyRegularPlanSideEffects = [&](const input::RegularExecPlan& plan) {
-        if (plan.flush_romaji) {
-            FlushImeRomaji(true);
-        }
-        if (plan.ensure_live_console) {
-            EnsureLiveConsole();
-        }
-        if (plan.clear_selection) {
-            ClearSelection();
-        }
-    };
-    auto TryPrepareExtendedExecPlan = [&](uint8_t key,
-                                          bool has_candidate_nav,
-                                          input::ExtendedExecPlan* out_plan) -> bool {
-        if (out_plan == nullptr) {
-            return false;
-        }
-        const auto prep = input::PrepareExtendedExecPlan(key,
-                                                         g_ime_enabled,
-                                                         ime_romaji_len,
-                                                         ime_candidate_active,
-                                                         has_candidate_nav);
-        if (!prep.handled) {
-            return false;
-        }
-        ApplyExtendedPlanSideEffects(prep.plan);
-        *out_plan = prep.plan;
-        return true;
-    };
-    auto TryPrepareRegularExecPlan = [&](uint8_t key,
-                                         input::RegularExecPlan* out_plan) -> bool {
-        if (out_plan == nullptr) {
-            return false;
-        }
-        const auto prep = input::PrepareRegularExecPlan(key,
-                                                        IsCtrlPressed(keyboard_mods),
-                                                        keyboard_mods.num_lock,
-                                                        g_ime_enabled,
-                                                        ime_romaji_len,
-                                                        ime_candidate_active,
-                                                        ime_candidate_entry != nullptr);
-        if (prep.should_commit_active_candidate) {
-            CommitImeCandidateLearning();
-            ClearImeCandidate();
-        }
-        if (!prep.handled) {
-            return false;
-        }
-        if (prep.missing_required_candidate) {
-            return false;
-        }
-        ApplyRegularPlanSideEffects(prep.plan);
-        *out_plan = prep.plan;
-        return true;
-    };
     auto RenderAndRefreshInput = [&]() {
         RenderInputLine();
         RefreshInputLine();
@@ -3141,7 +3072,21 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return CycleImeCandidate(1);
         }
         input::ExtendedExecPlan exec_plan{};
-        if (!TryPrepareExtendedExecPlan(key, nav != input::CandidateNav::kNone, &exec_plan)) {
+        if (!input::TryPrepareExtendedExecPlan(
+                key,
+                g_ime_enabled,
+                ime_romaji_len,
+                ime_candidate_active,
+                nav != input::CandidateNav::kNone,
+                [&](const input::ExtendedExecPlan& plan) {
+                    input::ApplyExtendedPlanSideEffects(
+                        plan,
+                        [&]() { FlushImeRomaji(true); },
+                        [&]() { ClearImeCandidate(); },
+                        [&]() { EnsureLiveConsole(); },
+                        [&]() { ClearSelection(); });
+                },
+                &exec_plan)) {
             return false;
         }
         ExtendedExecBundle exec_bundle{};
@@ -3166,7 +3111,24 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
         input::RegularExecPlan exec_plan{};
-        if (!TryPrepareRegularExecPlan(key, &exec_plan)) {
+        if (!input::TryPrepareRegularExecPlan(
+                key,
+                IsCtrlPressed(keyboard_mods),
+                keyboard_mods.num_lock,
+                g_ime_enabled,
+                ime_romaji_len,
+                ime_candidate_active,
+                ime_candidate_entry != nullptr,
+                [&]() { CommitImeCandidateLearning(); },
+                [&]() { ClearImeCandidate(); },
+                [&](const input::RegularExecPlan& plan) {
+                    input::ApplyRegularPlanSideEffects(
+                        plan,
+                        [&]() { FlushImeRomaji(true); },
+                        [&]() { EnsureLiveConsole(); },
+                        [&]() { ClearSelection(); });
+                },
+                &exec_plan)) {
             return false;
         }
         RegularExecBundle exec_bundle{};
