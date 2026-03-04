@@ -252,6 +252,12 @@ struct RuntimeMouseDragStartDecision {
     int drag_offset_y;
 };
 
+struct RuntimeMouseDragRefs {
+    int* dragging_window;
+    int* drag_offset_x;
+    int* drag_offset_y;
+};
+
 struct RuntimeMouseConsoleSelectionRefs {
     bool* selecting_with_mouse;
     int* selection_anchor;
@@ -533,6 +539,37 @@ inline RuntimeMouseDragStartDecision DecideMouseDragStart(int hit_window,
         };
     }
     return RuntimeMouseDragStartDecision{false, -1, 0, 0};
+}
+
+inline bool IsPrimaryClickTriggered(uint8_t pressed_buttons);
+
+template <class TApplyWindowFocus, class TClearSelection>
+inline void ProcessPrimaryClickWindowInteractions(
+    uint8_t pressed_buttons,
+    int active_window,
+    const RuntimeWindowHitTestResult& term_hit,
+    const RuntimeWindowHitTestResult& info_hit,
+    const RuntimeMouseDragRefs& drag_refs,
+    TApplyWindowFocus&& apply_window_focus,
+    TClearSelection&& clear_selection) {
+    if (!IsPrimaryClickTriggered(pressed_buttons)) {
+        return;
+    }
+    const int hit_window = DecideMouseHitWindow(active_window, term_hit.in_frame, info_hit.in_frame);
+    if (hit_window >= 0) {
+        apply_window_focus(hit_window);
+    }
+    const auto drag_start = DecideMouseDragStart(hit_window, term_hit, info_hit);
+    if (!drag_start.should_start ||
+        drag_refs.dragging_window == nullptr ||
+        drag_refs.drag_offset_x == nullptr ||
+        drag_refs.drag_offset_y == nullptr) {
+        return;
+    }
+    *drag_refs.dragging_window = drag_start.drag_window;
+    *drag_refs.drag_offset_x = drag_start.drag_offset_x;
+    *drag_refs.drag_offset_y = drag_start.drag_offset_y;
+    clear_selection();
 }
 
 inline RuntimeDragClampedPosition ComputeClampedDragPosition(int pointer_x,

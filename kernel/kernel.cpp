@@ -2892,24 +2892,18 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 (void)info_frame_y0;
                 focus_visual_dirty = true;
             };
-            if (input::IsPrimaryClickTriggered(pressed)) {
-                const int hit_window = input::DecideMouseHitWindow(active_window,
-                                                                   term_hit.in_frame,
-                                                                   info_hit.in_frame);
-                if (hit_window >= 0) {
-                    ApplyWindowFocus(hit_window);
-                }
-                const auto drag_start = input::DecideMouseDragStart(
-                    hit_window,
-                    term_hit,
-                    info_hit);
-                if (drag_start.should_start) {
-                    dragging_window = drag_start.drag_window;
-                    drag_offset_x = drag_start.drag_offset_x;
-                    drag_offset_y = drag_start.drag_offset_y;
-                    ClearSelection();
-                }
-            }
+            input::ProcessPrimaryClickWindowInteractions(
+                pressed,
+                active_window,
+                term_hit,
+                info_hit,
+                input::RuntimeMouseDragRefs{
+                    &dragging_window,
+                    &drag_offset_x,
+                    &drag_offset_y,
+                },
+                ApplyWindowFocus,
+                ClearSelection);
             if (input::ShouldStopMouseDragging(input::RuntimeMouseDragState{
                     dragging_window,
                     prev_buttons,
