@@ -43,6 +43,11 @@ enum class ExecChainResult {
     kFailed,
 };
 
+enum class PlanPrepareStatus {
+    kNotReady = 0,
+    kReady,
+};
+
 inline bool ExecChainNeedsRender(ExecChainResult result) {
     return result == ExecChainResult::kHandledNeedsRender;
 }
@@ -174,6 +179,25 @@ inline bool TryPrepareExtendedExecPlan(uint8_t key,
     return true;
 }
 
+template <class TApplySideEffects>
+inline PlanPrepareStatus PrepareExtendedExecPlanStatus(uint8_t key,
+                                                       bool ime_enabled,
+                                                       int ime_romaji_len,
+                                                       bool candidate_active,
+                                                       bool has_candidate_nav,
+                                                       TApplySideEffects&& apply_side_effects,
+                                                       ExtendedExecPlan* out_plan) {
+    return TryPrepareExtendedExecPlan(key,
+                                      ime_enabled,
+                                      ime_romaji_len,
+                                      candidate_active,
+                                      has_candidate_nav,
+                                      apply_side_effects,
+                                      out_plan)
+               ? PlanPrepareStatus::kReady
+               : PlanPrepareStatus::kNotReady;
+}
+
 template <class TOnCommitActiveCandidate, class TApplySideEffects>
 inline bool TryPrepareRegularExecPlan(uint8_t key,
                                       bool ctrl_pressed,
@@ -204,6 +228,31 @@ inline bool TryPrepareRegularExecPlan(uint8_t key,
     apply_side_effects(prep.plan);
     *out_plan = prep.plan;
     return true;
+}
+
+template <class TOnCommitActiveCandidate, class TApplySideEffects>
+inline PlanPrepareStatus PrepareRegularExecPlanStatus(uint8_t key,
+                                                      bool ctrl_pressed,
+                                                      bool num_lock,
+                                                      bool ime_enabled,
+                                                      int ime_romaji_len,
+                                                      bool candidate_active,
+                                                      bool has_candidate_entry,
+                                                      TOnCommitActiveCandidate&& on_commit_active_candidate,
+                                                      TApplySideEffects&& apply_side_effects,
+                                                      RegularExecPlan* out_plan) {
+    return TryPrepareRegularExecPlan(key,
+                                     ctrl_pressed,
+                                     num_lock,
+                                     ime_enabled,
+                                     ime_romaji_len,
+                                     candidate_active,
+                                     has_candidate_entry,
+                                     on_commit_active_candidate,
+                                     apply_side_effects,
+                                     out_plan)
+               ? PlanPrepareStatus::kReady
+               : PlanPrepareStatus::kNotReady;
 }
 
 template <class TInputActionOwner>
