@@ -218,6 +218,23 @@ inline void RefreshAfterKeyboardCharInput(bool full_refresh,
     refresh_input_line();
 }
 
+template <class TStrEqual, class TPrintHistory, class TClearHistory, class TExecuteCommand>
+inline void ExecuteShellCommandOrHistory(const char* command,
+                                         TStrEqual&& str_equal,
+                                         TPrintHistory&& print_history,
+                                         TClearHistory&& clear_history,
+                                         TExecuteCommand&& execute_command) {
+    if (str_equal(command, "history")) {
+        print_history();
+        return;
+    }
+    if (str_equal(command, "clearhistory")) {
+        clear_history();
+        return;
+    }
+    execute_command();
+}
+
 template <class TClearCandidate,
           class TClearSelection,
           class TResetHistory,

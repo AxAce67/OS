@@ -3360,19 +3360,18 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         console->SetCursorPosition(input_row, input_col + command_len);
                         console->Print("\n");
                         command_buffer[command_len] = '\0';
-                        const bool is_history_cmd = StrEqual(command_buffer, "history");
-                        const bool is_clear_history_cmd = StrEqual(command_buffer, "clearhistory");
                         if (command_len > 0) {
                             command_history.Add(command_buffer);
                         }
-                        if (is_history_cmd) {
-                            PrintHistory(command_history);
-                        } else if (is_clear_history_cmd) {
-                            command_history.Clear();
-                            console->PrintLine("history cleared");
-                        } else {
-                            ExecuteCommand(command_buffer);
-                        }
+                        input::ExecuteShellCommandOrHistory(
+                            command_buffer,
+                            StrEqual,
+                            [&]() { PrintHistory(command_history); },
+                            [&]() {
+                                command_history.Clear();
+                                console->PrintLine("history cleared");
+                            },
+                            [&]() { ExecuteCommand(command_buffer); });
                         const input::RuntimeCommandInputStateRefs reset_refs{
                             command_buffer,
                             static_cast<int>(sizeof(command_buffer)),
