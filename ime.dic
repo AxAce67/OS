@@ -1,0 +1,8 @@
+# IME user dictionary (romaji_key:candidate1,candidate2,...)
+# Up to 4 candidates per line.
+nihon:nihon,nippon
+watashi:watashi
+tokyo:tokyo
+konnichiha:konnichiha
+ohayou:ohayou
+arigatou:arigatou

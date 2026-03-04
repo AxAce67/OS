@@ -135,6 +135,9 @@ if (Test-Path "disk") { Remove-Item -Recurse -Force "disk" }
 New-Item -ItemType Directory -Path "disk\EFI\BOOT" | Out-Null
 Copy-Item "main.efi" -Destination "disk\EFI\BOOT\BOOTX64.EFI"   # ブートローダー
 Copy-Item "kernel.elf" -Destination "disk\kernel.elf"           # カーネル本体 (ELF)
+if (Test-Path "ime.dic") {
+    Copy-Item "ime.dic" -Destination "disk\ime.dic"
+}
 
 Write-Host "Starting QEMU..." -ForegroundColor Cyan
 

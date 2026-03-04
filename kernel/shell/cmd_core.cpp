@@ -10,6 +10,7 @@ extern Console* console;
 extern bool g_key_repeat_enabled;
 extern bool g_jp_layout;
 extern bool g_ime_enabled;
+extern int g_ime_user_candidate_count;
 extern bool g_boot_mouse_auto_enabled;
 extern bool g_xhci_hid_decode_keyboard;
 extern bool g_has_halfwidth_kana_font;
@@ -270,6 +271,8 @@ bool ExecuteInputStatCommand() {
     console->Print(g_ime_enabled ? "on" : "off");
     console->Print(" ime.font=");
     console->Print(g_has_halfwidth_kana_font ? "halfkana" : "ascii");
+    console->Print(" ime.dic=");
+    console->PrintDec(g_ime_user_candidate_count);
     console->Print(" hid.kbd=");
     console->Print(g_xhci_hid_decode_keyboard ? "on" : "off");
     console->Print("\n");

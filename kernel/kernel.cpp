@@ -572,6 +572,13 @@ struct ImeCandidateEntry {
     int count;
 };
 
+struct ImeUserCandidateEntry {
+    bool used;
+    char key[32];
+    char candidates[4][32];
+    int count;
+};
+
 const RomajiKanaEntry kRomajiKanaTable[] = {
     {"kya", {0xB7, 0xAC, 0x00}, 2}, {"kyu", {0xB7, 0xAD, 0x00}, 2}, {"kyo", {0xB7, 0xAE, 0x00}, 2},
     {"sya", {0xBC, 0xAC, 0x00}, 2}, {"syu", {0xBC, 0xAD, 0x00}, 2}, {"syo", {0xBC, 0xAE, 0x00}, 2},
@@ -639,7 +646,166 @@ const ImeCandidateEntry kImeCandidateTable[] = {
     {"arigatou",{"\xB1\xD8\xB6\xDE\xC4\xB3"}, 1},              // ｱﾘｶﾞﾄｳ
 };
 
+ImeUserCandidateEntry g_ime_user_candidates[16];
+ImeCandidateEntry g_ime_user_candidate_views[16];
+int g_ime_user_candidate_count = 0;
+
+void InitImeUserCandidates() {
+    g_ime_user_candidate_count = 0;
+    for (int i = 0; i < static_cast<int>(sizeof(g_ime_user_candidates) / sizeof(g_ime_user_candidates[0])); ++i) {
+        g_ime_user_candidates[i].used = false;
+        g_ime_user_candidates[i].key[0] = '\0';
+        g_ime_user_candidates[i].count = 0;
+        g_ime_user_candidate_views[i].key = nullptr;
+        g_ime_user_candidate_views[i].count = 0;
+        for (int j = 0; j < 4; ++j) {
+            g_ime_user_candidate_views[i].candidates[j] = nullptr;
+        }
+        for (int j = 0; j < 4; ++j) {
+            g_ime_user_candidates[i].candidates[j][0] = '\0';
+        }
+    }
+}
+
+char ToLowerAscii(char c);
+const BootFileEntry* FindBootFileByName(const char* name);
+
+void ToLowerAsciiString(const char* src, char* dst, int dst_len) {
+    if (dst_len <= 0) {
+        return;
+    }
+    int w = 0;
+    for (int i = 0; src[i] != '\0' && w + 1 < dst_len; ++i) {
+        dst[w++] = ToLowerAscii(src[i]);
+    }
+    dst[w] = '\0';
+}
+
+int ParseImeDicToken(const uint8_t* data, int n, int* pos, char* out, int out_len) {
+    while (*pos < n && (data[*pos] == ' ' || data[*pos] == '\t')) {
+        ++(*pos);
+    }
+    int w = 0;
+    while (*pos < n) {
+        const uint8_t ch = data[*pos];
+        if (ch == ',' || ch == ':' || ch == '\r' || ch == '\n' || ch == '#') {
+            break;
+        }
+        if (w + 1 < out_len) {
+            out[w++] = static_cast<char>(ch);
+        }
+        ++(*pos);
+    }
+    while (w > 0 && (out[w - 1] == ' ' || out[w - 1] == '\t')) {
+        --w;
+    }
+    out[w] = '\0';
+    return w;
+}
+
+void LoadImeDictionaryFromBootFS() {
+    InitImeUserCandidates();
+    const BootFileEntry* dic = FindBootFileByName("ime.dic");
+    if (dic == nullptr) {
+        return;
+    }
+    const uint8_t* data = dic->data;
+    const int n = static_cast<int>(dic->size);
+    int pos = 0;
+    while (pos < n) {
+        while (pos < n && (data[pos] == '\r' || data[pos] == '\n')) {
+            ++pos;
+        }
+        if (pos >= n) {
+            break;
+        }
+        if (data[pos] == '#') {
+            while (pos < n && data[pos] != '\n') {
+                ++pos;
+            }
+            continue;
+        }
+
+        char key[32];
+        if (ParseImeDicToken(data, n, &pos, key, sizeof(key)) <= 0) {
+            while (pos < n && data[pos] != '\n') {
+                ++pos;
+            }
+            continue;
+        }
+        while (pos < n && data[pos] != ':' && data[pos] != '\n') {
+            ++pos;
+        }
+        if (pos >= n || data[pos] != ':') {
+            while (pos < n && data[pos] != '\n') {
+                ++pos;
+            }
+            continue;
+        }
+        ++pos;  // skip ':'
+
+        int slot = -1;
+        for (int i = 0; i < static_cast<int>(sizeof(g_ime_user_candidates) / sizeof(g_ime_user_candidates[0])); ++i) {
+            if (!g_ime_user_candidates[i].used) {
+                slot = i;
+                break;
+            }
+        }
+        if (slot < 0) {
+            break;
+        }
+        ImeUserCandidateEntry* e = &g_ime_user_candidates[slot];
+        e->used = true;
+        ToLowerAsciiString(key, e->key, sizeof(e->key));
+        e->count = 0;
+
+        while (pos < n && data[pos] != '\n') {
+            if (e->count >= 4) {
+                while (pos < n && data[pos] != '\n') {
+                    ++pos;
+                }
+                break;
+            }
+            char cand[32];
+            const int clen = ParseImeDicToken(data, n, &pos, cand, sizeof(cand));
+            if (clen > 0) {
+                ToLowerAsciiString(cand, e->candidates[e->count], sizeof(e->candidates[e->count]));
+                ++e->count;
+            }
+            if (pos < n && data[pos] == ',') {
+                ++pos;
+                continue;
+            }
+            while (pos < n && data[pos] != '\n' && data[pos] != ',') {
+                ++pos;
+            }
+            if (pos < n && data[pos] == ',') {
+                ++pos;
+            }
+        }
+        if (e->count <= 0) {
+            e->used = false;
+            e->key[0] = '\0';
+        } else {
+            g_ime_user_candidate_views[slot].key = e->key;
+            g_ime_user_candidate_views[slot].count = e->count;
+            for (int j = 0; j < e->count; ++j) {
+                g_ime_user_candidate_views[slot].candidates[j] = e->candidates[j];
+            }
+            ++g_ime_user_candidate_count;
+        }
+        while (pos < n && data[pos] != '\n') {
+            ++pos;
+        }
+    }
+}
+
 const ImeCandidateEntry* FindImeCandidateEntry(const char* key) {
+    for (int i = 0; i < static_cast<int>(sizeof(g_ime_user_candidate_views) / sizeof(g_ime_user_candidate_views[0])); ++i) {
+        if (g_ime_user_candidate_views[i].key != nullptr && StrEqual(g_ime_user_candidate_views[i].key, key)) {
+            return &g_ime_user_candidate_views[i];
+        }
+    }
     for (int i = 0; i < static_cast<int>(sizeof(kImeCandidateTable) / sizeof(kImeCandidateTable[0])); ++i) {
         if (StrEqual(kImeCandidateTable[i].key, key)) {
             return &kImeCandidateTable[i];
@@ -1669,6 +1835,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     InitializeLAPICTimer();
 
     g_has_halfwidth_kana_font = HasHalfwidthKanaFont();
+    LoadImeDictionaryFromBootFS();
 
     console->Print("Waiting for hardware interrupts (Keyboard/Mouse/LAPIC Timer)...\n");
     console->Print("Input mode: layout=");
@@ -1677,6 +1844,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     console->Print(g_ime_enabled ? "on" : "off");
     console->Print(" ime.font=");
     console->Print(g_has_halfwidth_kana_font ? "halfkana" : "ascii-fallback");
+    console->Print(" ime.dic=");
+    console->PrintDec(g_ime_user_candidate_count);
     console->Print("\n");
     PrintPrompt();
 
