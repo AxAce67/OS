@@ -3270,29 +3270,26 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RedrawPointerAfterCompositor(compositor_drew, now_tick);
         RefreshSystemInfoIfNeeded(now_tick);
     };
-
-    while (1) {
-        // 処理すべきイベントがあるか、割り込みを禁止(cli)した上で安全にチェックする（競合対策）
+    auto WaitAndPopNextMessage = [&](Message* out_msg) -> bool {
+        if (out_msg == nullptr) {
+            return false;
+        }
+        // Check queue state under interrupt mask to avoid races with IRQ producer.
         __asm__ volatile("cli");
         if (main_queue->Count() == 0) {
             __asm__ volatile("sti");
             if (HandleXHCIAutoPollOnIdle()) {
-                continue;
+                return false;
             }
-            // キューが空ならばCPUを休止(hlt)させる
             __asm__ volatile("hlt");
-            continue;
+            return false;
         }
-
-        // キューにデータが入っていたら、メッセージを1つ取り出す
-        Message msg;
-        main_queue->Pop(msg);
-        CoalesceMouseInterrupt(&msg);
-        
-        // 取り出し終わったら割り込みを再開する
+        main_queue->Pop(*out_msg);
+        CoalesceMouseInterrupt(out_msg);
         __asm__ volatile("sti");
-
-        // 取り出したメッセージの種類ごとに重い処理（状態の更新）を行う
+        return true;
+    };
+    auto DispatchMessage = [&](const Message& msg) {
         switch (msg.type) {
             case Message::Type::kInterruptMouse:
                 HandleMouseMessage(msg);
@@ -3303,7 +3300,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             default:
                 break;
         }
-        ProcessCompositorUpdates();
+    };
 
+    while (1) {
+        Message msg;
+        if (!WaitAndPopNextMessage(&msg)) {
+            continue;
+        }
+        DispatchMessage(msg);
+        ProcessCompositorUpdates();
     }
 }
