@@ -3252,40 +3252,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             QueuePeekMessage,
             QueuePopMessage);
     };
-
-    while (1) {
-        // 処理すべきイベントがあるか、割り込みを禁止(cli)した上で安全にチェックする（競合対策）
-        __asm__ volatile("cli");
-        if (main_queue->Count() == 0) {
-            __asm__ volatile("sti");
-            if (HandleXHCIAutoPollOnIdle()) {
-                continue;
-            }
-            // キューが空ならばCPUを休止(hlt)させる
-            __asm__ volatile("hlt");
-            continue;
-        }
-
-        // キューにデータが入っていたら、メッセージを1つ取り出す
-        Message msg;
-        main_queue->Pop(msg);
-        CoalesceMouseInterrupt(&msg);
-        
-        // 取り出し終わったら割り込みを再開する
-        __asm__ volatile("sti");
-
-        // 取り出したメッセージの種類ごとに重い処理（状態の更新）を行う
-        switch (msg.type) {
-            case Message::Type::kInterruptMouse:
-                HandleMouseMessage(msg);
-                break;
-            case Message::Type::kInterruptKeyboard:
-                HandleKeyboardMessage(msg);
-                break;
-            default:
-                break;
-        }
-
+    auto ProcessCompositorUpdates = [&]() {
         const uint64_t now_tick = CurrentTick();
         bool compositor_drew = false;
         if (focus_visual_dirty) {
@@ -3324,6 +3291,41 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 ? kSystemInfoRefreshIntervalTicks
                 : kSystemInfoBackgroundIntervalTicks);
         }
+    };
+
+    while (1) {
+        // 処理すべきイベントがあるか、割り込みを禁止(cli)した上で安全にチェックする（競合対策）
+        __asm__ volatile("cli");
+        if (main_queue->Count() == 0) {
+            __asm__ volatile("sti");
+            if (HandleXHCIAutoPollOnIdle()) {
+                continue;
+            }
+            // キューが空ならばCPUを休止(hlt)させる
+            __asm__ volatile("hlt");
+            continue;
+        }
+
+        // キューにデータが入っていたら、メッセージを1つ取り出す
+        Message msg;
+        main_queue->Pop(msg);
+        CoalesceMouseInterrupt(&msg);
+        
+        // 取り出し終わったら割り込みを再開する
+        __asm__ volatile("sti");
+
+        // 取り出したメッセージの種類ごとに重い処理（状態の更新）を行う
+        switch (msg.type) {
+            case Message::Type::kInterruptMouse:
+                HandleMouseMessage(msg);
+                break;
+            case Message::Type::kInterruptKeyboard:
+                HandleKeyboardMessage(msg);
+                break;
+            default:
+                break;
+        }
+        ProcessCompositorUpdates();
 
     }
 }
