@@ -165,6 +165,11 @@ struct RuntimeCommandInputStateRefs {
     int* ime_romaji_len;
 };
 
+struct RuntimeCharTranslationResult {
+    bool has_char;
+    char ch;
+};
+
 template <class TCandidateEntry>
 struct RuntimeImeCandidateStartRefsT {
     char* romaji_buffer;
@@ -267,6 +272,18 @@ inline bool DecodeKeyboardMessageAndTrack(uint8_t raw_scancode,
     *refs.last_extended = out_key_event->extended;
     *refs.last_released = out_key_event->released;
     return true;
+}
+
+template <class TKeycodeToAscii>
+inline RuntimeCharTranslationResult TranslateKeyEventToAscii(const KeyEvent& key_event,
+                                                             bool jp_layout,
+                                                             TKeycodeToAscii&& keycode_to_ascii) {
+    const char ch = keycode_to_ascii(key_event.keycode,
+                                     key_event.shift,
+                                     key_event.caps_lock,
+                                     key_event.num_lock,
+                                     jp_layout);
+    return RuntimeCharTranslationResult{ch != 0, ch};
 }
 
 template <class THandleExtendedKey>

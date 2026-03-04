@@ -3206,14 +3206,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return;
         }
 
-        char ch = KeycodeToAsciiByLayout(key,
-                                         key_event.shift,
-                                         key_event.caps_lock,
-                                         key_event.num_lock,
-                                         g_jp_layout);
-        if (ch == 0) {
+        const auto translated = input::TranslateKeyEventToAscii(
+            key_event,
+            g_jp_layout,
+            KeycodeToAsciiByLayout);
+        if (!translated.has_char) {
             return;
         }
+        const char ch = translated.ch;
 
         EnsureLiveConsole();
         bool full_refresh = false;
