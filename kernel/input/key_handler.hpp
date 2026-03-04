@@ -45,6 +45,7 @@ struct ImeModeState {
 
 enum class RegularExecKind {
     kNone = 0,
+    kApplyImeModeAndRepaint,
     kEscCancelCandidateToRomaji,
     kEscClearRomaji,
     kClearScreenAndResetInput,
@@ -63,6 +64,7 @@ struct RegularExecPlan {
     bool ensure_live_console;
     bool clear_selection;
     bool requires_active_candidate;
+    RegularShortcutAction mode_action;
     RegularExecKind kind;
 };
 

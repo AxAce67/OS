@@ -3119,14 +3119,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         const input::RegularShortcutAction action =
             input::DecideRegularShortcutAction(key, IsCtrlPressed(keyboard_mods), keyboard_mods.num_lock);
-        if (action == input::RegularShortcutAction::kCtrlSpace) {
-            FlushImeRomaji(true);
-            const auto mode = input::ApplyImeModeAction(action, g_ime_enabled, g_jp_layout);
-            g_ime_enabled = mode.ime_enabled;
-            g_jp_layout = mode.jp_layout;
-            RepaintPromptAndInput();
-            return true;
-        }
         const auto exec_plan = input::BuildRegularExecPlan(action, g_ime_enabled, ime_romaji_len, ime_candidate_active);
         if (exec_plan.handled) {
             if (exec_plan.requires_active_candidate &&
@@ -3143,6 +3135,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 ClearSelection();
             }
             switch (exec_plan.kind) {
+            case input::RegularExecKind::kApplyImeModeAndRepaint: {
+                const auto mode = input::ApplyImeModeAction(exec_plan.mode_action, g_ime_enabled, g_jp_layout);
+                g_ime_enabled = mode.ime_enabled;
+                g_jp_layout = mode.jp_layout;
+                RepaintPromptAndInput();
+                return true;
+            }
             case input::RegularExecKind::kEscCancelCandidateToRomaji:
                 cursor_pos = ime_candidate_start;
                 DeleteRangeAt(ime_candidate_start, ime_candidate_len);
@@ -3213,31 +3212,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             default:
                 break;
             }
-        }
-        if (action == input::RegularShortcutAction::kHankakuZenkaku) {
-            FlushImeRomaji(true);
-            const auto mode = input::ApplyImeModeAction(action, g_ime_enabled, g_jp_layout);
-            g_ime_enabled = mode.ime_enabled;
-            g_jp_layout = mode.jp_layout;
-            RepaintPromptAndInput();
-            return true;
-        }
-        if (action == input::RegularShortcutAction::kKana) {
-            FlushImeRomaji(true);
-            const auto mode = input::ApplyImeModeAction(action, g_ime_enabled, g_jp_layout);
-            g_ime_enabled = mode.ime_enabled;
-            g_jp_layout = mode.jp_layout;
-            RepaintPromptAndInput();
-            return true;
-        }
-        if (action == input::RegularShortcutAction::kHenkan ||
-            action == input::RegularShortcutAction::kMuhenkan) {
-            FlushImeRomaji(true);
-            const auto mode = input::ApplyImeModeAction(action, g_ime_enabled, g_jp_layout);
-            g_ime_enabled = mode.ime_enabled;
-            g_jp_layout = mode.jp_layout;
-            RepaintPromptAndInput();
-            return true;
         }
         return false;
     };

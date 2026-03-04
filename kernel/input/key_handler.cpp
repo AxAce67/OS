@@ -81,9 +81,20 @@ RegularExecPlan BuildRegularExecPlan(RegularShortcutAction action,
     p.ensure_live_console = false;
     p.clear_selection = false;
     p.requires_active_candidate = false;
+    p.mode_action = RegularShortcutAction::kNone;
     p.kind = RegularExecKind::kNone;
 
     switch (action) {
+    case RegularShortcutAction::kCtrlSpace:
+    case RegularShortcutAction::kHankakuZenkaku:
+    case RegularShortcutAction::kKana:
+    case RegularShortcutAction::kHenkan:
+    case RegularShortcutAction::kMuhenkan:
+        p.handled = true;
+        p.flush_romaji = true;
+        p.mode_action = action;
+        p.kind = RegularExecKind::kApplyImeModeAndRepaint;
+        return p;
     case RegularShortcutAction::kEsc:
         p.handled = true;
         if (candidate_active) {
