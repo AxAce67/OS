@@ -3108,23 +3108,20 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
-        if (ime_candidate_active && key != 0x39 && key != 0x01) {
+        if (input::ShouldCommitActiveCandidateBeforeShortcut(ime_candidate_active, key)) {
             CommitImeCandidateLearning();
             ClearImeCandidate();
         }
         if (key == 0x01) { // Esc
             if (ime_candidate_active && ime_candidate_entry != nullptr) {
-                const char* src = ime_candidate_entry->key;
-                int src_len = StrLength(src);
                 cursor_pos = ime_candidate_start;
                 DeleteRangeAt(ime_candidate_start, ime_candidate_len);
                 cursor_pos = ime_candidate_start;
-                ime_romaji_len = 0;
-                for (int i = 0; i < src_len && i + 1 < static_cast<int>(sizeof(ime_romaji_buffer)); ++i) {
-                    ime_romaji_buffer[i] = src[i];
-                    ime_romaji_len = i + 1;
-                }
-                ime_romaji_buffer[ime_romaji_len] = '\0';
+                ime_romaji_len = input::RestoreRomajiFromActiveCandidate(
+                    ime_candidate_entry,
+                    ime_romaji_buffer,
+                    static_cast<int>(sizeof(ime_romaji_buffer)),
+                    StrLength);
                 ClearImeCandidate();
                 RenderInputLine();
                 RefreshInputLine();

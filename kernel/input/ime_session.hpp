@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 #include "input/ime_candidate.hpp"
 
 namespace input {
@@ -32,5 +34,12 @@ const ImeCandidateEntry* ResolveCandidateEntryFromRomaji(
     int out_key_len,
     char (*to_lower_ascii)(char),
     const ImeCandidateEntry* (*find_exact)(const char*));
+
+bool ShouldCommitActiveCandidateBeforeShortcut(bool candidate_active, uint8_t key);
+
+int RestoreRomajiFromActiveCandidate(const ImeCandidateEntry* entry,
+                                     char* romaji_buffer,
+                                     int romaji_capacity,
+                                     int (*str_length)(const char*));
 
 }  // namespace input
