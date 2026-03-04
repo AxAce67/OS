@@ -112,4 +112,44 @@ int RestoreRomajiFromActiveCandidate(const ImeCandidateEntry* entry,
     return len;
 }
 
+ImeCharDecision DecideImeCharHandling(char ch,
+                                      bool ime_enabled,
+                                      bool jp_layout,
+                                      bool has_halfwidth_kana_font,
+                                      bool candidate_active,
+                                      const ImeCandidateEntry* entry,
+                                      int romaji_len,
+                                      char (*to_lower_ascii)(char)) {
+    ImeCharDecision d{};
+    d.ime_path = ime_enabled && jp_layout && has_halfwidth_kana_font;
+    d.cycle_candidate = false;
+    d.commit_candidate = false;
+    d.append_alpha = false;
+    d.try_start_candidate = false;
+    d.finalize_romaji = false;
+    d.lower_alpha = '\0';
+    if (!d.ime_path) {
+        return d;
+    }
+
+    d.cycle_candidate = ShouldCycleActiveCandidateOnSpace(ch, candidate_active, entry);
+    d.commit_candidate = candidate_active && ch != ' ';
+
+    const char lower = (to_lower_ascii != nullptr) ? to_lower_ascii(ch) : ch;
+    const bool is_alpha = (lower >= 'a' && lower <= 'z');
+    if (is_alpha) {
+        d.append_alpha = true;
+        d.lower_alpha = lower;
+        return d;
+    }
+
+    if (ch == ' ' && romaji_len > 0) {
+        d.try_start_candidate = true;
+        return d;
+    }
+
+    d.finalize_romaji = true;
+    return d;
+}
+
 }  // namespace input

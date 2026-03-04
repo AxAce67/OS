@@ -3415,22 +3415,29 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 if (ch != 0) {
                     EnsureLiveConsole();
                     bool full_refresh = false;
-                    if (g_ime_enabled && g_jp_layout && g_has_halfwidth_kana_font) {
-                        if (input::ShouldCycleActiveCandidateOnSpace(ch, ime_candidate_active, ime_candidate_entry)) {
+                    const input::ImeCharDecision ime_decision =
+                        input::DecideImeCharHandling(ch,
+                                                     g_ime_enabled,
+                                                     g_jp_layout,
+                                                     g_has_halfwidth_kana_font,
+                                                     ime_candidate_active,
+                                                     ime_candidate_entry,
+                                                     ime_romaji_len,
+                                                     ToLowerAscii);
+                    if (ime_decision.ime_path) {
+                        if (ime_decision.cycle_candidate) {
                             if (input::AdvanceImeCandidateIndex(ime_candidate_entry, &ime_candidate_index)) {
                                 ReplaceImeCandidateText();
                                 break;
                             }
                         }
-                        if (ime_candidate_active && ch != ' ') {
+                        if (ime_decision.commit_candidate) {
                             CommitImeCandidateLearning();
                             ClearImeCandidate();
                         }
-                        char lower = ToLowerAscii(ch);
-                        const bool is_alpha = (lower >= 'a' && lower <= 'z');
-                        if (is_alpha) {
+                        if (ime_decision.append_alpha) {
                             if (ime_romaji_len + 1 < static_cast<int>(sizeof(ime_romaji_buffer))) {
-                                ime_romaji_buffer[ime_romaji_len++] = lower;
+                                ime_romaji_buffer[ime_romaji_len++] = ime_decision.lower_alpha;
                                 ime_romaji_buffer[ime_romaji_len] = '\0';
                                 if (!FlushImeRomaji(false)) {
                                     RenderInputLine();
@@ -3439,7 +3446,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             }
                             break;
                         }
-                        if (ch == ' ' && ime_romaji_len > 0) {
+                        if (ime_decision.try_start_candidate) {
                             char keybuf[32];
                             const ImeCandidateEntry* entry = input::ResolveCandidateEntryFromRomaji(
                                 ime_romaji_buffer, ime_romaji_len,
@@ -3466,8 +3473,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                 break;
                             }
                         }
-                        // Finalize pending romaji before non-alpha key (space/punct/enter).
-                        FlushImeRomaji(true);
+                        if (ime_decision.finalize_romaji) {
+                            // Finalize pending romaji before non-alpha key (space/punct/enter).
+                            FlushImeRomaji(true);
+                        }
                     }
                     if (ch == '\n') {
                         console->SetCursorPosition(input_row, input_col + command_len);

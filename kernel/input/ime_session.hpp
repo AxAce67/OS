@@ -42,4 +42,23 @@ int RestoreRomajiFromActiveCandidate(const ImeCandidateEntry* entry,
                                      int romaji_capacity,
                                      int (*str_length)(const char*));
 
+struct ImeCharDecision {
+    bool ime_path;
+    bool cycle_candidate;
+    bool commit_candidate;
+    bool append_alpha;
+    bool try_start_candidate;
+    bool finalize_romaji;
+    char lower_alpha;
+};
+
+ImeCharDecision DecideImeCharHandling(char ch,
+                                      bool ime_enabled,
+                                      bool jp_layout,
+                                      bool has_halfwidth_kana_font,
+                                      bool candidate_active,
+                                      const ImeCandidateEntry* entry,
+                                      int romaji_len,
+                                      char (*to_lower_ascii)(char));
+
 }  // namespace input
