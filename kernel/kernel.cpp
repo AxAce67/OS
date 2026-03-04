@@ -2770,57 +2770,54 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return false;
         }
         ClearImeCandidate();
-        const int before_len = ime_romaji_len;
-        bool inserted = false;
-        if (input::HasSelection(selection_anchor, selection_end)) {
-            DeleteSelection();
-        }
-        while (ime_romaji_len > 0) {
-            int consume = 0;
-            uint8_t kana_bytes[3] = {0, 0, 0};
-            int kana_len = 0;
-            if (!ConvertRomajiHeadToHalfKana(ime_romaji_buffer,
-                                             ime_romaji_len,
-                                             finalize,
-                                             &consume,
-                                             kana_bytes,
-                                             &kana_len)) {
-                break;
-            }
-            for (int i = 0; i < kana_len; ++i) {
-                if (!InsertByteAtCursor(kana_bytes[i])) {
-                    break;
-                }
-                inserted = true;
-            }
-            for (int i = consume; i <= ime_romaji_len; ++i) {
-                ime_romaji_buffer[i - consume] = ime_romaji_buffer[i];
-            }
-            ime_romaji_len -= consume;
-            if (ime_romaji_len < 0) {
-                ime_romaji_len = 0;
-                ime_romaji_buffer[0] = '\0';
-                break;
-            }
-        }
-        if (finalize && ime_romaji_len > 0) {
-            for (int i = 0; i < ime_romaji_len; ++i) {
-                if (!InsertByteAtCursor(static_cast<uint8_t>(ime_romaji_buffer[i]))) {
-                    break;
-                }
-                inserted = true;
-            }
-            ime_romaji_len = 0;
-            ime_romaji_buffer[0] = '\0';
-        }
-        if (inserted) {
+        struct FlushCtx {
+            char* command_buffer;
+            int command_capacity;
+            int* command_len;
+            int* cursor_pos;
+            int max_input_len;
+            int* selection_anchor;
+            int* selection_end;
+            bool* selecting_with_mouse;
+        } ctx{
+            command_buffer, static_cast<int>(sizeof(command_buffer)),
+            &command_len, &cursor_pos, MaxInputLen(),
+            &selection_anchor, &selection_end, &selecting_with_mouse
+        };
+
+        auto DeleteSelectionCb = [](void* p) -> bool {
+            auto* c = reinterpret_cast<FlushCtx*>(p);
+            return input::DeleteSelection(c->command_buffer, c->command_capacity,
+                                          c->command_len, c->cursor_pos,
+                                          c->selection_anchor, c->selection_end,
+                                          c->selecting_with_mouse);
+        };
+        auto InsertByteCb = [](void* p, uint8_t b) -> bool {
+            auto* c = reinterpret_cast<FlushCtx*>(p);
+            return input::InsertByteAtCursor(c->command_buffer, c->command_capacity,
+                                             c->command_len, c->cursor_pos,
+                                             c->max_input_len, b);
+        };
+        auto ConvertHeadCb = [](const char* romaji, int len, bool finalize_flag,
+                                int* consume, uint8_t* kana_bytes, int* kana_len) -> bool {
+            return ConvertRomajiHeadToHalfKana(romaji, len, finalize_flag, consume, kana_bytes, kana_len);
+        };
+
+        const auto result = input::FlushImeRomaji(
+            ime_romaji_buffer, &ime_romaji_len, finalize,
+            input::HasSelection(selection_anchor, selection_end),
+            DeleteSelectionCb, &ctx,
+            InsertByteCb, &ctx,
+            ConvertHeadCb);
+
+        if (result.inserted) {
             RenderInputLine();
             RefreshInputLine();
-        } else if (ime_romaji_len != before_len) {
+        } else if (result.romaji_changed) {
             RenderInputLine();
             RefreshInputLine();
         }
-        return inserted;
+        return result.inserted;
     };
 
     auto HandleMouseMessage = [&](const Message& msg) {

@@ -152,5 +152,62 @@ const ImeCandidateEntry* BuildPrefixCandidateEntry(
     return out_view;
 }
 
-}  // namespace input
+ImeFlushResult FlushImeRomaji(
+    char* romaji_buffer,
+    int* romaji_len,
+    bool finalize,
+    bool has_selection,
+    bool (*delete_selection)(void*),
+    void* delete_selection_ctx,
+    bool (*insert_byte)(void*, uint8_t),
+    void* insert_byte_ctx,
+    bool (*convert_head_to_kana)(const char* romaji, int romaji_len, bool finalize,
+                                 int* consume, uint8_t* kana_bytes, int* kana_len)) {
+    ImeFlushResult result{false, false};
+    if (romaji_buffer == nullptr || romaji_len == nullptr || *romaji_len <= 0 ||
+        insert_byte == nullptr || convert_head_to_kana == nullptr) {
+        return result;
+    }
+    const int before_len = *romaji_len;
 
+    if (has_selection && delete_selection != nullptr) {
+        delete_selection(delete_selection_ctx);
+    }
+    while (*romaji_len > 0) {
+        int consume = 0;
+        uint8_t kana_bytes[3] = {0, 0, 0};
+        int kana_len = 0;
+        if (!convert_head_to_kana(romaji_buffer, *romaji_len, finalize, &consume, kana_bytes, &kana_len)) {
+            break;
+        }
+        for (int i = 0; i < kana_len; ++i) {
+            if (!insert_byte(insert_byte_ctx, kana_bytes[i])) {
+                break;
+            }
+            result.inserted = true;
+        }
+        for (int i = consume; i <= *romaji_len; ++i) {
+            romaji_buffer[i - consume] = romaji_buffer[i];
+        }
+        *romaji_len -= consume;
+        if (*romaji_len < 0) {
+            *romaji_len = 0;
+            romaji_buffer[0] = '\0';
+            break;
+        }
+    }
+    if (finalize && *romaji_len > 0) {
+        for (int i = 0; i < *romaji_len; ++i) {
+            if (!insert_byte(insert_byte_ctx, static_cast<uint8_t>(romaji_buffer[i]))) {
+                break;
+            }
+            result.inserted = true;
+        }
+        *romaji_len = 0;
+        romaji_buffer[0] = '\0';
+    }
+    result.romaji_changed = (*romaji_len != before_len);
+    return result;
+}
+
+}  // namespace input

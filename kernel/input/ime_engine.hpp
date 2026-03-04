@@ -6,6 +6,11 @@
 
 namespace input {
 
+struct ImeFlushResult {
+    bool inserted;
+    bool romaji_changed;
+};
+
 const ImeCandidateEntry* BuildPrefixCandidateEntry(
     const char* prefix,
     const ImeCandidateEntry* user_views,
@@ -24,5 +29,16 @@ const ImeCandidateEntry* BuildPrefixCandidateEntry(
     void (*copy_string)(char*, const char*, int),
     uint16_t (*get_score)(const char* key, const char* cand));
 
-}  // namespace input
+ImeFlushResult FlushImeRomaji(
+    char* romaji_buffer,
+    int* romaji_len,
+    bool finalize,
+    bool has_selection,
+    bool (*delete_selection)(void*),
+    void* delete_selection_ctx,
+    bool (*insert_byte)(void*, uint8_t),
+    void* insert_byte_ctx,
+    bool (*convert_head_to_kana)(const char* romaji, int romaji_len, bool finalize,
+                                 int* consume, uint8_t* kana_bytes, int* kana_len));
 
+}  // namespace input
