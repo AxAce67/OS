@@ -3228,12 +3228,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                          ime_candidate_entry,
                                          ime_romaji_len,
                                          ToLowerAscii);
-        if (ime_decision.ime_path) {
+        auto ProcessImeDecisionPath = [&]() -> bool {
+            if (!ime_decision.ime_path) {
+                return false;
+            }
             if (input::TryHandleImeCandidateCycle(
                     ime_decision.cycle_candidate,
                     [&]() { return input::AdvanceImeCandidateIndex(ime_candidate_entry, &ime_candidate_index); },
                     ReplaceImeCandidateText)) {
-                return;
+                return true;
             }
             input::ApplyImeCommitSideEffects(
                 ime_decision.commit_candidate,
@@ -3248,7 +3251,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     FlushImeRomaji,
                     RenderInputLine,
                     RefreshInputLine)) {
-                return;
+                return true;
             }
             if (input::TryStartImeCandidateFromRomaji(
                     ime_decision.try_start_candidate,
@@ -3279,9 +3282,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             CopyString);
                     },
                     ReplaceImeCandidateText)) {
-                return;
+                return true;
             }
             input::FinalizeImeRomajiIfNeeded(ime_decision.finalize_romaji, FlushImeRomaji);
+            return false;
+        };
+        if (ProcessImeDecisionPath()) {
+            return;
         }
         full_refresh = input::ProcessKeyboardCharAction(
             ch,
