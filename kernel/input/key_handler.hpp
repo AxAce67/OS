@@ -37,11 +37,20 @@ enum class ExtendedKeyAction {
     kDown,
 };
 
+struct ImeModeState {
+    bool ime_enabled;
+    bool jp_layout;
+    bool changed;
+};
+
 RegularShortcutAction DecideRegularShortcutAction(uint8_t key,
                                                   bool ctrl_pressed,
                                                   bool num_lock);
 
 ExtendedKeyAction DecideExtendedKeyAction(uint8_t key);
 
-}  // namespace input
+ImeModeState ApplyImeModeAction(RegularShortcutAction action,
+                                bool ime_enabled,
+                                bool jp_layout);
 
+}  // namespace input

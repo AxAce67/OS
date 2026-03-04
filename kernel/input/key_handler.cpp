@@ -39,5 +39,36 @@ ExtendedKeyAction DecideExtendedKeyAction(uint8_t key) {
     return ExtendedKeyAction::kNone;
 }
 
-}  // namespace input
+ImeModeState ApplyImeModeAction(RegularShortcutAction action,
+                                bool ime_enabled,
+                                bool jp_layout) {
+    ImeModeState out{ime_enabled, jp_layout, false};
+    switch (action) {
+    case RegularShortcutAction::kCtrlSpace:
+    case RegularShortcutAction::kKana:
+        out.ime_enabled = !ime_enabled;
+        if (out.ime_enabled) {
+            out.jp_layout = true;
+        }
+        out.changed = (out.ime_enabled != ime_enabled) || (out.jp_layout != jp_layout);
+        return out;
+    case RegularShortcutAction::kHankakuZenkaku:
+        out.ime_enabled = !ime_enabled;
+        out.jp_layout = true;
+        out.changed = (out.ime_enabled != ime_enabled) || (out.jp_layout != jp_layout);
+        return out;
+    case RegularShortcutAction::kHenkan:
+        out.ime_enabled = true;
+        out.jp_layout = true;
+        out.changed = (out.ime_enabled != ime_enabled) || (out.jp_layout != jp_layout);
+        return out;
+    case RegularShortcutAction::kMuhenkan:
+        out.ime_enabled = false;
+        out.changed = (out.ime_enabled != ime_enabled);
+        return out;
+    default:
+        return out;
+    }
+}
 
+}  // namespace input

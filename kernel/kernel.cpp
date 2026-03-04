@@ -3142,10 +3142,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         if (action == input::RegularShortcutAction::kCtrlSpace) {
             FlushImeRomaji(true);
-            g_ime_enabled = !g_ime_enabled;
-            if (g_ime_enabled) {
-                g_jp_layout = true;
-            }
+            const auto mode = input::ApplyImeModeAction(action, g_ime_enabled, g_jp_layout);
+            g_ime_enabled = mode.ime_enabled;
+            g_jp_layout = mode.jp_layout;
             RepaintPromptAndInput();
             return true;
         }
@@ -3259,27 +3258,26 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         if (action == input::RegularShortcutAction::kHankakuZenkaku) {
             FlushImeRomaji(true);
-            g_ime_enabled = !g_ime_enabled;
-            g_jp_layout = true;
+            const auto mode = input::ApplyImeModeAction(action, g_ime_enabled, g_jp_layout);
+            g_ime_enabled = mode.ime_enabled;
+            g_jp_layout = mode.jp_layout;
             RepaintPromptAndInput();
             return true;
         }
         if (action == input::RegularShortcutAction::kKana) {
             FlushImeRomaji(true);
-            g_ime_enabled = !g_ime_enabled;
-            if (g_ime_enabled) {
-                g_jp_layout = true;
-            }
+            const auto mode = input::ApplyImeModeAction(action, g_ime_enabled, g_jp_layout);
+            g_ime_enabled = mode.ime_enabled;
+            g_jp_layout = mode.jp_layout;
             RepaintPromptAndInput();
             return true;
         }
         if (action == input::RegularShortcutAction::kHenkan ||
             action == input::RegularShortcutAction::kMuhenkan) {
             FlushImeRomaji(true);
-            g_ime_enabled = (action == input::RegularShortcutAction::kHenkan);
-            if (g_ime_enabled) {
-                g_jp_layout = true;
-            }
+            const auto mode = input::ApplyImeModeAction(action, g_ime_enabled, g_jp_layout);
+            g_ime_enabled = mode.ime_enabled;
+            g_jp_layout = mode.jp_layout;
             RepaintPromptAndInput();
             return true;
         }
