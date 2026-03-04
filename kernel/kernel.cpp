@@ -3216,11 +3216,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             pointer_logical_y = pointer_y;
             pointer_visual_dirty = true;
         }
-        if (dragging_window < 0 && pointer_visual_dirty) {
-            // Keep plain cursor movement responsive; throttle is still applied during drag.
-            FlushPointerVisual();
-        }
-
         {
             const int frame_x = term_frame_layer->GetX();
             const int frame_y = term_frame_layer->GetY();
@@ -3680,7 +3675,17 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 int merged = 0;
                 int total_dx = msg.dx;
                 int total_dy = msg.dy;
-                const int max_merge = (msg.buttons == 0) ? 8 : 64;
+                int max_merge = (msg.buttons == 0) ? 16 : 64;
+                if (main_queue != nullptr) {
+                    const int backlog = main_queue->Count();
+                    if (backlog > 64) {
+                        max_merge = 128;
+                    } else if (backlog > 24 && max_merge < 64) {
+                        max_merge = 64;
+                    } else if (backlog > 8 && max_merge < 32) {
+                        max_merge = 32;
+                    }
+                }
                 while (merged < max_merge &&
                        main_queue->Peek(next) &&
                        next.type == Message::Type::kInterruptMouse &&
@@ -3905,8 +3910,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             last_drag_redraw_tick = now_tick;
         }
         if (pointer_visual_dirty && now_tick != last_pointer_redraw_tick) {
-            FlushPointerVisual();
-            last_pointer_redraw_tick = now_tick;
+            // Avoid over-drawing under input backlog; flush immediately only when queue is mostly drained.
+            if (dragging_window >= 0 || (main_queue != nullptr && main_queue->Count() <= 1)) {
+                FlushPointerVisual();
+                last_pointer_redraw_tick = now_tick;
+            }
         }
         if (dragging_window < 0 && now_tick >= next_system_info_tick) {
             RefreshSystemInfo();
