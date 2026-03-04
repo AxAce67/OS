@@ -3209,45 +3209,61 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             QueuePeekMessage,
             QueuePopMessage);
     };
-    auto ProcessCompositorUpdates = [&]() {
-        const uint64_t now_tick = CurrentTick();
-        bool compositor_drew = false;
-        if (focus_visual_dirty) {
-            layer_manager->Draw(term_frame_layer->GetX(), term_frame_layer->GetY(), term_frame_w, term_frame_h);
-            layer_manager->Draw(info_frame_layer->GetX(), info_frame_layer->GetY(), info_frame_w, info_frame_h);
-            focus_visual_dirty = false;
-            compositor_drew = true;
+    auto DrawFocusFrames = [&]() -> bool {
+        if (!focus_visual_dirty) {
+            return false;
         }
-        if (drag_visual_dirty && (now_tick != last_drag_redraw_tick || dragging_window < 0)) {
-            FlushPendingDrag();
-            drag_visual_dirty = false;
-            last_drag_redraw_tick = now_tick;
-            compositor_drew = true;
+        layer_manager->Draw(term_frame_layer->GetX(), term_frame_layer->GetY(), term_frame_w, term_frame_h);
+        layer_manager->Draw(info_frame_layer->GetX(), info_frame_layer->GetY(), info_frame_w, info_frame_h);
+        focus_visual_dirty = false;
+        return true;
+    };
+    auto FlushDragCompositorIfNeeded = [&](uint64_t now_tick) -> bool {
+        if (!drag_visual_dirty || (now_tick == last_drag_redraw_tick && dragging_window >= 0)) {
+            return false;
         }
+        FlushPendingDrag();
+        drag_visual_dirty = false;
+        last_drag_redraw_tick = now_tick;
+        return true;
+    };
+    auto RedrawPointerAfterCompositor = [&](bool compositor_drew, uint64_t now_tick) {
         if (dragging_window >= 0 && (pointer_visual_dirty || now_tick != last_pointer_redraw_tick)) {
             // Keep cursor consistently top-most during drag even when window move delta is 0.
             mouse_cursor->SetPosition(pointer_logical_x - 1, pointer_logical_y - 1);
             mouse_cursor->Redraw();
             pointer_visual_dirty = false;
             last_pointer_redraw_tick = now_tick;
+            return;
         }
         if (dragging_window < 0 && pointer_visual_dirty && now_tick != last_pointer_redraw_tick) {
             FlushPointerVisual();
             last_pointer_redraw_tick = now_tick;
-        } else if (compositor_drew) {
+            return;
+        }
+        if (compositor_drew) {
             // Keep cursor top-most after any composed redraw.
             mouse_cursor->Redraw();
         }
-        if (dragging_window < 0 && now_tick >= next_system_info_tick) {
-            // Avoid periodic hitch while pointer is actively moving.
-            if ((active_window == 1 || (now_tick - last_pointer_move_tick) >= kSystemInfoPointerIdleTicks) &&
-                main_queue != nullptr && main_queue->Count() <= 8) {
-                RefreshSystemInfo();
-            }
-            next_system_info_tick = now_tick + ((active_window == 1)
-                ? kSystemInfoRefreshIntervalTicks
-                : kSystemInfoBackgroundIntervalTicks);
+    };
+    auto RefreshSystemInfoIfNeeded = [&](uint64_t now_tick) {
+        if (dragging_window >= 0 || now_tick < next_system_info_tick) {
+            return;
         }
+        // Avoid periodic hitch while pointer is actively moving.
+        if ((active_window == 1 || (now_tick - last_pointer_move_tick) >= kSystemInfoPointerIdleTicks) &&
+            main_queue != nullptr && main_queue->Count() <= 8) {
+            RefreshSystemInfo();
+        }
+        next_system_info_tick = now_tick + ((active_window == 1)
+            ? kSystemInfoRefreshIntervalTicks
+            : kSystemInfoBackgroundIntervalTicks);
+    };
+    auto ProcessCompositorUpdates = [&]() {
+        const uint64_t now_tick = CurrentTick();
+        const bool compositor_drew = DrawFocusFrames() || FlushDragCompositorIfNeeded(now_tick);
+        RedrawPointerAfterCompositor(compositor_drew, now_tick);
+        RefreshSystemInfoIfNeeded(now_tick);
     };
 
     while (1) {
