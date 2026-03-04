@@ -2820,6 +2820,38 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         return result.inserted;
     };
 
+    auto SetTerminalFocusVisual = [&](bool focused) {
+        DrawFrameTitle(term_frame_window, term_frame_border, term_title_h, term_frame_w, "Terminal", focused);
+        term_frame_window->FillRectangle(term_frame_w - 20, 6, 12, 12, focused ? PixelColor{175, 68, 68}
+                                                                                : PixelColor{130, 74, 74});
+    };
+    auto SetSystemFocusVisual = [&](bool focused) {
+        DrawFrameTitle(info_frame_window, info_frame_border, info_title_h, info_frame_w, "System", focused);
+        info_frame_window->FillRectangle(info_frame_w - 20, 6, 12, 12, {104, 108, 126});
+    };
+    auto ApplyWindowFocus = [&](int which) {
+        if (which == active_window) {
+            return;
+        }
+        active_window = which;
+        if (which == 0) {
+            layer_manager->UpDown(info_frame_layer, 2);
+            layer_manager->UpDown(info_content_layer, 3);
+            layer_manager->UpDown(term_frame_layer, 4);
+            layer_manager->UpDown(term_console_layer, 5);
+            SetTerminalFocusVisual(true);
+            SetSystemFocusVisual(false);
+        } else {
+            layer_manager->UpDown(term_frame_layer, 2);
+            layer_manager->UpDown(term_console_layer, 3);
+            layer_manager->UpDown(info_frame_layer, 4);
+            layer_manager->UpDown(info_content_layer, 5);
+            SetTerminalFocusVisual(false);
+            SetSystemFocusVisual(true);
+        }
+        focus_visual_dirty = true;
+    };
+
     auto HandleMouseMessage = [&](const Message& msg) {
         const input::RuntimeMouseMessageContext mouse_context{
             input::RuntimeMouseButtonCounterRefs{
@@ -2854,40 +2886,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 &drag_pending_move,
                 &drag_visual_dirty,
             },
-        };
-        auto ApplyWindowFocus = [&](int which) {
-            if (which == active_window) {
-                return;
-            }
-            const int term_frame_x0 = term_frame_layer->GetX();
-            const int term_frame_y0 = term_frame_layer->GetY();
-            const int info_frame_x0 = info_frame_layer->GetX();
-            const int info_frame_y0 = info_frame_layer->GetY();
-            active_window = which;
-            if (which == 0) {
-                layer_manager->UpDown(info_frame_layer, 2);
-                layer_manager->UpDown(info_content_layer, 3);
-                layer_manager->UpDown(term_frame_layer, 4);
-                layer_manager->UpDown(term_console_layer, 5);
-                DrawFrameTitle(term_frame_window, term_frame_border, term_title_h, term_frame_w, "Terminal", true);
-                term_frame_window->FillRectangle(term_frame_w - 20, 6, 12, 12, {175, 68, 68});
-                DrawFrameTitle(info_frame_window, info_frame_border, info_title_h, info_frame_w, "System", false);
-                info_frame_window->FillRectangle(info_frame_w - 20, 6, 12, 12, {104, 108, 126});
-            } else {
-                layer_manager->UpDown(term_frame_layer, 2);
-                layer_manager->UpDown(term_console_layer, 3);
-                layer_manager->UpDown(info_frame_layer, 4);
-                layer_manager->UpDown(info_content_layer, 5);
-                DrawFrameTitle(term_frame_window, term_frame_border, term_title_h, term_frame_w, "Terminal", false);
-                term_frame_window->FillRectangle(term_frame_w - 20, 6, 12, 12, {130, 74, 74});
-                DrawFrameTitle(info_frame_window, info_frame_border, info_title_h, info_frame_w, "System", true);
-                info_frame_window->FillRectangle(info_frame_w - 20, 6, 12, 12, {104, 108, 126});
-            }
-            (void)term_frame_x0;
-            (void)term_frame_y0;
-            (void)info_frame_x0;
-            (void)info_frame_y0;
-            focus_visual_dirty = true;
         };
         input::HandleMouseMessageRuntime(
             msg,
