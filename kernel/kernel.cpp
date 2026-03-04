@@ -3898,14 +3898,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
 
         const uint64_t now_tick = CurrentTick();
-        if (pointer_visual_dirty && now_tick != last_pointer_redraw_tick) {
-            FlushPointerVisual();
-            last_pointer_redraw_tick = now_tick;
-        }
         if (drag_visual_dirty && now_tick != last_drag_redraw_tick) {
             FlushPendingDrag();
             drag_visual_dirty = false;
             last_drag_redraw_tick = now_tick;
+        }
+        if (pointer_visual_dirty && now_tick != last_pointer_redraw_tick) {
+            FlushPointerVisual();
+            last_pointer_redraw_tick = now_tick;
         }
         if (dragging_window < 0 && now_tick >= next_system_info_tick) {
             RefreshSystemInfo();

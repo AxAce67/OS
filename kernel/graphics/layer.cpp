@@ -177,18 +177,57 @@ void LayerManager::Draw(int x, int y, int width, int height) const {
         return;
     }
 
-    // 1) バックバッファ領域をクリア。
-    // 背景レイヤーが全画面を覆うため、VRAMからの読み戻しは不要。
-    const int clear_width = draw_end_x - draw_start_x;
-    for (int py = draw_start_y; py < draw_end_y; ++py) {
-        PixelColor* dst = &back_buffer_[py * back_buffer_width_ + draw_start_x];
-        for (int i = 0; i < clear_width; ++i) {
-            dst[i] = PixelColor{0, 0, 0};
+    // 1) 完全に覆う不透明レイヤーを見つけられる場合は、それを合成の基準にして下層を省く。
+    int base_layer_index = -1;
+    for (int i = height_ - 1; i >= 0; --i) {
+        Layer* layer = layer_stack_[i];
+        if (layer == nullptr || layer->GetWindow() == nullptr) {
+            continue;
+        }
+        Window* win = layer->GetWindow();
+        if (win->HasTransparentColor()) {
+            continue;
+        }
+        const int win_start_x = layer->GetX();
+        const int win_start_y = layer->GetY();
+        const int win_end_x = win_start_x + win->Width();
+        const int win_end_y = win_start_y + win->Height();
+        if (win_start_x <= draw_start_x && win_start_y <= draw_start_y &&
+            win_end_x >= draw_end_x && win_end_y >= draw_end_y) {
+            base_layer_index = i;
+            break;
         }
     }
 
-    // 2) 対象矩形へレイヤーを下から順に合成。
-    for (int i = 0; i < height_; ++i) {
+    if (base_layer_index >= 0) {
+        Layer* base = layer_stack_[base_layer_index];
+        Window* win = base->GetWindow();
+        const PixelColor* src = win->Buffer();
+        const int win_w = win->Width();
+        const int sx = draw_start_x - base->GetX();
+        for (int py = draw_start_y; py < draw_end_y; ++py) {
+            const int sy = py - base->GetY();
+            const PixelColor* src_row = &src[sy * win_w + sx];
+            PixelColor* dst_row = &back_buffer_[py * back_buffer_width_ + draw_start_x];
+            const int span_w = draw_end_x - draw_start_x;
+            for (int j = 0; j < span_w; ++j) {
+                dst_row[j] = src_row[j];
+            }
+        }
+    } else {
+        // 基準レイヤーがない場合のみクリアして合成。
+        const int clear_width = draw_end_x - draw_start_x;
+        for (int py = draw_start_y; py < draw_end_y; ++py) {
+            PixelColor* dst = &back_buffer_[py * back_buffer_width_ + draw_start_x];
+            for (int j = 0; j < clear_width; ++j) {
+                dst[j] = PixelColor{0, 0, 0};
+            }
+        }
+    }
+
+    // 2) 対象矩形へレイヤーを基準位置より上から順に合成。
+    const int compose_begin = (base_layer_index >= 0) ? (base_layer_index + 1) : 0;
+    for (int i = compose_begin; i < height_; ++i) {
         Layer* layer = layer_stack_[i];
         if (layer == nullptr || layer->GetWindow() == nullptr) {
             continue;
