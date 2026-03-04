@@ -3114,6 +3114,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
+        auto RenderAndRefreshInput = [&]() {
+            RenderInputLine();
+            RefreshInputLine();
+        };
         if (input::ShouldCommitActiveCandidateBeforeKey(ime_candidate_active, key)) {
             CommitImeCandidateLearning();
             ClearImeCandidate();
@@ -3162,15 +3166,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     static_cast<int>(sizeof(ime_romaji_buffer)),
                     StrLength);
                 ClearImeCandidate();
-                RenderInputLine();
-                RefreshInputLine();
+                RenderAndRefreshInput();
                 return true;
             case input::RegularExecKind::kEscClearRomaji:
                 input::ClearRomajiInput(ime_romaji_buffer,
                                         static_cast<int>(sizeof(ime_romaji_buffer)),
                                         &ime_romaji_len);
-                RenderInputLine();
-                RefreshInputLine();
+                RenderAndRefreshInput();
                 return true;
             case input::RegularExecKind::kClearScreenAndResetInput:
                 console->Clear();
@@ -3188,8 +3190,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 ClearImeCandidate();
                 ClearSelection();
                 command_history.ResetNavigation();
-                RenderInputLine();
-                RefreshInputLine();
+                RenderAndRefreshInput();
                 return true;
             case input::RegularExecKind::kHistoryUpWithCandidate:
                 if (input::ShouldBrowseHistoryAfterCycle(CycleImeCandidate(-1))) {
@@ -3215,8 +3216,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                                        neutral_ctx.command_len,
                                                        neutral_callbacks,
                                                        &neutral_ctx)) {
-                    RenderInputLine();
-                    RefreshInputLine();
+                    RenderAndRefreshInput();
                     return true;
                 }
                 break;
