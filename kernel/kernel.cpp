@@ -87,6 +87,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "shell/cmd_dispatch.hpp"
 #include "shell/cmd_xhci.hpp"
 #include "shell/text.hpp"
+#include "ui/system_monitor.hpp"
 
 extern Console* console;
 
@@ -2168,6 +2169,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     Layer* info_content_layer = layer_manager->NewLayer();
     info_content_layer->SetWindow(info_content_window).Move(info_frame_x + info_frame_border, info_frame_y + info_title_h);
     layer_manager->UpDown(info_content_layer, 3);
+    ui::SystemMonitorPanel system_monitor_panel(info_content_window, info_content_layer, layer_manager,
+                                                info_content_w, info_content_h);
 
     auto DrawFrameTitle = [&](Window* frame, int border, int title_h, int frame_w,
                               const char* title, bool active) {
@@ -2444,58 +2447,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             RefreshConsole();
         }
     };
-    bool system_info_static_drawn = false;
     auto RefreshSystemInfo = [&]() {
-        const PixelColor kBg{14, 16, 22};
-        const PixelColor kLabel{180, 188, 204};
-        const PixelColor kValue{236, 238, 242};
-        const PixelColor kTitle{220, 224, 232};
-        const PixelColor kSubtle{160, 170, 190};
-        if (!system_info_static_drawn) {
-            info_content_window->FillRectangle(0, 0, info_content_w, info_content_h, kBg);
-            info_content_window->DrawString(12, 12, "System Monitor", kTitle);
-            info_content_window->DrawString(12, 34, "tick:", kLabel);
-            info_content_window->DrawString(12, 52, "free:", kLabel);
-            info_content_window->DrawString(152, 52, "MiB", kLabel);
-            info_content_window->DrawString(12, 70, "queue:", kLabel);
-            info_content_window->DrawString(12, 88, "kbd_drop:", kLabel);
-            info_content_window->DrawString(12, 106, "mouse_drop:", kLabel);
-            info_content_window->DrawString(12, 124, "layout:", kLabel);
-            info_content_window->DrawString(128, 124, "ime:", kLabel);
-            info_content_window->DrawString(12, 146, "drag/window input optimized", kSubtle);
-            system_info_static_drawn = true;
-            layer_manager->Draw(info_content_layer->GetX(), info_content_layer->GetY(), info_content_w, info_content_h);
-        }
-        auto DrawValue = [&](int x, int y, int w, const char* text) {
-            info_content_window->FillRectangle(x, y, w, 16, kBg);
-            info_content_window->DrawString(x, y, text, kValue);
-            layer_manager->Draw(info_content_layer->GetX() + x,
-                                info_content_layer->GetY() + y,
-                                w, 16);
-        };
-
-        char num[40];
-        UInt64ToDecimalString(CurrentTick(), num, static_cast<int>(sizeof(num)));
-        DrawValue(88, 34, 120, num);
-
         uint64_t free_mib = 0;
         if (memory_manager != nullptr) {
             free_mib = (memory_manager->CountFreePages() * kPageSize) / kMiB;
         }
-        UInt64ToDecimalString(free_mib, num, static_cast<int>(sizeof(num)));
-        DrawValue(88, 52, 60, num);
-
-        UIntToDecimalString(static_cast<uint32_t>((main_queue != nullptr) ? main_queue->Count() : 0),
-                            num, static_cast<int>(sizeof(num)));
-        DrawValue(88, 70, 60, num);
-
-        UInt64ToDecimalString(g_keyboard_dropped_events, num, static_cast<int>(sizeof(num)));
-        DrawValue(88, 88, 120, num);
-
-        UInt64ToDecimalString(g_mouse_dropped_events, num, static_cast<int>(sizeof(num)));
-        DrawValue(88, 106, 120, num);
-        DrawValue(88, 124, 32, g_jp_layout ? "jp" : "us");
-        DrawValue(168, 124, 32, g_ime_enabled ? "on" : "off");
+        const uint32_t queue_count = static_cast<uint32_t>((main_queue != nullptr) ? main_queue->Count() : 0);
+        system_monitor_panel.Refresh(CurrentTick(), free_mib, queue_count,
+                                     g_keyboard_dropped_events, g_mouse_dropped_events,
+                                     g_jp_layout, g_ime_enabled);
     };
     RefreshSystemInfo();
     next_system_info_tick = CurrentTick() + kSystemInfoRefreshIntervalTicks;
