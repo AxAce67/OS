@@ -3353,10 +3353,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                 ReplaceImeCandidateText)) {
                             break;
                         }
-                        if (ime_decision.finalize_romaji) {
-                            // Finalize pending romaji before non-alpha key (space/punct/enter).
-                            FlushImeRomaji(true);
-                        }
+                        input::FinalizeImeRomajiIfNeeded(ime_decision.finalize_romaji, FlushImeRomaji);
                     }
                     if (ch == '\n') {
                         console->SetCursorPosition(input_row, input_col + command_len);

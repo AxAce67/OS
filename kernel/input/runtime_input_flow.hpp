@@ -218,6 +218,16 @@ inline void RefreshAfterKeyboardCharInput(bool full_refresh,
     refresh_input_line();
 }
 
+template <class TFlushRomaji>
+inline void FinalizeImeRomajiIfNeeded(bool finalize_romaji,
+                                      TFlushRomaji&& flush_romaji) {
+    if (!finalize_romaji) {
+        return;
+    }
+    // Finalize pending romaji before non-alpha key (space/punct/enter).
+    flush_romaji(true);
+}
+
 template <class TStrEqual, class TPrintHistory, class TClearHistory, class TExecuteCommand>
 inline void ExecuteShellCommandOrHistory(const char* command,
                                          TStrEqual&& str_equal,
