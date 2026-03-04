@@ -3090,6 +3090,43 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         return input::ExecChainHandled(chain_result);
     };
+    auto ExecuteExtendedChainWithContexts = [&](RuntimeFlowBundles* bundles,
+                                                const input::ExtendedExecPlan& exec_plan) {
+        const auto action_context = input::BuildExtendedActionContext(&bundles->extended.owner);
+        return input::ExecuteExtendedExecChain(exec_plan, action_context, &cursor_pos, command_len);
+    };
+    auto ExecuteRegularChainWithContexts = [&](RuntimeFlowBundles* bundles,
+                                               const input::RegularExecPlan& exec_plan) {
+        const auto action_context = input::BuildRegularActionContext(&bundles->regular.action_owner);
+        const auto ime_context = input::BuildRegularImeContext(&bundles->regular.shortcut_owner,
+                                                               ime_candidate_entry,
+                                                               ime_candidate_start,
+                                                               ime_candidate_len,
+                                                               ime_romaji_buffer,
+                                                               static_cast<int>(sizeof(ime_romaji_buffer)),
+                                                               &ime_romaji_len,
+                                                               StrLength);
+        const auto clear_context = input::BuildRegularClearContext(&bundles->regular.shortcut_owner,
+                                                                   command_buffer,
+                                                                   static_cast<int>(sizeof(command_buffer)),
+                                                                   &command_len,
+                                                                   &cursor_pos,
+                                                                   &rendered_len,
+                                                                   ime_romaji_buffer,
+                                                                   static_cast<int>(sizeof(ime_romaji_buffer)),
+                                                                   &ime_romaji_len);
+        const auto mode_context = input::BuildRegularModeContext(&bundles->regular.shortcut_owner,
+                                                                 exec_plan.mode_action,
+                                                                 &g_ime_enabled,
+                                                                 &g_jp_layout);
+        return input::ExecuteRegularExecChain(exec_plan,
+                                              ime_context,
+                                              clear_context,
+                                              mode_context,
+                                              action_context,
+                                              &cursor_pos,
+                                              command_len);
+    };
     auto ApplyExtendedKeySideEffects = [&](const input::ExtendedExecPlan& plan) {
         input::ApplyExtendedPlanSideEffects(
             plan,
@@ -3129,8 +3166,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return false;
         }
         return HandleExecChain([&](RuntimeFlowBundles* bundles) {
-            const auto action_context = input::BuildExtendedActionContext(&bundles->extended.owner);
-            return input::ExecuteExtendedExecChain(exec_plan, action_context, &cursor_pos, command_len);
+            return ExecuteExtendedChainWithContexts(bundles, exec_plan);
         });
     };
 
@@ -3153,35 +3189,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return false;
         }
         return HandleExecChain([&](RuntimeFlowBundles* bundles) {
-            const auto action_context = input::BuildRegularActionContext(&bundles->regular.action_owner);
-            const auto ime_context = input::BuildRegularImeContext(&bundles->regular.shortcut_owner,
-                                                                   ime_candidate_entry,
-                                                                   ime_candidate_start,
-                                                                   ime_candidate_len,
-                                                                   ime_romaji_buffer,
-                                                                   static_cast<int>(sizeof(ime_romaji_buffer)),
-                                                                   &ime_romaji_len,
-                                                                   StrLength);
-            const auto clear_context = input::BuildRegularClearContext(&bundles->regular.shortcut_owner,
-                                                                       command_buffer,
-                                                                       static_cast<int>(sizeof(command_buffer)),
-                                                                       &command_len,
-                                                                       &cursor_pos,
-                                                                       &rendered_len,
-                                                                       ime_romaji_buffer,
-                                                                       static_cast<int>(sizeof(ime_romaji_buffer)),
-                                                                       &ime_romaji_len);
-            const auto mode_context = input::BuildRegularModeContext(&bundles->regular.shortcut_owner,
-                                                                     exec_plan.mode_action,
-                                                                     &g_ime_enabled,
-                                                                     &g_jp_layout);
-            return input::ExecuteRegularExecChain(exec_plan,
-                                                  ime_context,
-                                                  clear_context,
-                                                  mode_context,
-                                                  action_context,
-                                                  &cursor_pos,
-                                                  command_len);
+            return ExecuteRegularChainWithContexts(bundles, exec_plan);
         });
     };
 
