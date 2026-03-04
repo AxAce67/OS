@@ -129,82 +129,82 @@ bool ExecuteRegularNeutralAction(RegularExecKind kind,
     }
 }
 
-bool ExecuteRegularAction(RegularExecKind kind,
-                          const RegularActionCallbacks& callbacks,
-                          void* ctx) {
+bool ExecuteRegularActionWithContext(RegularExecKind kind,
+                                     const RegularActionContext& context) {
     switch (kind) {
     case RegularExecKind::kHistoryUpWithCandidate:
-        if (callbacks.cycle_candidate == nullptr || callbacks.browse_history == nullptr) {
+        if (context.cycle_candidate == nullptr ||
+            context.browse_history_up == nullptr) {
             return false;
         }
-        if (ShouldBrowseHistoryAfterCycle(callbacks.cycle_candidate(ctx, -1))) {
-            callbacks.browse_history(ctx, -1);
+        if (ShouldBrowseHistoryAfterCycle(context.cycle_candidate(context.owner, -1))) {
+            context.browse_history_up(context.owner);
         }
         return true;
     case RegularExecKind::kHistoryDownWithCandidate:
-        if (callbacks.cycle_candidate == nullptr || callbacks.browse_history == nullptr) {
+        if (context.cycle_candidate == nullptr ||
+            context.browse_history_down == nullptr) {
             return false;
         }
-        if (ShouldBrowseHistoryAfterCycle(callbacks.cycle_candidate(ctx, 1))) {
-            callbacks.browse_history(ctx, 1);
+        if (ShouldBrowseHistoryAfterCycle(context.cycle_candidate(context.owner, 1))) {
+            context.browse_history_down(context.owner);
         }
         return true;
     case RegularExecKind::kBackspace:
-        if (callbacks.backspace_at_cursor == nullptr) {
+        if (context.backspace_at_cursor == nullptr) {
             return false;
         }
-        callbacks.backspace_at_cursor(ctx);
+        context.backspace_at_cursor(context.owner);
         return true;
     case RegularExecKind::kDelete:
-        if (callbacks.delete_at_cursor == nullptr) {
+        if (context.delete_at_cursor == nullptr) {
             return false;
         }
-        callbacks.delete_at_cursor(ctx);
+        context.delete_at_cursor(context.owner);
         return true;
     case RegularExecKind::kTab:
-        if (callbacks.tab_complete == nullptr) {
+        if (context.tab_complete == nullptr) {
             return false;
         }
-        callbacks.tab_complete(ctx);
+        context.tab_complete(context.owner);
         return true;
     default:
         return false;
     }
 }
 
-bool ExecuteExtendedAction(ExtendedExecKind kind,
-                           const ExtendedActionCallbacks& callbacks,
-                           void* ctx) {
+bool ExecuteExtendedActionWithContext(ExtendedExecKind kind,
+                                      const ExtendedActionContext& context) {
     switch (kind) {
     case ExtendedExecKind::kPageUp:
-        if (callbacks.scroll == nullptr) {
+        if (context.scroll_up == nullptr) {
             return false;
         }
-        callbacks.scroll(ctx, -1, 3);
+        context.scroll_up(context.owner, 3);
         return true;
     case ExtendedExecKind::kPageDown:
-        if (callbacks.scroll == nullptr) {
+        if (context.scroll_down == nullptr) {
             return false;
         }
-        callbacks.scroll(ctx, 1, 3);
+        context.scroll_down(context.owner, 3);
         return true;
     case ExtendedExecKind::kDelete:
-        if (callbacks.delete_at_cursor == nullptr) {
+        if (context.delete_at_cursor == nullptr) {
             return false;
         }
-        callbacks.delete_at_cursor(ctx);
+        context.delete_at_cursor(context.owner);
         return true;
     case ExtendedExecKind::kHistoryUp:
-        if (callbacks.browse_history == nullptr) {
+        if (context.browse_history_up == nullptr) {
             return false;
         }
-        callbacks.browse_history(ctx, -1);
+        context.browse_history_up(context.owner);
         return true;
     case ExtendedExecKind::kHistoryDown:
-        if (callbacks.browse_history == nullptr) {
+        if (context.browse_history_down == nullptr) {
             return false;
         }
-        callbacks.browse_history(ctx, 1);
+        context.browse_history_down(context.owner);
         return true;
     default:
         return false;

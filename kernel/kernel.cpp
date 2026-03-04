@@ -3066,43 +3066,45 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (exec_plan.clear_selection) {
             ClearSelection();
         }
-        struct ExtendedActionCtx {
+        struct ExtendedActionOwner {
             Console* console;
             decltype(RefreshConsole)* refresh_console;
             decltype(DeleteAtCursor)* delete_at_cursor;
             decltype(BrowseHistoryUp)* browse_history_up;
             decltype(BrowseHistoryDown)* browse_history_down;
-        } action_ctx{
+        } action_owner{
             console,
             &RefreshConsole,
             &DeleteAtCursor,
             &BrowseHistoryUp,
             &BrowseHistoryDown,
         };
-        const input::ExtendedActionCallbacks action_callbacks{
-            [](void* ctx, int direction, int lines) {
-                auto* c = reinterpret_cast<ExtendedActionCtx*>(ctx);
-                if (direction < 0) {
-                    c->console->ScrollUp(lines);
-                } else {
-                    c->console->ScrollDown(lines);
-                }
-                (*c->refresh_console)();
+        const input::ExtendedActionContext action_context{
+            &action_owner,
+            [](void* owner, int lines) {
+                auto* o = reinterpret_cast<ExtendedActionOwner*>(owner);
+                o->console->ScrollUp(lines);
+                (*o->refresh_console)();
             },
-            [](void* ctx) {
-                auto* c = reinterpret_cast<ExtendedActionCtx*>(ctx);
-                (*c->delete_at_cursor)();
+            [](void* owner, int lines) {
+                auto* o = reinterpret_cast<ExtendedActionOwner*>(owner);
+                o->console->ScrollDown(lines);
+                (*o->refresh_console)();
             },
-            [](void* ctx, int direction) {
-                auto* c = reinterpret_cast<ExtendedActionCtx*>(ctx);
-                if (direction < 0) {
-                    (*c->browse_history_up)();
-                    return;
-                }
-                (*c->browse_history_down)();
+            [](void* owner) {
+                auto* o = reinterpret_cast<ExtendedActionOwner*>(owner);
+                (*o->delete_at_cursor)();
+            },
+            [](void* owner) {
+                auto* o = reinterpret_cast<ExtendedActionOwner*>(owner);
+                (*o->browse_history_up)();
+            },
+            [](void* owner) {
+                auto* o = reinterpret_cast<ExtendedActionOwner*>(owner);
+                (*o->browse_history_down)();
             },
         };
-        if (input::ExecuteExtendedAction(exec_plan.kind, action_callbacks, &action_ctx)) {
+        if (input::ExecuteExtendedActionWithContext(exec_plan.kind, action_context)) {
             return true;
         }
         const auto cursor_move =
@@ -3117,56 +3119,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         return false;
     };
 
-    struct RegularActionCtx {
+    struct RegularActionOwner {
         decltype(CycleImeCandidate)* cycle_candidate;
         decltype(BrowseHistoryUp)* browse_history_up;
         decltype(BrowseHistoryDown)* browse_history_down;
         decltype(BackspaceAtCursor)* backspace_at_cursor;
         decltype(DeleteAtCursor)* delete_at_cursor;
         decltype(HandleTabCompletion)* tab_complete;
-    };
-    struct RegularActionDispatch {
-        RegularActionCtx ctx;
-        input::RegularActionCallbacks callbacks;
-    };
-    auto BuildRegularActionDispatch = [&]() {
-        RegularActionDispatch dispatch{
-            {
-                &CycleImeCandidate,
-                &BrowseHistoryUp,
-                &BrowseHistoryDown,
-                &BackspaceAtCursor,
-                &DeleteAtCursor,
-                &HandleTabCompletion,
-            },
-            {
-                [](void* ctx, int direction) -> bool {
-                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
-                    return (*c->cycle_candidate)(direction);
-                },
-                [](void* ctx, int direction) {
-                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
-                    if (direction < 0) {
-                        (*c->browse_history_up)();
-                        return;
-                    }
-                    (*c->browse_history_down)();
-                },
-                [](void* ctx) {
-                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
-                    (*c->backspace_at_cursor)();
-                },
-                [](void* ctx) {
-                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
-                    (*c->delete_at_cursor)();
-                },
-                [](void* ctx) {
-                    auto* c = reinterpret_cast<RegularActionCtx*>(ctx);
-                    (*c->tab_complete)();
-                },
-            },
-        };
-        return dispatch;
     };
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
@@ -3205,7 +3164,41 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     input::SetCursorValue(c->cursor_pos, target);
                 },
             };
-            auto action_dispatch = BuildRegularActionDispatch();
+            RegularActionOwner action_owner{
+                &CycleImeCandidate,
+                &BrowseHistoryUp,
+                &BrowseHistoryDown,
+                &BackspaceAtCursor,
+                &DeleteAtCursor,
+                &HandleTabCompletion,
+            };
+            const input::RegularActionContext action_context{
+                &action_owner,
+                [](void* ctx_owner, int direction) -> bool {
+                    auto* o = reinterpret_cast<RegularActionOwner*>(ctx_owner);
+                    return (*o->cycle_candidate)(direction);
+                },
+                [](void* ctx_owner) {
+                    auto* o = reinterpret_cast<RegularActionOwner*>(ctx_owner);
+                    (*o->browse_history_up)();
+                },
+                [](void* ctx_owner) {
+                    auto* o = reinterpret_cast<RegularActionOwner*>(ctx_owner);
+                    (*o->browse_history_down)();
+                },
+                [](void* ctx_owner) {
+                    auto* o = reinterpret_cast<RegularActionOwner*>(ctx_owner);
+                    (*o->backspace_at_cursor)();
+                },
+                [](void* ctx_owner) {
+                    auto* o = reinterpret_cast<RegularActionOwner*>(ctx_owner);
+                    (*o->delete_at_cursor)();
+                },
+                [](void* ctx_owner) {
+                    auto* o = reinterpret_cast<RegularActionOwner*>(ctx_owner);
+                    (*o->tab_complete)();
+                },
+            };
             switch (exec_plan.kind) {
             case input::RegularExecKind::kApplyImeModeAndRepaint: {
                 const auto mode = input::ApplyImeModeAction(exec_plan.mode_action, g_ime_enabled, g_jp_layout);
@@ -3258,9 +3251,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RenderAndRefreshInput();
                 return true;
             default:
-                if (input::ExecuteRegularAction(exec_plan.kind,
-                                               action_dispatch.callbacks,
-                                               &action_dispatch.ctx)) {
+                if (input::ExecuteRegularActionWithContext(exec_plan.kind, action_context)) {
                     return true;
                 }
                 if (input::ExecuteRegularNeutralAction(exec_plan.kind,

@@ -62,32 +62,35 @@ bool ExecuteRegularNeutralAction(RegularExecKind kind,
                                  const RegularNeutralCallbacks& callbacks,
                                  void* ctx);
 
-struct RegularActionCallbacks {
-    bool (*cycle_candidate)(void* ctx, int direction);
-    void (*browse_history)(void* ctx, int direction);
-    void (*backspace_at_cursor)(void* ctx);
-    void (*delete_at_cursor)(void* ctx);
-    void (*tab_complete)(void* ctx);
+struct RegularActionContext {
+    void* owner;
+    bool (*cycle_candidate)(void* owner, int direction);
+    void (*browse_history_up)(void* owner);
+    void (*browse_history_down)(void* owner);
+    void (*backspace_at_cursor)(void* owner);
+    void (*delete_at_cursor)(void* owner);
+    void (*tab_complete)(void* owner);
 };
 
-bool ExecuteRegularAction(RegularExecKind kind,
-                          const RegularActionCallbacks& callbacks,
-                          void* ctx);
+bool ExecuteRegularActionWithContext(RegularExecKind kind,
+                                     const RegularActionContext& context);
 
 struct ExtendedCursorMoveResult {
     bool handled;
     bool should_render;
 };
 
-struct ExtendedActionCallbacks {
-    void (*scroll)(void* ctx, int direction, int lines);
-    void (*delete_at_cursor)(void* ctx);
-    void (*browse_history)(void* ctx, int direction);
+struct ExtendedActionContext {
+    void* owner;
+    void (*scroll_up)(void* owner, int lines);
+    void (*scroll_down)(void* owner, int lines);
+    void (*delete_at_cursor)(void* owner);
+    void (*browse_history_up)(void* owner);
+    void (*browse_history_down)(void* owner);
 };
 
-bool ExecuteExtendedAction(ExtendedExecKind kind,
-                           const ExtendedActionCallbacks& callbacks,
-                           void* ctx);
+bool ExecuteExtendedActionWithContext(ExtendedExecKind kind,
+                                      const ExtendedActionContext& context);
 
 ExtendedCursorMoveResult ExecuteExtendedCursorMoveAction(ExtendedExecKind kind,
                                                          int* cursor_pos,
