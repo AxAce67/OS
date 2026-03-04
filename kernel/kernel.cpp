@@ -3180,15 +3180,19 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         });
     };
     auto HandleKeyboardMessage = [&](const Message& msg) {
-        ++g_keyboard_irq_count;
-        g_keyboard_last_raw = msg.keycode;
+        const input::RuntimeKeyboardDecodeRefs decode_refs{
+            &g_keyboard_irq_count,
+            &g_keyboard_last_raw,
+            &g_keyboard_last_key,
+            &g_keyboard_last_extended,
+            &g_keyboard_last_released,
+            &e0_prefix,
+            &keyboard_mods,
+        };
         KeyEvent key_event{};
-        if (!DecodePS2Set1KeyEvent(msg.keycode, &e0_prefix, &keyboard_mods, &key_event)) {
+        if (!input::DecodeKeyboardMessageAndTrack(msg.keycode, decode_refs, &key_event)) {
             return;
         }
-        g_keyboard_last_key = key_event.keycode;
-        g_keyboard_last_extended = key_event.extended;
-        g_keyboard_last_released = key_event.released;
         if (key_event.kind == KeyEventKind::kModifier) {
             return;
         }

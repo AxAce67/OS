@@ -143,6 +143,16 @@ struct RuntimeKeyDownRefs {
     bool* key_down_normal;
 };
 
+struct RuntimeKeyboardDecodeRefs {
+    uint64_t* irq_count;
+    uint8_t* last_raw;
+    uint8_t* last_key;
+    bool* last_extended;
+    bool* last_released;
+    bool* e0_prefix;
+    KeyboardModifiers* modifiers;
+};
+
 struct RuntimeCommandInputStateRefs {
     char* command_buffer;
     int command_capacity;
@@ -198,6 +208,30 @@ inline void MarkKeyDownIfTrackable(const KeyEvent& key_event,
     } else {
         refs.key_down_normal[key_event.keycode] = true;
     }
+}
+
+inline bool DecodeKeyboardMessageAndTrack(uint8_t raw_scancode,
+                                          const RuntimeKeyboardDecodeRefs& refs,
+                                          KeyEvent* out_key_event) {
+    if (out_key_event == nullptr ||
+        refs.irq_count == nullptr ||
+        refs.last_raw == nullptr ||
+        refs.last_key == nullptr ||
+        refs.last_extended == nullptr ||
+        refs.last_released == nullptr ||
+        refs.e0_prefix == nullptr ||
+        refs.modifiers == nullptr) {
+        return false;
+    }
+    ++(*refs.irq_count);
+    *refs.last_raw = raw_scancode;
+    if (!DecodePS2Set1KeyEvent(raw_scancode, refs.e0_prefix, refs.modifiers, out_key_event)) {
+        return false;
+    }
+    *refs.last_key = out_key_event->keycode;
+    *refs.last_extended = out_key_event->extended;
+    *refs.last_released = out_key_event->released;
+    return true;
 }
 
 template <class THandleExtendedKey>
