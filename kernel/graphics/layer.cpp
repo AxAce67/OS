@@ -194,9 +194,11 @@ void LayerManager::Draw(int x, int y, int width, int height) const {
 
     // 1) バックバッファ領域をクリア。
     // 背景レイヤーが全画面を覆うため、VRAMからの読み戻しは不要。
+    const int clear_width = draw_end_x - draw_start_x;
     for (int py = draw_start_y; py < draw_end_y; ++py) {
-        for (int px = draw_start_x; px < draw_end_x; ++px) {
-            back_buffer_[py * back_buffer_width_ + px] = PixelColor{0, 0, 0};
+        PixelColor* dst = &back_buffer_[py * back_buffer_width_ + draw_start_x];
+        for (int i = 0; i < clear_width; ++i) {
+            dst[i] = PixelColor{0, 0, 0};
         }
     }
 
@@ -224,15 +226,27 @@ void LayerManager::Draw(int x, int y, int width, int height) const {
         const bool has_tc = win->HasTransparentColor();
         const PixelColor tc = win->TransparentColor();
         const int win_w = win->Width();
-        for (int py = ly0; py < ly1; ++py) {
-            const int wy = py - win_start_y;
-            for (int px = lx0; px < lx1; ++px) {
-                const int wx = px - win_start_x;
-                const PixelColor c = src[wy * win_w + wx];
-                if (has_tc && c.r == tc.r && c.g == tc.g && c.b == tc.b) {
-                    continue;
+        if (!has_tc) {
+            const int span_w = lx1 - lx0;
+            for (int py = ly0; py < ly1; ++py) {
+                const int wy = py - win_start_y;
+                const PixelColor* src_row = &src[wy * win_w + (lx0 - win_start_x)];
+                PixelColor* dst_row = &back_buffer_[py * back_buffer_width_ + lx0];
+                for (int i = 0; i < span_w; ++i) {
+                    dst_row[i] = src_row[i];
                 }
-                back_buffer_[py * back_buffer_width_ + px] = c;
+            }
+        } else {
+            for (int py = ly0; py < ly1; ++py) {
+                const int wy = py - win_start_y;
+                for (int px = lx0; px < lx1; ++px) {
+                    const int wx = px - win_start_x;
+                    const PixelColor c = src[wy * win_w + wx];
+                    if (c.r == tc.r && c.g == tc.g && c.b == tc.b) {
+                        continue;
+                    }
+                    back_buffer_[py * back_buffer_width_ + px] = c;
+                }
             }
         }
     }

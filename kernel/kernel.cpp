@@ -2356,28 +2356,44 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     uint64_t next_system_info_tick = 0;
     uint64_t last_drag_redraw_tick = 0;
     bool drag_visual_dirty = false;
-    int drag_dirty_x0 = 0;
-    int drag_dirty_y0 = 0;
-    int drag_dirty_x1 = 0;
-    int drag_dirty_y1 = 0;
-    bool drag_dirty_has_region = false;
-    auto MarkDragDirtyUnion = [&](int old_x, int old_y, int new_x, int new_y, int w, int h) {
-        int x0 = (old_x < new_x) ? old_x : new_x;
-        int y0 = (old_y < new_y) ? old_y : new_y;
-        int x1 = ((old_x + w) > (new_x + w)) ? (old_x + w) : (new_x + w);
-        int y1 = ((old_y + h) > (new_y + h)) ? (old_y + h) : (new_y + h);
-        if (!drag_dirty_has_region) {
-            drag_dirty_x0 = x0;
-            drag_dirty_y0 = y0;
-            drag_dirty_x1 = x1;
-            drag_dirty_y1 = y1;
-            drag_dirty_has_region = true;
+    int drag_pending_window = -1;  // 0=terminal, 1=system-info
+    int drag_pending_x = 0;
+    int drag_pending_y = 0;
+    bool drag_pending_move = false;
+    auto FlushPendingDrag = [&]() {
+        if (!drag_pending_move || drag_pending_window < 0) {
             return;
         }
-        if (x0 < drag_dirty_x0) drag_dirty_x0 = x0;
-        if (y0 < drag_dirty_y0) drag_dirty_y0 = y0;
-        if (x1 > drag_dirty_x1) drag_dirty_x1 = x1;
-        if (y1 > drag_dirty_y1) drag_dirty_y1 = y1;
+        auto DrawMovedUnion = [&](int old_x, int old_y, int new_x, int new_y, int w, int h) {
+            const int x0 = (old_x < new_x) ? old_x : new_x;
+            const int y0 = (old_y < new_y) ? old_y : new_y;
+            const int x1 = ((old_x + w) > (new_x + w)) ? (old_x + w) : (new_x + w);
+            const int y1 = ((old_y + h) > (new_y + h)) ? (old_y + h) : (new_y + h);
+            layer_manager->Draw(x0, y0, x1 - x0, y1 - y0);
+        };
+        if (drag_pending_window == 0) {
+            const int old_x = term_frame_layer->GetX();
+            const int old_y = term_frame_layer->GetY();
+            const int new_x = drag_pending_x;
+            const int new_y = drag_pending_y;
+            if (old_x != new_x || old_y != new_y) {
+                term_frame_layer->Move(new_x, new_y);
+                term_console_layer->Move(new_x + term_frame_border, new_y + term_title_h);
+                DrawMovedUnion(old_x, old_y, new_x, new_y, term_frame_w, term_frame_h);
+            }
+        } else if (drag_pending_window == 1) {
+            const int old_x = info_frame_layer->GetX();
+            const int old_y = info_frame_layer->GetY();
+            const int new_x = drag_pending_x;
+            const int new_y = drag_pending_y;
+            if (old_x != new_x || old_y != new_y) {
+                info_frame_layer->Move(new_x, new_y);
+                info_content_layer->Move(new_x + info_frame_border, new_y + info_title_h);
+                DrawMovedUnion(old_x, old_y, new_x, new_y, info_frame_w, info_frame_h);
+            }
+        }
+        drag_pending_move = false;
+        drag_pending_window = -1;
     };
     auto RefreshConsole = [&]() {
         layer_manager->Draw(term_console_layer->GetX(),
@@ -3269,15 +3285,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             if (((prev_buttons & 0x01) != 0) && ((now_buttons & 0x01) == 0)) {
                 selecting_with_mouse = false;
                 if (drag_visual_dirty) {
-                    if (drag_dirty_has_region &&
-                        drag_dirty_x1 > drag_dirty_x0 &&
-                        drag_dirty_y1 > drag_dirty_y0) {
-                        layer_manager->Draw(drag_dirty_x0, drag_dirty_y0,
-                                            drag_dirty_x1 - drag_dirty_x0,
-                                            drag_dirty_y1 - drag_dirty_y0);
-                    }
+                    FlushPendingDrag();
                     drag_visual_dirty = false;
-                    drag_dirty_has_region = false;
                 }
                 dragging_window = -1;
             }
@@ -3289,13 +3298,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     if (new_frame_y < 0) new_frame_y = 0;
                     if (new_frame_x > screen_w - term_frame_w) new_frame_x = screen_w - term_frame_w;
                     if (new_frame_y > screen_h - taskbar_h - term_frame_h) new_frame_y = screen_h - taskbar_h - term_frame_h;
-                    if (new_frame_x != term_frame_layer->GetX() || new_frame_y != term_frame_layer->GetY()) {
-                        const int old_frame_x = term_frame_layer->GetX();
-                        const int old_frame_y = term_frame_layer->GetY();
-                        term_frame_layer->Move(new_frame_x, new_frame_y);
-                        term_console_layer->Move(new_frame_x + term_frame_border, new_frame_y + term_title_h);
+                    if (new_frame_x != term_frame_layer->GetX() || new_frame_y != term_frame_layer->GetY() ||
+                        (drag_pending_move && drag_pending_window == 0 &&
+                         (drag_pending_x != new_frame_x || drag_pending_y != new_frame_y))) {
+                        drag_pending_window = 0;
+                        drag_pending_x = new_frame_x;
+                        drag_pending_y = new_frame_y;
+                        drag_pending_move = true;
                         drag_visual_dirty = true;
-                        MarkDragDirtyUnion(old_frame_x, old_frame_y, new_frame_x, new_frame_y, term_frame_w, term_frame_h);
                     }
                 } else {
                     int new_info_x = pointer_x - drag_offset_x;
@@ -3304,13 +3314,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     if (new_info_y < 0) new_info_y = 0;
                     if (new_info_x > screen_w - info_frame_w) new_info_x = screen_w - info_frame_w;
                     if (new_info_y > screen_h - taskbar_h - info_frame_h) new_info_y = screen_h - taskbar_h - info_frame_h;
-                    if (new_info_x != info_frame_layer->GetX() || new_info_y != info_frame_layer->GetY()) {
-                        const int old_info_x = info_frame_layer->GetX();
-                        const int old_info_y = info_frame_layer->GetY();
-                        info_frame_layer->Move(new_info_x, new_info_y);
-                        info_content_layer->Move(new_info_x + info_frame_border, new_info_y + info_title_h);
+                    if (new_info_x != info_frame_layer->GetX() || new_info_y != info_frame_layer->GetY() ||
+                        (drag_pending_move && drag_pending_window == 1 &&
+                         (drag_pending_x != new_info_x || drag_pending_y != new_info_y))) {
+                        drag_pending_window = 1;
+                        drag_pending_x = new_info_x;
+                        drag_pending_y = new_info_y;
+                        drag_pending_move = true;
                         drag_visual_dirty = true;
-                        MarkDragDirtyUnion(old_info_x, old_info_y, new_info_x, new_info_y, info_frame_w, info_frame_h);
                     }
                 }
                 return;
@@ -3871,14 +3882,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
 
         const uint64_t now_tick = CurrentTick();
-        if (drag_visual_dirty && drag_dirty_has_region && now_tick != last_drag_redraw_tick) {
-            if (drag_dirty_x1 > drag_dirty_x0 && drag_dirty_y1 > drag_dirty_y0) {
-                layer_manager->Draw(drag_dirty_x0, drag_dirty_y0,
-                                    drag_dirty_x1 - drag_dirty_x0,
-                                    drag_dirty_y1 - drag_dirty_y0);
-            }
+        if (drag_visual_dirty && now_tick != last_drag_redraw_tick) {
+            FlushPendingDrag();
             drag_visual_dirty = false;
-            drag_dirty_has_region = false;
             last_drag_redraw_tick = now_tick;
         }
         if (dragging_window < 0 && now_tick >= next_system_info_tick) {
