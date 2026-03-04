@@ -3196,15 +3196,29 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 &HandleTabCompletion,
             };
             const auto action_context = BuildRegularActionContext(&action_owner);
-            struct RegularImeOwner {
+            struct RegularShortcutOwner {
                 decltype(DeleteRangeAt)* delete_range_at;
                 decltype(ClearImeCandidate)* clear_ime_candidate;
-            } ime_owner{
+                Console* console;
+                int* input_row;
+                int* input_col;
+                decltype(PrintPrompt)* print_prompt;
+                decltype(ClearSelection)* clear_selection;
+                decltype(command_history)* command_history;
+                decltype(RepaintPromptAndInput)* repaint_prompt_and_input;
+            } shortcut_owner{
                 &DeleteRangeAt,
                 &ClearImeCandidate,
+                console,
+                &input_row,
+                &input_col,
+                &PrintPrompt,
+                &ClearSelection,
+                &command_history,
+                &RepaintPromptAndInput,
             };
             const input::RegularImeActionContext ime_context{
-                &ime_owner,
+                &shortcut_owner,
                 ime_candidate_entry,
                 ime_candidate_start,
                 ime_candidate_len,
@@ -3213,11 +3227,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 &ime_romaji_len,
                 StrLength,
                 [](void* owner, int start, int len) -> bool {
-                    auto* o = reinterpret_cast<RegularImeOwner*>(owner);
+                    auto* o = reinterpret_cast<RegularShortcutOwner*>(owner);
                     return (*o->delete_range_at)(start, len);
                 },
                 [](void* owner) {
-                    auto* o = reinterpret_cast<RegularImeOwner*>(owner);
+                    auto* o = reinterpret_cast<RegularShortcutOwner*>(owner);
                     (*o->clear_ime_candidate)();
                 },
             };
@@ -3229,26 +3243,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             if (ime_exec_result == input::RegularImeExecResult::kHandledNeedsRender) {
                 RenderAndRefreshInput();
                 return true;
-            }
-            struct RegularClearOwner {
-                Console* console;
-                int* input_row;
-                int* input_col;
-                decltype(PrintPrompt)* print_prompt;
-                decltype(ClearImeCandidate)* clear_ime_candidate;
-                decltype(ClearSelection)* clear_selection;
-                decltype(command_history)* command_history;
-            } clear_owner{
-                console,
-                &input_row,
-                &input_col,
-                &PrintPrompt,
-                &ClearImeCandidate,
-                &ClearSelection,
-                &command_history,
             };
             const input::RegularClearContext clear_context{
-                &clear_owner,
+                &shortcut_owner,
                 command_buffer,
                 static_cast<int>(sizeof(command_buffer)),
                 &command_len,
@@ -3258,25 +3255,25 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 static_cast<int>(sizeof(ime_romaji_buffer)),
                 &ime_romaji_len,
                 [](void* owner) {
-                    auto* o = reinterpret_cast<RegularClearOwner*>(owner);
+                    auto* o = reinterpret_cast<RegularShortcutOwner*>(owner);
                     o->console->Clear();
                 },
                 [](void* owner) {
-                    auto* o = reinterpret_cast<RegularClearOwner*>(owner);
+                    auto* o = reinterpret_cast<RegularShortcutOwner*>(owner);
                     (*o->print_prompt)();
                     *o->input_row = o->console->CursorRow();
                     *o->input_col = o->console->CursorColumn();
                 },
                 [](void* owner) {
-                    auto* o = reinterpret_cast<RegularClearOwner*>(owner);
+                    auto* o = reinterpret_cast<RegularShortcutOwner*>(owner);
                     (*o->clear_ime_candidate)();
                 },
                 [](void* owner) {
-                    auto* o = reinterpret_cast<RegularClearOwner*>(owner);
+                    auto* o = reinterpret_cast<RegularShortcutOwner*>(owner);
                     (*o->clear_selection)();
                 },
                 [](void* owner) {
-                    auto* o = reinterpret_cast<RegularClearOwner*>(owner);
+                    auto* o = reinterpret_cast<RegularShortcutOwner*>(owner);
                     o->command_history->ResetNavigation();
                 },
             };
@@ -3284,18 +3281,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 RenderAndRefreshInput();
                 return true;
             }
-            struct RegularModeOwner {
-                decltype(RepaintPromptAndInput)* repaint_prompt_and_input;
-            } mode_owner{
-                &RepaintPromptAndInput,
-            };
             const input::RegularModeContext mode_context{
-                &mode_owner,
+                &shortcut_owner,
                 exec_plan.mode_action,
                 &g_ime_enabled,
                 &g_jp_layout,
                 [](void* owner) {
-                    auto* o = reinterpret_cast<RegularModeOwner*>(owner);
+                    auto* o = reinterpret_cast<RegularShortcutOwner*>(owner);
                     (*o->repaint_prompt_and_input)();
                 },
             };
