@@ -17,8 +17,4 @@ CandidateNav DecideCandidateNavOnExtendedKey(uint8_t key,
     return CandidateNav::kNone;
 }
 
-bool ShouldFlushRomajiForCursorShortcut(bool ime_enabled, int romaji_len) {
-    return ime_enabled && romaji_len > 0;
-}
-
 }  // namespace input

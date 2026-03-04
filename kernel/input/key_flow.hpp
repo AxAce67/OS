@@ -16,6 +16,4 @@ CandidateNav DecideCandidateNavOnExtendedKey(uint8_t key,
                                              bool candidate_active,
                                              const ImeCandidateEntry* entry);
 
-bool ShouldFlushRomajiForCursorShortcut(bool ime_enabled, int romaji_len);
-
 }  // namespace input
