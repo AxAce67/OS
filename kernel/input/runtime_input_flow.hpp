@@ -8,6 +8,7 @@
 #include "input/key_handler_exec.hpp"
 #include "input/key_event.hpp"
 #include "input/key_flow.hpp"
+#include "input/message.hpp"
 
 class Console;
 
@@ -315,6 +316,65 @@ inline RuntimeCharTranslationResult TranslateKeyEventToAscii(const KeyEvent& key
                                      key_event.num_lock,
                                      jp_layout);
     return RuntimeCharTranslationResult{ch != 0, ch};
+}
+
+template <class TQueueCount, class TQueuePeek, class TQueuePop>
+inline void CoalesceMouseInterruptMessage(Message* msg,
+                                          TQueueCount&& queue_count,
+                                          TQueuePeek&& queue_peek,
+                                          TQueuePop&& queue_pop) {
+    if (msg == nullptr || msg->type != Message::Type::kInterruptMouse || msg->wheel != 0) {
+        return;
+    }
+
+    Message next{};
+    if (msg->pointer_mode == Message::PointerMode::kRelative) {
+        int merged = 0;
+        int total_dx = msg->dx;
+        int total_dy = msg->dy;
+        int max_merge = (msg->buttons == 0) ? 2 : 32;
+        const int backlog = queue_count();
+        if (backlog > 64) {
+            max_merge = (msg->buttons == 0) ? 16 : 96;
+        } else if (backlog > 24) {
+            max_merge = (msg->buttons == 0) ? 8 : 64;
+        }
+        while (merged < max_merge &&
+               queue_peek(&next) &&
+               next.type == Message::Type::kInterruptMouse &&
+               next.pointer_mode == Message::PointerMode::kRelative &&
+               next.wheel == 0) {
+            if (!queue_pop(&next)) {
+                break;
+            }
+            ++merged;
+            msg->buttons = next.buttons;
+            total_dx += next.dx;
+            total_dy += next.dy;
+        }
+        msg->dx = total_dx;
+        msg->dy = total_dy;
+        return;
+    }
+
+    int merged = 0;
+    int last_x = msg->x;
+    int last_y = msg->y;
+    while (merged < 8 &&
+           queue_peek(&next) &&
+           next.type == Message::Type::kInterruptMouse &&
+           next.pointer_mode == Message::PointerMode::kAbsolute &&
+           next.wheel == 0) {
+        if (!queue_pop(&next)) {
+            break;
+        }
+        ++merged;
+        msg->buttons = next.buttons;
+        last_x = next.x;
+        last_y = next.y;
+    }
+    msg->x = last_x;
+    msg->y = last_y;
 }
 
 template <class TCandidateEntry,

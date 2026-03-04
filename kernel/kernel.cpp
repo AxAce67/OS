@@ -3306,57 +3306,21 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         // キューにデータが入っていたら、メッセージを1つ取り出す
         Message msg;
         main_queue->Pop(msg);
-        if (msg.type == Message::Type::kInterruptMouse && msg.wheel == 0) {
-            Message next;
-            if (msg.pointer_mode == Message::PointerMode::kRelative) {
-                int merged = 0;
-                int total_dx = msg.dx;
-                int total_dy = msg.dy;
-                int max_merge = (msg.buttons == 0) ? 2 : 32;
-                if (main_queue != nullptr) {
-                    const int backlog = main_queue->Count();
-                    if (backlog > 64) {
-                        max_merge = (msg.buttons == 0) ? 16 : 96;
-                    } else if (backlog > 24) {
-                        max_merge = (msg.buttons == 0) ? 8 : 64;
-                    }
+        input::CoalesceMouseInterruptMessage(
+            &msg,
+            [&]() { return main_queue != nullptr ? main_queue->Count() : 0; },
+            [&](Message* out_next) {
+                if (main_queue == nullptr || out_next == nullptr) {
+                    return false;
                 }
-                while (merged < max_merge &&
-                       main_queue->Peek(next) &&
-                       next.type == Message::Type::kInterruptMouse &&
-                       next.pointer_mode == Message::PointerMode::kRelative &&
-                       next.wheel == 0) {
-                    main_queue->Pop(next);
-                    ++merged;
-                    // Keep interaction state fresh first: latest button state wins.
-                    msg.buttons = next.buttons;
-                    // Preserve full motion amount even when events are coalesced.
-                    total_dx += next.dx;
-                    total_dy += next.dy;
+                return main_queue->Peek(*out_next);
+            },
+            [&](Message* out_next) {
+                if (main_queue == nullptr || out_next == nullptr) {
+                    return false;
                 }
-                msg.dx = total_dx;
-                msg.dy = total_dy;
-            } else {
-                int merged = 0;
-                int last_x = msg.x;
-                int last_y = msg.y;
-                // Absolute pointer events (usb-tablet) should not be over-coalesced,
-                // otherwise cursor movement looks jumpy/stuttery.
-                while (merged < 8 &&
-                       main_queue->Peek(next) &&
-                       next.type == Message::Type::kInterruptMouse &&
-                       next.pointer_mode == Message::PointerMode::kAbsolute &&
-                       next.wheel == 0) {
-                    main_queue->Pop(next);
-                    ++merged;
-                    msg.buttons = next.buttons;
-                    last_x = next.x;
-                    last_y = next.y;
-                }
-                msg.x = last_x;
-                msg.y = last_y;
-            }
-        }
+                return main_queue->Pop(*out_next);
+            });
         
         // 取り出し終わったら割り込みを再開する
         __asm__ volatile("sti");
