@@ -3260,6 +3260,42 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             ClearSelection();
         }
     };
+    auto TryPrepareExtendedExecPlan = [&](uint8_t key,
+                                          bool has_candidate_nav,
+                                          input::ExtendedExecPlan* out_plan) -> bool {
+        if (out_plan == nullptr) {
+            return false;
+        }
+        const input::ExtendedKeyAction action = input::DecideExtendedKeyAction(key);
+        const auto plan = input::BuildExtendedExecPlan(
+            action, g_ime_enabled, ime_romaji_len, ime_candidate_active, has_candidate_nav);
+        if (!plan.handled) {
+            return false;
+        }
+        ApplyExtendedPlanSideEffects(plan);
+        *out_plan = plan;
+        return true;
+    };
+    auto TryPrepareRegularExecPlan = [&](uint8_t key,
+                                         input::RegularExecPlan* out_plan) -> bool {
+        if (out_plan == nullptr) {
+            return false;
+        }
+        const input::RegularShortcutAction action =
+            input::DecideRegularShortcutAction(key, IsCtrlPressed(keyboard_mods), keyboard_mods.num_lock);
+        const auto plan =
+            input::BuildRegularExecPlan(action, g_ime_enabled, ime_romaji_len, ime_candidate_active);
+        if (!plan.handled) {
+            return false;
+        }
+        if (plan.requires_active_candidate &&
+            (!ime_candidate_active || ime_candidate_entry == nullptr)) {
+            return false;
+        }
+        ApplyRegularPlanSideEffects(plan);
+        *out_plan = plan;
+        return true;
+    };
     auto RenderAndRefreshInput = [&]() {
         RenderInputLine();
         RefreshInputLine();
@@ -3341,13 +3377,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             EnsureLiveConsole();
             return CycleImeCandidate(1);
         }
-        const input::ExtendedKeyAction action = input::DecideExtendedKeyAction(key);
-        const auto exec_plan = input::BuildExtendedExecPlan(
-            action, g_ime_enabled, ime_romaji_len, ime_candidate_active, nav != input::CandidateNav::kNone);
-        if (!exec_plan.handled) {
+        input::ExtendedExecPlan exec_plan{};
+        if (!TryPrepareExtendedExecPlan(key, nav != input::CandidateNav::kNone, &exec_plan)) {
             return false;
         }
-        ApplyExtendedPlanSideEffects(exec_plan);
         auto action_owner = BuildExtendedInputActionOwner();
         const auto action_context = BuildExtendedActionContext(&action_owner);
         if (ExecuteExtendedShortcutExecs(exec_plan, action_context, RenderAndRefreshInput)) {
@@ -3361,24 +3394,18 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             CommitImeCandidateLearning();
             ClearImeCandidate();
         }
-        const input::RegularShortcutAction action =
-            input::DecideRegularShortcutAction(key, IsCtrlPressed(keyboard_mods), keyboard_mods.num_lock);
-        const auto exec_plan = input::BuildRegularExecPlan(action, g_ime_enabled, ime_romaji_len, ime_candidate_active);
-        if (exec_plan.handled) {
-            if (exec_plan.requires_active_candidate &&
-                (!ime_candidate_active || ime_candidate_entry == nullptr)) {
-                return false;
-            }
-            ApplyRegularPlanSideEffects(exec_plan);
-            auto action_owner = BuildRegularInputActionOwner();
-            const auto action_context = BuildRegularActionContext(&action_owner);
-            auto shortcut_owner = BuildRegularShortcutOwner();
-            if (ExecuteRegularShortcutExecs(exec_plan,
-                                            action_context,
-                                            &shortcut_owner,
-                                            RenderAndRefreshInput)) {
-                return true;
-            }
+        input::RegularExecPlan exec_plan{};
+        if (!TryPrepareRegularExecPlan(key, &exec_plan)) {
+            return false;
+        }
+        auto action_owner = BuildRegularInputActionOwner();
+        const auto action_context = BuildRegularActionContext(&action_owner);
+        auto shortcut_owner = BuildRegularShortcutOwner();
+        if (ExecuteRegularShortcutExecs(exec_plan,
+                                        action_context,
+                                        &shortcut_owner,
+                                        RenderAndRefreshInput)) {
+            return true;
         }
         return false;
     };
