@@ -3309,6 +3309,22 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         return false;
     };
+    auto ExecuteExtendedShortcutExecs = [&](const input::ExtendedExecPlan& exec_plan,
+                                            const input::ExtendedActionContext& action_context,
+                                            auto&& render_and_refresh_input) -> bool {
+        if (input::ExecuteExtendedActionWithContext(exec_plan.kind, action_context)) {
+            return true;
+        }
+        const auto cursor_move =
+            input::ExecuteExtendedCursorMoveAction(exec_plan.kind, &cursor_pos, command_len);
+        if (!cursor_move.handled) {
+            return false;
+        }
+        if (cursor_move.should_render) {
+            render_and_refresh_input();
+        }
+        return true;
+    };
 
     auto HandleExtendedKey = [&](uint8_t key) -> bool {
         const input::CandidateNav nav =
@@ -3330,16 +3346,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         ApplyExtendedPlanSideEffects(exec_plan);
         auto action_owner = BuildExtendedInputActionOwner();
         const auto action_context = BuildExtendedActionContext(&action_owner);
-        if (input::ExecuteExtendedActionWithContext(exec_plan.kind, action_context)) {
-            return true;
-        }
-        const auto cursor_move =
-            input::ExecuteExtendedCursorMoveAction(exec_plan.kind, &cursor_pos, command_len);
-        if (cursor_move.handled) {
-            if (cursor_move.should_render) {
-                RenderInputLine();
-                RefreshInputLine();
-            }
+        auto RenderAndRefreshInput = [&]() {
+            RenderInputLine();
+            RefreshInputLine();
+        };
+        if (ExecuteExtendedShortcutExecs(exec_plan, action_context, RenderAndRefreshInput)) {
             return true;
         }
         return false;
