@@ -3097,35 +3097,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             [&]() { EnsureLiveConsole(); },
             [&]() { ClearSelection(); });
     };
-    auto PrepareExtendedKeyPlan = [&](uint8_t key,
-                                      bool has_candidate_nav,
-                                      input::ExtendedExecPlan* out_plan) {
-        return input::PrepareExtendedExecPlanStatus(
-            key,
-            g_ime_enabled,
-            ime_romaji_len,
-            ime_candidate_active,
-            has_candidate_nav,
-            ApplyExtendedKeySideEffects,
-            out_plan);
-    };
-    auto PrepareRegularKeyPlan = [&](uint8_t key,
-                                     input::RegularExecPlan* out_plan) {
-        return input::PrepareRegularExecPlanStatus(
-            key,
-            IsCtrlPressed(keyboard_mods),
-            keyboard_mods.num_lock,
-            g_ime_enabled,
-            ime_romaji_len,
-            ime_candidate_active,
-            ime_candidate_entry != nullptr,
-            [&]() {
-                CommitImeCandidateLearning();
-                ClearImeCandidate();
-            },
-            ApplyRegularKeySideEffects,
-            out_plan);
-    };
     auto HandleExtendedKey = [&](uint8_t key) -> bool {
         const input::CandidateNav nav =
             input::DecideCandidateNavOnExtendedKey(key, ime_candidate_active, ime_candidate_entry);
@@ -3138,7 +3109,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return CycleImeCandidate(1);
         }
         input::ExtendedExecPlan exec_plan{};
-        if (PrepareExtendedKeyPlan(key, nav != input::CandidateNav::kNone, &exec_plan) !=
+        if (input::PrepareExtendedExecPlanStatus(
+                key,
+                g_ime_enabled,
+                ime_romaji_len,
+                ime_candidate_active,
+                nav != input::CandidateNav::kNone,
+                ApplyExtendedKeySideEffects,
+                &exec_plan) !=
             input::PlanPrepareStatus::kReady) {
             return false;
         }
@@ -3154,7 +3132,20 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
         input::RegularExecPlan exec_plan{};
-        if (PrepareRegularKeyPlan(key, &exec_plan) != input::PlanPrepareStatus::kReady) {
+        if (input::PrepareRegularExecPlanStatus(
+                key,
+                IsCtrlPressed(keyboard_mods),
+                keyboard_mods.num_lock,
+                g_ime_enabled,
+                ime_romaji_len,
+                ime_candidate_active,
+                ime_candidate_entry != nullptr,
+                [&]() {
+                    CommitImeCandidateLearning();
+                    ClearImeCandidate();
+                },
+                ApplyRegularKeySideEffects,
+                &exec_plan) != input::PlanPrepareStatus::kReady) {
             return false;
         }
         auto bundles = AcquireRuntimeFlowBundles();
