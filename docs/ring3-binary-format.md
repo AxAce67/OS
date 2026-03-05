@@ -32,6 +32,7 @@ struct Ring3UserBinHeader {
   - `rdx = envp` (`char**`, 最後は `NULL`)
 - `exec /app.r3bin a b` の場合、`argc=2`、`argv[0]="a"`、`argv[1]="b"`。
 - `envp` にはシェル実行時の `KEY=VALUE` が渡される（例: `CWD=/`, `LAYOUT=jp`, `IME=off`, `set` で設定した変数）。
+- `exec --env KEY=VALUE /app.r3bin` のように指定すると、同名キーは実行時に上書きされる。
 
 検証サンプル:
 - `argc.r3bin`: `argc` を終了コードで返す

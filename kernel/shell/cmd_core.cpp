@@ -126,6 +126,83 @@ bool AppendExecEnv(char out[][128], const char** out_ptrs, int max_count, int* i
     *io_count = count + 1;
     return true;
 }
+
+bool ParseExecEnvAssign(const char* token, char* out_key, int out_key_len, char* out_value, int out_value_len) {
+    if (token == nullptr || out_key == nullptr || out_value == nullptr || out_key_len <= 1 || out_value_len <= 1) {
+        return false;
+    }
+    int eq = -1;
+    for (int i = 0; token[i] != '\0'; ++i) {
+        if (token[i] == '=') {
+            eq = i;
+            break;
+        }
+    }
+    if (eq <= 0) {
+        return false;
+    }
+    if (eq >= out_key_len) {
+        return false;
+    }
+    for (int i = 0; i < eq; ++i) {
+        out_key[i] = token[i];
+    }
+    out_key[eq] = '\0';
+    int vi = 0;
+    for (int i = eq + 1; token[i] != '\0' && vi + 1 < out_value_len; ++i) {
+        out_value[vi++] = token[i];
+    }
+    out_value[vi] = '\0';
+    return true;
+}
+
+int FindExecEnvIndex(const char* const* env_ptrs, int envc, const char* key) {
+    if (env_ptrs == nullptr || key == nullptr) {
+        return -1;
+    }
+    for (int i = 0; i < envc; ++i) {
+        const char* e = env_ptrs[i];
+        if (e == nullptr) {
+            continue;
+        }
+        int k = 0;
+        while (key[k] != '\0' && e[k] != '\0' && e[k] != '=') {
+            if (key[k] != e[k]) {
+                break;
+            }
+            ++k;
+        }
+        if (key[k] == '\0' && e[k] == '=') {
+            return i;
+        }
+    }
+    return -1;
+}
+
+bool UpsertExecEnv(char out[][128], const char** out_ptrs, int max_count, int* io_count,
+                   const char* key, const char* value) {
+    if (out == nullptr || out_ptrs == nullptr || io_count == nullptr) {
+        return false;
+    }
+    const int idx = FindExecEnvIndex(out_ptrs, *io_count, key);
+    if (idx >= 0) {
+        int di = 0;
+        for (int i = 0; key[i] != '\0' && di + 1 < 128; ++i) {
+            out[idx][di++] = key[i];
+        }
+        if (di + 1 >= 128) {
+            return false;
+        }
+        out[idx][di++] = '=';
+        for (int i = 0; value[i] != '\0' && di + 1 < 128; ++i) {
+            out[idx][di++] = value[i];
+        }
+        out[idx][di] = '\0';
+        out_ptrs[idx] = out[idx];
+        return true;
+    }
+    return AppendExecEnv(out, out_ptrs, max_count, io_count, key, value);
+}
 }  // namespace
 
 bool ExecuteHelpCommand() {
@@ -737,20 +814,40 @@ bool ExecuteRing3Command(const char* rest) {
 
 bool ExecuteExecCommand(const char* command, int* pos_ptr) {
     int& pos = *pos_ptr;
-    char path[96];
-    if (!NextToken(command, &pos, path, sizeof(path))) {
-        console->PrintLine("exec: path required");
-        console->PrintLine("usage: exec <bootfs-path> [args...]");
-        return true;
-    }
-
+    char path[96] = {};
     char args[16][64];
     const char* arg_ptrs[16];
     int argc = 0;
+    char env_opt_keys[kExecMaxEnv][32];
+    char env_opt_values[kExecMaxEnv][96];
+    int env_opt_count = 0;
+
     while (true) {
         char tok[64];
         if (!NextToken(command, &pos, tok, sizeof(tok))) {
             break;
+        }
+        if (StrEqual(tok, "--env")) {
+            char assign[96];
+            if (!NextToken(command, &pos, assign, sizeof(assign))) {
+                console->PrintLine("exec: --env requires KEY=VALUE");
+                return true;
+            }
+            if (env_opt_count >= kExecMaxEnv) {
+                console->PrintLine("exec: too many --env options");
+                return true;
+            }
+            if (!ParseExecEnvAssign(assign, env_opt_keys[env_opt_count], sizeof(env_opt_keys[env_opt_count]),
+                                    env_opt_values[env_opt_count], sizeof(env_opt_values[env_opt_count]))) {
+                console->PrintLine("exec: invalid --env format (use KEY=VALUE)");
+                return true;
+            }
+            ++env_opt_count;
+            continue;
+        }
+        if (path[0] == '\0') {
+            CopyString(path, tok, sizeof(path));
+            continue;
         }
         if (argc >= static_cast<int>(sizeof(args) / sizeof(args[0]))) {
             console->PrintLine("exec: too many arguments");
@@ -760,13 +857,18 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
         arg_ptrs[argc] = args[argc];
         ++argc;
     }
+    if (path[0] == '\0') {
+        console->PrintLine("exec: path required");
+        console->PrintLine("usage: exec [--env KEY=VALUE ...] <bootfs-path> [args...]");
+        return true;
+    }
 
     char envs[kExecMaxEnv][128];
     const char* env_ptrs[kExecMaxEnv];
     int envc = 0;
-    if (!AppendExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, "CWD", g_cwd) ||
-        !AppendExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, "LAYOUT", g_jp_layout ? "jp" : "us") ||
-        !AppendExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, "IME", g_ime_enabled ? "on" : "off")) {
+    if (!UpsertExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, "CWD", g_cwd) ||
+        !UpsertExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, "LAYOUT", g_jp_layout ? "jp" : "us") ||
+        !UpsertExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, "IME", g_ime_enabled ? "on" : "off")) {
         console->PrintLine("exec: env overflow");
         return true;
     }
@@ -774,8 +876,14 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
         if (g_vars[i].key[0] == '\0') {
             continue;
         }
-        if (!AppendExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, g_vars[i].key, g_vars[i].value)) {
+        if (!UpsertExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, g_vars[i].key, g_vars[i].value)) {
             console->PrintLine("exec: env full (some vars dropped)");
+            break;
+        }
+    }
+    for (int i = 0; i < env_opt_count; ++i) {
+        if (!UpsertExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, env_opt_keys[i], env_opt_values[i])) {
+            console->PrintLine("exec: env full (some --env dropped)");
             break;
         }
     }
