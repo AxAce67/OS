@@ -47,8 +47,61 @@ void ClearImeLearning();
 int ImportImeLearningFromBuffer(const uint8_t* data, int size, bool clear_before);
 int ExportImeLearningToBuffer(char* out, int out_len);
 
+namespace {
+struct ExecProcessEntry {
+    bool used;
+    uint32_t pid;
+    bool running;
+    int64_t exit_code;
+    uint64_t start_tick;
+    uint64_t end_tick;
+    char path[96];
+    char status[16];
+};
+
+ExecProcessEntry g_exec_processes[16];
+uint32_t g_exec_next_pid = 1;
+int g_exec_next_slot = 0;
+
+void InitExecProcessTableIfNeeded() {
+    static bool initialized = false;
+    if (initialized) {
+        return;
+    }
+    for (int i = 0; i < static_cast<int>(sizeof(g_exec_processes) / sizeof(g_exec_processes[0])); ++i) {
+        g_exec_processes[i].used = false;
+    }
+    initialized = true;
+}
+
+ExecProcessEntry* BeginExecProcessRecord(const char* path) {
+    InitExecProcessTableIfNeeded();
+    ExecProcessEntry* e = &g_exec_processes[g_exec_next_slot];
+    g_exec_next_slot = (g_exec_next_slot + 1) % static_cast<int>(sizeof(g_exec_processes) / sizeof(g_exec_processes[0]));
+    e->used = true;
+    e->pid = g_exec_next_pid++;
+    e->running = true;
+    e->exit_code = 0;
+    e->start_tick = CurrentTick();
+    e->end_tick = 0;
+    CopyString(e->path, path, sizeof(e->path));
+    CopyString(e->status, "running", sizeof(e->status));
+    return e;
+}
+
+void EndExecProcessRecord(ExecProcessEntry* e, bool ok, int64_t exit_code) {
+    if (e == nullptr) {
+        return;
+    }
+    e->running = false;
+    e->exit_code = exit_code;
+    e->end_tick = CurrentTick();
+    CopyString(e->status, ok ? "exited" : "failed", sizeof(e->status));
+}
+}  // namespace
+
 bool ExecuteHelpCommand() {
-    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec");
+    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec procs");
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
     console->PrintLine("help: misc  history clearhistory inputstat about");
@@ -635,9 +688,11 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
     }
 
     const BootFileEntry* file = FindBootFileByPath(g_cwd, path);
+    ExecProcessEntry* proc = BeginExecProcessRecord(path);
     if (file == nullptr) {
         console->Print("exec: not found: ");
         console->PrintLine(path);
+        EndExecProcessRecord(proc, false, -1);
         return true;
     }
     if (usermode::RunRing3BinaryFromBufferWithArgs(file->data, file->size, arg_ptrs, argc)) {
@@ -652,12 +707,45 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
             console->Print(")");
         }
         console->Print("\n");
+        EndExecProcessRecord(proc, true, ret);
     } else {
         console->Print("exec: failed: ");
         console->Print(path);
         console->Print(" (");
         console->Print(usermode::GetLastRing3Error());
         console->Print(")\n");
+        EndExecProcessRecord(proc, false, -1);
+    }
+    return true;
+}
+
+bool ExecuteProcsCommand() {
+    InitExecProcessTableIfNeeded();
+    console->PrintLine("pid status  exit    start end   path");
+    bool any = false;
+    for (int n = 0; n < static_cast<int>(sizeof(g_exec_processes) / sizeof(g_exec_processes[0])); ++n) {
+        const int idx =
+            (g_exec_next_slot - 1 - n + static_cast<int>(sizeof(g_exec_processes) / sizeof(g_exec_processes[0]))) %
+            static_cast<int>(sizeof(g_exec_processes) / sizeof(g_exec_processes[0]));
+        const ExecProcessEntry* e = &g_exec_processes[idx];
+        if (!e->used) {
+            continue;
+        }
+        any = true;
+        console->PrintDec(static_cast<int64_t>(e->pid));
+        console->Print(" ");
+        console->Print(e->status);
+        console->Print(" ");
+        console->PrintDec(e->exit_code);
+        console->Print(" ");
+        console->PrintDec(static_cast<int64_t>(e->start_tick));
+        console->Print(" ");
+        console->PrintDec(static_cast<int64_t>(e->end_tick));
+        console->Print(" ");
+        console->PrintLine(e->path);
+    }
+    if (!any) {
+        console->PrintLine("(no exec records)");
     }
     return true;
 }

@@ -36,6 +36,7 @@ const char* const kBuiltInCommands[] = {
     "syscall",
     "ring3",
     "exec",
+    "procs",
     "xhciinfo",
     "xhciregs",
     "xhcistop",

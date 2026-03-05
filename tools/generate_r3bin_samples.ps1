@@ -99,9 +99,25 @@ function New-ImageArgv0Head {
     )
 }
 
+function New-ImageArgv1Head {
+    return [byte[]](
+        0x48,0x83,0xFF,0x02,                     # cmp rdi,2
+        0x7C,0x0E,                               # jl +0x0E (zero path)
+        0x48,0x8B,0x46,0x08,                     # mov rax,[rsi+8] ; argv[1]
+        0x48,0x85,0xC0,                          # test rax,rax
+        0x74,0x05,                               # je +0x05
+        0x0F,0xB6,0x38,                          # movzx edi,byte [rax]
+        0xEB,0x03,                               # jmp +0x03
+        0x48,0x31,0xFF,                          # xor rdi,rdi
+        0x48,0xB8,0x04,0,0,0,0,0,0,0,          # mov rax,4
+        0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE
+    )
+}
+
 [System.IO.Directory]::CreateDirectory($OutputDir) | Out-Null
 New-R3BinFile -Path (Join-Path $OutputDir "hello.r3bin") -Image (New-ImageHello)
 New-R3BinFile -Path (Join-Path $OutputDir "fault.r3bin") -Image (New-ImageFault)
 New-R3BinFile -Path (Join-Path $OutputDir "tick.r3bin") -Image (New-ImageTick)
 New-R3BinFile -Path (Join-Path $OutputDir "argc.r3bin") -Image (New-ImageArgc)
 New-R3BinFile -Path (Join-Path $OutputDir "argv0head.r3bin") -Image (New-ImageArgv0Head)
+New-R3BinFile -Path (Join-Path $OutputDir "argv1head.r3bin") -Image (New-ImageArgv1Head)

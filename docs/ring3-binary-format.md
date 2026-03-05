@@ -34,6 +34,7 @@ struct Ring3UserBinHeader {
 検証サンプル:
 - `argc.r3bin`: `argc` を終了コードで返す
 - `argv0head.r3bin`: `argv[0][0]` のASCIIコードを終了コードで返す
+- `argv1head.r3bin`: `argv[1][0]` のASCIIコードを終了コードで返す（`argc < 2` は `0`）
 
 ## Exit Code Convention (PoC)
 
