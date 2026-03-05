@@ -118,6 +118,15 @@ struct AllocationHeader {
 const uint64_t kAllocationMagic = 0x4F53414C4C4F4341ULL;  // "OSALLOCA"
 }
 
+static void DebugConWrite(const char* text) {
+    if (text == nullptr) {
+        return;
+    }
+    for (int i = 0; text[i] != '\0'; ++i) {
+        Out8(0xE9, static_cast<uint8_t>(text[i]));
+    }
+}
+
 extern ArrayQueue<Message, 256>* main_queue;
 extern MouseCursor* mouse_cursor;
 extern LayerManager* layer_manager;
@@ -2264,6 +2273,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     console->PrintLine("Welcome to Native OS (C++ Edition)!");
     console->Print("Booting from ELF format...\n\n");
     console->Print("System is ready. Current MapKey is captured.\n\n");
+    DebugConWrite("SYSTEM_READY\n");
 
     // マウスカーソルの初期化とレイヤーの登録
     console->Print("Drawing mouse cursor layer...\n");
@@ -2359,6 +2369,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     console->Print(")");
     console->Print("\n");
     PrintPrompt();
+    DebugConWrite("PROMPT_READY\n");
 
     // 全ての初期化プロセスが終わった時点で、溜まったコンソール出力をVRAMへ全画面描画（反映）する
     layer_manager->Draw();

@@ -4,7 +4,8 @@ param(
     [switch]$NoRun,
     [switch]$UseWhpx,
     [switch]$UseUsbTablet,
-    [switch]$StrictDisk
+    [switch]$StrictDisk,
+    [switch]$Smoke
 )
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -197,13 +198,19 @@ if (Test-Path "disk") {
     }
 }
 New-Item -ItemType Directory -Force -Path "disk\EFI\BOOT" | Out-Null
-Copy-Item "main.efi" -Destination "disk\EFI\BOOT\BOOTX64.EFI"   # ブートローダー
-Copy-Item "kernel.elf" -Destination "disk\kernel.elf"           # カーネル本体 (ELF)
-if (Test-Path "ime.dic") {
-    Copy-Item "ime.dic" -Destination "disk\ime.dic"
+try {
+    Copy-Item "main.efi" -Destination "disk\EFI\BOOT\BOOTX64.EFI" -Force -ErrorAction Stop  # ブートローダー
+    Copy-Item "kernel.elf" -Destination "disk\kernel.elf" -Force -ErrorAction Stop            # カーネル本体 (ELF)
+    if (Test-Path "ime.dic") {
+        Copy-Item "ime.dic" -Destination "disk\ime.dic" -Force -ErrorAction Stop
+    }
+    if (Test-Path "ime.learn") {
+        Copy-Item "ime.learn" -Destination "disk\ime.learn" -Force -ErrorAction Stop
+    }
 }
-if (Test-Path "ime.learn") {
-    Copy-Item "ime.learn" -Destination "disk\ime.learn"
+catch {
+    Write-Host "Error: failed to copy build artifacts into disk/." -ForegroundColor Red
+    exit 1
 }
 
 if ($NoRun) {
@@ -246,16 +253,57 @@ if (-Not $hasOvmf) {
 $ovmfPath = (Resolve-Path $ovmf).Path
 Write-Host "Using OVMF: $ovmfPath" -ForegroundColor Cyan
 
+$qemuArgs = @(
+    "-m", "512M",
+    "-machine", "q35",
+    "-drive", "if=pflash,format=raw,readonly=on,file=$ovmfPath"
+)
 if ($UseUsbTablet) {
-    & $qemu -m 512M `
-        -machine q35 `
-        -drive "if=pflash,format=raw,readonly=on,file=$ovmfPath" `
-        -device "qemu-xhci,msi=off" `
-        -device "usb-tablet" `
-        -drive "format=raw,file=fat:rw:disk"
-} else {
-    & $qemu -m 512M `
-        -machine q35 `
-        -drive "if=pflash,format=raw,readonly=on,file=$ovmfPath" `
-        -drive "format=raw,file=fat:rw:disk"
+    $qemuArgs += @("-device", "qemu-xhci,msi=off", "-device", "usb-tablet")
 }
+$qemuArgs += @("-drive", "format=raw,file=fat:rw:disk")
+
+if ($Smoke) {
+    $smokeLogPath = Join-Path $projectRoot "qemu-smoke.log"
+    if (Test-Path $smokeLogPath) {
+        Remove-Item $smokeLogPath -Force -ErrorAction SilentlyContinue
+    }
+
+    $qemuSmokeArgs = @($qemuArgs) + @(
+        "-display", "none",
+        "-serial", "none",
+        "-monitor", "none",
+        "-debugcon", "file:$smokeLogPath",
+        "-global", "isa-debugcon.iobase=0xe9",
+        "-no-reboot"
+    )
+
+    Write-Host "Running smoke boot check..." -ForegroundColor Cyan
+    $qemuProc = Start-Process -FilePath $qemu -ArgumentList $qemuSmokeArgs -PassThru
+    Start-Sleep -Seconds 12
+
+    if (-Not $qemuProc.HasExited) {
+        Stop-Process -Id $qemuProc.Id -Force -ErrorAction SilentlyContinue
+    }
+
+    if (-Not (Test-Path $smokeLogPath)) {
+        Write-Host "Smoke Failed: qemu-smoke.log was not generated." -ForegroundColor Red
+        exit 1
+    }
+
+    $smokeLog = Get-Content $smokeLogPath -Raw -ErrorAction SilentlyContinue
+    $hasSystemReady = (-Not [string]::IsNullOrEmpty($smokeLog)) -and $smokeLog.Contains("SYSTEM_READY")
+    $hasPromptReady = (-Not [string]::IsNullOrEmpty($smokeLog)) -and $smokeLog.Contains("PROMPT_READY")
+
+    if ($hasSystemReady -and $hasPromptReady) {
+        Write-Host "Smoke Success: kernel reached ready state and prompt." -ForegroundColor Green
+        exit 0
+    }
+
+    Write-Host "Smoke Failed: expected markers were not found." -ForegroundColor Red
+    Write-Host "Expected: SYSTEM_READY and PROMPT_READY" -ForegroundColor Yellow
+    Write-Host "Log file: $smokeLogPath" -ForegroundColor Yellow
+    exit 1
+}
+
+& $qemu @qemuArgs
