@@ -59,12 +59,8 @@ if (-Not $NoRun) {
 }
 
 # 1. コンパイラとリンカのパス（LLVM）
-$clang = Resolve-ToolPath -ToolLabel "clang" `
-    -CandidatePaths @("C:\Program Files\LLVM\bin\clang.exe") `
-    -CommandNames @("clang", "clang.exe")
-$lld_link = Resolve-ToolPath -ToolLabel "lld-link" `
-    -CandidatePaths @("C:\Program Files\LLVM\bin\lld-link.exe") `
-    -CommandNames @("lld-link", "lld-link.exe")
+$clang = Resolve-ToolPath -ToolLabel "clang" -CandidatePaths @("C:\Program Files\LLVM\bin\clang.exe") -CommandNames @("clang", "clang.exe")
+$lld_link = Resolve-ToolPath -ToolLabel "lld-link" -CandidatePaths @("C:\Program Files\LLVM\bin\lld-link.exe") -CommandNames @("lld-link", "lld-link.exe")
 
 # OVFMF.fd (UEFI BIOS ROM) は本来QEMU付属のものか、EDK2のビルド済みイメージが必要
 # ここではQEMUパッケージなどに一部付属している想定（もしくは警告無視）で起動テストします
@@ -93,9 +89,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Compiling kernel.c -> kernel.elf..." -ForegroundColor Cyan
 
 # 4. カーネル本体とフォントのコンパイルとリンク (ELF形式)
-$ld_lld = Resolve-ToolPath -ToolLabel "ld.lld" `
-    -CandidatePaths @("C:\Program Files\LLVM\bin\ld.lld.exe") `
-    -CommandNames @("ld.lld", "ld.lld.exe")
+$ld_lld = Resolve-ToolPath -ToolLabel "ld.lld" -CandidatePaths @("C:\Program Files\LLVM\bin\ld.lld.exe") -CommandNames @("ld.lld", "ld.lld.exe")
 $commonKernelIncludes = @(
     "-I", "boot",
     "-I", "kernel",
@@ -267,9 +261,7 @@ if ($NoRun) {
 
 Write-Host "Starting QEMU..." -ForegroundColor Cyan
 
-$qemu = Resolve-ToolPath -ToolLabel "qemu-system-x86_64" `
-    -CandidatePaths @("C:\Program Files\qemu\qemu-system-x86_64.exe") `
-    -CommandNames @("qemu-system-x86_64", "qemu-system-x86_64.exe")
+$qemu = Resolve-ToolPath -ToolLabel "qemu-system-x86_64" -CandidatePaths @("C:\Program Files\qemu\qemu-system-x86_64.exe") -CommandNames @("qemu-system-x86_64", "qemu-system-x86_64.exe")
 
 # 5. QEMUの実行
 # ※Windows上での素のQEMUはデフォルトでレガシーBIOSなので、OVMF (UEFIファーム) を指定する必要がある。
