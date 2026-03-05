@@ -32,7 +32,7 @@ function New-Ring3SampleBinary {
 
     # 互換性のため BinaryWriter でバイト列を構築する
     $imgMs = New-Object System.IO.MemoryStream
-    $imgBw = New-Object System.IO.BinaryWriter($imgMs)
+    $imgBw = New-Object System.IO.BinaryWriter -ArgumentList $imgMs
     try {
         # mov rax, 1 (write)
         $imgBw.Write([byte[]](0x48,0xB8,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00))
@@ -57,7 +57,7 @@ function New-Ring3SampleBinary {
     }
 
     $hdrMs = New-Object System.IO.MemoryStream
-    $hdrBw = New-Object System.IO.BinaryWriter($hdrMs)
+    $hdrBw = New-Object System.IO.BinaryWriter -ArgumentList $hdrMs
     try {
         $hdrBw.Write([System.Text.Encoding]::ASCII.GetBytes("R3BIN01"))
         $hdrBw.Write([byte]0x00)
