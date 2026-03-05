@@ -540,11 +540,27 @@ bool ExecuteRing3Command(const char* rest) {
         } else {
             console->PrintLine("ring3.runfault=failed");
         }
+    } else if (StrStartsWith(rest, "runfile ")) {
+        const char* path = rest + 8;
+        const BootFileEntry* file = FindBootFileByPath(g_cwd, path);
+        if (file == nullptr) {
+            console->Print("ring3.runfile=missing: ");
+            console->PrintLine(path);
+        } else if (usermode::RunRing3BinaryFromBuffer(file->data, file->size)) {
+            console->Print("ring3.runfile=ok: ");
+            console->PrintLine(path);
+        } else {
+            console->Print("ring3.runfile=failed: ");
+            console->Print(path);
+            console->Print(" (");
+            console->Print(usermode::GetLastRing3Error());
+            console->Print(")\n");
+        }
     } else if (StrEqual(rest, "reset")) {
         usermode::ResetRing3Stack();
         console->PrintLine("ring3.reset=ok");
     } else if (rest[0] != '\0' && !StrEqual(rest, "stat")) {
-        console->PrintLine("usage: ring3 [stat|prep|run|runfault|reset]");
+        console->PrintLine("usage: ring3 [stat|prep|run|runfault|runfile <path>|reset]");
         return true;
     }
 
