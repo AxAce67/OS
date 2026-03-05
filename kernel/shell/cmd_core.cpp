@@ -10,6 +10,7 @@
 #include "shell/text.hpp"
 #include "arch/x86_64/syscall_entry.hpp"
 #include "syscall/syscall.hpp"
+#include "user/ring3.hpp"
 
 extern Console* console;
 extern bool g_key_repeat_enabled;
@@ -511,10 +512,21 @@ bool ExecuteSyscallCommand(const char* rest) {
 }
 
 bool ExecuteRing3Command(const char* rest) {
-    if (rest[0] != '\0' && !StrEqual(rest, "stat")) {
-        console->PrintLine("usage: ring3 [stat]");
+    if (StrEqual(rest, "prep")) {
+        if (usermode::PrepareRing3Stack(1)) {
+            console->PrintLine("ring3.prep=ok");
+        } else {
+            console->PrintLine("ring3.prep=failed");
+        }
+    } else if (StrEqual(rest, "reset")) {
+        usermode::ResetRing3Stack();
+        console->PrintLine("ring3.reset=ok");
+    } else if (rest[0] != '\0' && !StrEqual(rest, "stat")) {
+        console->PrintLine("usage: ring3 [stat|prep|reset]");
         return true;
     }
+
+    const auto state = usermode::GetRing3PrepState();
     console->Print("ring3.segments=");
     console->PrintLine(IsUserModeSegmentsReady() ? "ready" : "not-ready");
     console->Print("ring3.tss.rsp0=0x");
@@ -522,7 +534,20 @@ bool ExecuteRing3Command(const char* rest) {
     console->Print("\n");
     console->Print("ring3.paging.user=");
     console->PrintLine(AreUserModeMappingsReady() ? "ready" : "not-ready");
-    console->PrintLine("ring3.next=user hello stub (WIP)");
+    console->Print("ring3.stack.ready=");
+    console->PrintLine(state.ready ? "yes" : "no");
+    if (state.ready) {
+        console->Print("ring3.stack.base=0x");
+        console->PrintHex(state.stack_base, 16);
+        console->Print("\n");
+        console->Print("ring3.stack.top=0x");
+        console->PrintHex(state.stack_top, 16);
+        console->Print("\n");
+        console->Print("ring3.stack.pages=");
+        console->PrintDec(static_cast<int64_t>(state.stack_pages));
+        console->Print("\n");
+    }
+    console->PrintLine("ring3.next=enter ring3 hello (WIP)");
     return true;
 }
 
