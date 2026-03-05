@@ -129,6 +129,36 @@ function New-ImageEnv0Head {
     )
 }
 
+function New-ImageEnv1Head {
+    return [byte[]](
+        0x48,0x85,0xD2,                          # test rdx,rdx
+        0x74,0x0E,                               # je +0x0E (to zero path)
+        0x48,0x8B,0x42,0x08,                     # mov rax,[rdx+8]    ; envp[1]
+        0x48,0x85,0xC0,                          # test rax,rax
+        0x74,0x05,                               # je +0x05
+        0x0F,0xB6,0x38,                          # movzx edi,byte [rax]
+        0xEB,0x03,                               # jmp +0x03
+        0x48,0x31,0xFF,                          # xor rdi,rdi
+        0x48,0xB8,0x04,0,0,0,0,0,0,0,          # mov rax,4
+        0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE
+    )
+}
+
+function New-ImageEnv2Head {
+    return [byte[]](
+        0x48,0x85,0xD2,                          # test rdx,rdx
+        0x74,0x0E,                               # je +0x0E (to zero path)
+        0x48,0x8B,0x42,0x10,                     # mov rax,[rdx+16]   ; envp[2]
+        0x48,0x85,0xC0,                          # test rax,rax
+        0x74,0x05,                               # je +0x05
+        0x0F,0xB6,0x38,                          # movzx edi,byte [rax]
+        0xEB,0x03,                               # jmp +0x03
+        0x48,0x31,0xFF,                          # xor rdi,rdi
+        0x48,0xB8,0x04,0,0,0,0,0,0,0,          # mov rax,4
+        0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE
+    )
+}
+
 [System.IO.Directory]::CreateDirectory($OutputDir) | Out-Null
 New-R3BinFile -Path (Join-Path $OutputDir "hello.r3bin") -Image (New-ImageHello)
 New-R3BinFile -Path (Join-Path $OutputDir "fault.r3bin") -Image (New-ImageFault)
@@ -137,3 +167,5 @@ New-R3BinFile -Path (Join-Path $OutputDir "argc.r3bin") -Image (New-ImageArgc)
 New-R3BinFile -Path (Join-Path $OutputDir "argv0head.r3bin") -Image (New-ImageArgv0Head)
 New-R3BinFile -Path (Join-Path $OutputDir "argv1head.r3bin") -Image (New-ImageArgv1Head)
 New-R3BinFile -Path (Join-Path $OutputDir "env0head.r3bin") -Image (New-ImageEnv0Head)
+New-R3BinFile -Path (Join-Path $OutputDir "env1head.r3bin") -Image (New-ImageEnv1Head)
+New-R3BinFile -Path (Join-Path $OutputDir "env2head.r3bin") -Image (New-ImageEnv2Head)

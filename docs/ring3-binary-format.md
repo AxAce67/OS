@@ -38,6 +38,8 @@ struct Ring3UserBinHeader {
 - `argv0head.r3bin`: `argv[0][0]` のASCIIコードを終了コードで返す
 - `argv1head.r3bin`: `argv[1][0]` のASCIIコードを終了コードで返す（`argc < 2` は `0`）
 - `env0head.r3bin`: `envp[0][0]` のASCIIコードを終了コードで返す（`envp` 空の場合は `0`）
+- `env1head.r3bin`: `envp[1][0]` のASCIIコードを終了コードで返す（`envp[1]` が無ければ `0`）
+- `env2head.r3bin`: `envp[2][0]` のASCIIコードを終了コードで返す（`envp[2]` が無ければ `0`）
 
 ## Exit Code Convention (PoC)
 
