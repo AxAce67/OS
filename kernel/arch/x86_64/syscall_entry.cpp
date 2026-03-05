@@ -121,8 +121,6 @@ int RunUserModeFunctionWithArgs(uint64_t entry_rip, uint64_t user_rsp, uint64_t 
         "lea 1f(%%rip), %%rax\n"
         "movq %%rax, g_ring3_resume_rip(%%rip)\n"
         "movb $1, g_ring3_active(%%rip)\n"
-        "movq %[arg0], %%rdi\n"
-        "movq %[arg1], %%rsi\n"
         "pushq %[user_ss]\n"
         "pushq %[user_rsp]\n"
         "pushfq\n"
@@ -136,8 +134,8 @@ int RunUserModeFunctionWithArgs(uint64_t entry_rip, uint64_t user_rsp, uint64_t 
         :
         : [entry] "r"(entry_rip),
           [user_rsp] "r"(user_rsp),
-          [arg0] "r"(arg0),
-          [arg1] "r"(arg1),
+          [arg0] "D"(arg0),
+          [arg1] "S"(arg1),
           [user_cs] "i"(kUserCodeSelector),
           [user_ss] "i"(kUserDataSelector)
         : "rax", "memory");
