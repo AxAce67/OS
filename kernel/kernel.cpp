@@ -85,6 +85,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "input/runtime_input_flow.hpp"
 #include "input/input_runtime_bridge.hpp"
 #include "input/runtime_input_dispatch.hpp"
+#include "input/runtime_input_entry.hpp"
 #include "input/key_flow.hpp"
 #include "input/line_editor.hpp"
 #include "input/line_ops.hpp"
@@ -2950,12 +2951,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleMouseMessage = [&](const Message& msg) {
-        input::RuntimeMouseMessageContext mouse_context{};
-        input::RuntimeMouseWindowGeometry geometry{};
-        input::RuntimeConsoleGridMetrics console_metrics{};
-        input::RuntimeMouseConsoleSelectionRefs mouse_selection_refs{};
-        BuildMouseRuntimeState(&mouse_context, &geometry, &console_metrics, &mouse_selection_refs);
-        DispatchMouseRuntime(msg, mouse_context, geometry, console_metrics, mouse_selection_refs);
+        input::entry::HandleMouseMessage(
+            BuildMouseRuntimeState,
+            DispatchMouseRuntime,
+            msg);
     };
 
     using InputActionOwner = input::RuntimeInputActionOwnerT<
@@ -3243,17 +3242,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 callbacks);
         };
     auto HandleKeyboardMessage = [&](const Message& msg) {
-        input::RuntimeEnterCommandRefs enter_refs{};
-        input::RuntimeCommandInputStateRefs reset_refs{};
-        input::RuntimeKeyboardDecodeRefs keyboard_decode_refs{};
-        input::RuntimeImeProcessContextT<ImeCandidateEntry> ime_process_context{};
-        input::RuntimeKeyboardMessageContextT<ImeCandidateEntry> keyboard_context{};
-        BuildKeyboardRuntimeState(&enter_refs,
-                                  &reset_refs,
-                                  &keyboard_decode_refs,
-                                  &ime_process_context,
-                                  &keyboard_context);
-        DispatchKeyboardRuntime(msg.keycode, keyboard_context, enter_refs, reset_refs);
+        input::entry::HandleKeyboardMessage<ImeCandidateEntry>(
+            BuildKeyboardRuntimeState,
+            DispatchKeyboardRuntime,
+            msg);
     };
     auto QueueCount = [&]() { return main_queue != nullptr ? main_queue->Count() : 0; };
     auto QueuePeekMessage = [&](Message* out_next) {
