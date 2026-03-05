@@ -315,22 +315,36 @@ if ($UseUsbTablet) {
 $qemuArgs += @("-drive", "format=raw,file=fat:rw:disk")
 
 if ($Smoke) {
-    $smokeLogPath = Join-Path $projectRoot "qemu-smoke.log"
+    $smokeLogName = "qemu-smoke.log"
+    $smokeLogPath = Join-Path $projectRoot $smokeLogName
+    $smokeStdoutPath = Join-Path $projectRoot "qemu-smoke.stdout.log"
+    $smokeStderrPath = Join-Path $projectRoot "qemu-smoke.stderr.log"
     if (Test-Path $smokeLogPath) {
         Remove-Item $smokeLogPath -Force -ErrorAction SilentlyContinue
+    }
+    if (Test-Path $smokeStdoutPath) {
+        Remove-Item $smokeStdoutPath -Force -ErrorAction SilentlyContinue
+    }
+    if (Test-Path $smokeStderrPath) {
+        Remove-Item $smokeStderrPath -Force -ErrorAction SilentlyContinue
     }
 
     $qemuSmokeArgs = @($qemuArgs) + @(
         "-display", "none",
         "-serial", "none",
         "-monitor", "none",
-        "-debugcon", "file:$smokeLogPath",
+        "-debugcon", "file:$smokeLogName",
         "-global", "isa-debugcon.iobase=0xe9",
         "-no-reboot"
     )
 
     Write-Host "Running smoke boot check..." -ForegroundColor Cyan
-    $qemuProc = Start-Process -FilePath $qemu -ArgumentList $qemuSmokeArgs -PassThru
+    $qemuProc = Start-Process -FilePath $qemu `
+                              -ArgumentList $qemuSmokeArgs `
+                              -WorkingDirectory $projectRoot `
+                              -RedirectStandardOutput $smokeStdoutPath `
+                              -RedirectStandardError $smokeStderrPath `
+                              -PassThru
     Start-Sleep -Seconds 12
 
     if (-Not $qemuProc.HasExited) {
@@ -339,6 +353,10 @@ if ($Smoke) {
 
     if (-Not (Test-Path $smokeLogPath)) {
         Write-Host "Smoke Failed: qemu-smoke.log was not generated." -ForegroundColor Red
+        if (Test-Path $smokeStderrPath) {
+            Write-Host "qemu stderr:" -ForegroundColor Yellow
+            Get-Content $smokeStderrPath | Select-Object -First 20 | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+        }
         exit 1
     }
 
