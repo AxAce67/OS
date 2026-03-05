@@ -34,6 +34,9 @@ public:
     // 使用終わりの物理アドレスを空き状態に戻す
     void Free(uint64_t physical_address, size_t num_pages = 1);
 
+    // 現在の空きページ数を返す
+    uint64_t CountFreePages() const;
+
 private:
     // ビットマップ（1ビット = 1ページ）。0=空き、1=使用中
     // 128 GiB / 4KB = 33,554,432 ページ
