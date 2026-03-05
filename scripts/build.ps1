@@ -26,6 +26,9 @@ function New-Ring3SampleBinary {
     param(
         [string]$OutputPath
     )
+    if (-not [System.IO.Path]::IsPathRooted($OutputPath)) {
+        $OutputPath = Join-Path $projectRoot $OutputPath
+    }
     $msgText = "[ring3-file] hello from runfile`n"
     $msgBytes = [System.Text.Encoding]::ASCII.GetBytes($msgText)
     $msgLen = [uint64]$msgBytes.Length
@@ -60,8 +63,8 @@ function New-Ring3SampleBinary {
     [Array]::Copy([System.BitConverter]::GetBytes([uint32]1), 0, $headerBytes, 24, 4)  # stack_pages
 
     $outDir = Split-Path -Parent $OutputPath
-    if (-not [string]::IsNullOrWhiteSpace($outDir) -and -not (Test-Path $outDir)) {
-        New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($outDir)) {
+        [System.IO.Directory]::CreateDirectory($outDir) | Out-Null
     }
     $fs = [System.IO.File]::Open($OutputPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
     try {
@@ -284,7 +287,7 @@ try {
     if (Test-Path "ime.learn") {
         Copy-Item "ime.learn" -Destination "disk\ime.learn" -Force -ErrorAction Stop
     }
-    New-Ring3SampleBinary -OutputPath "disk\hello.r3bin"
+    New-Ring3SampleBinary -OutputPath (Join-Path $projectRoot "disk\hello.r3bin")
 }
 catch {
     Write-Host "Error: failed to copy build artifacts into disk/." -ForegroundColor Red
