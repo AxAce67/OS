@@ -2,7 +2,8 @@ param(
     [string]$Host = "127.0.0.1",
     [int]$Port = 4545,
     [int]$PollMs = 300,
-    [int]$MaxChars = 120
+    [int]$MaxChars = 120,
+    [int]$ResendSec = 3
 )
 
 Set-StrictMode -Version Latest
@@ -35,6 +36,7 @@ function Sanitize-Clip {
 }
 
 $lastSent = ""
+$lastSendAt = [DateTime]::MinValue
 $client = $null
 $stream = $null
 $writer = $null
@@ -55,10 +57,13 @@ try {
 
             $raw = Get-Clipboard -Raw -ErrorAction SilentlyContinue
             $clip = Sanitize-Clip -Text $raw -Limit $MaxChars
-            if (-not [string]::IsNullOrWhiteSpace($clip) -and $clip -ne $lastSent) {
+            $needsResend = (-not [string]::IsNullOrWhiteSpace($clip)) -and `
+                           ($lastSendAt -eq [DateTime]::MinValue -or (([DateTime]::UtcNow - $lastSendAt).TotalSeconds -ge $ResendSec))
+            if (-not [string]::IsNullOrWhiteSpace($clip) -and ($clip -ne $lastSent -or $needsResend)) {
                 $writer.Write("CLIP:")
                 $writer.WriteLine($clip)
                 $lastSent = $clip
+                $lastSendAt = [DateTime]::UtcNow
             }
         } catch {
             if ($null -ne $writer) { $writer.Dispose(); $writer = $null }

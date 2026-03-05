@@ -462,9 +462,15 @@ if (-not $NoClipBridge) {
     $bridgeScript = Join-Path $projectRoot "tools\clip_bridge.ps1"
     if (Test-Path $bridgeScript) {
         try {
+            $bridgeOut = Join-Path $projectRoot "qemu-clipbridge.stdout.log"
+            $bridgeErr = Join-Path $projectRoot "qemu-clipbridge.stderr.log"
+            if (Test-Path $bridgeOut) { Remove-Item $bridgeOut -Force -ErrorAction SilentlyContinue }
+            if (Test-Path $bridgeErr) { Remove-Item $bridgeErr -Force -ErrorAction SilentlyContinue }
             $bridgeProc = Start-Process -FilePath "powershell.exe" `
-                                       -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $bridgeScript, "-Host", "127.0.0.1", "-Port", "4545") `
+                                       -ArgumentList @("-Sta", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $bridgeScript, "-Host", "127.0.0.1", "-Port", "4545") `
                                        -WorkingDirectory $projectRoot `
+                                       -RedirectStandardOutput $bridgeOut `
+                                       -RedirectStandardError $bridgeErr `
                                        -PassThru
             Write-Host "Clipboard bridge started (COM1 tcp:4545)." -ForegroundColor DarkCyan
         }
