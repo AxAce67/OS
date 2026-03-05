@@ -1,0 +1,20 @@
+#pragma once
+
+#include <stdint.h>
+
+namespace syscall {
+
+enum class Number : uint64_t {
+    kWriteText = 1,
+    kCurrentTick = 2,
+    kAbiVersion = 3,
+};
+
+constexpr int64_t kErrNoSys = -38;
+constexpr int64_t kErrFault = -14;
+constexpr int64_t kErrInvalid = -22;
+
+int64_t Dispatch(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3);
+const char* ErrorName(int64_t code);
+
+}  // namespace syscall

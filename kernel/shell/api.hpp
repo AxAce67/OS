@@ -28,3 +28,4 @@ bool ExecuteStatCommand(const char* command, int* pos_ptr);
 bool ExecuteCatCommand(const char* command, int* pos_ptr);
 bool ExecuteEchoCommand(const char* rest);
 bool ExecuteRebootCommand();
+bool ExecuteSyscallCommand(const char* rest);

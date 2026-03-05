@@ -32,6 +32,7 @@ bool HandleLayout(const char*, const char*, const char* rest, int*) { return Exe
 bool HandleIme(const char*, const char*, const char* rest, int*) { return ExecuteImeCommand(rest); }
 bool HandleSet(const char*, const char* command, const char*, int* pos_ptr) { return ExecuteSetCommand(command, pos_ptr); }
 bool HandleAlias(const char*, const char* command, const char*, int* pos_ptr) { return ExecuteAliasCommand(command, pos_ptr); }
+bool HandleSyscall(const char*, const char*, const char* rest, int*) { return ExecuteSyscallCommand(rest); }
 bool HandleLs(const char*, const char*, const char* rest, int*) { return ExecuteLsCommand(rest); }
 bool HandleStat(const char*, const char* command, const char*, int* pos_ptr) { return ExecuteStatCommand(command, pos_ptr); }
 bool HandleCat(const char*, const char* command, const char*, int* pos_ptr) { return ExecuteCatCommand(command, pos_ptr); }
@@ -64,6 +65,7 @@ const ShellCommandEntry kShellCommandTable[] = {
     {"ime", HandleIme},
     {"set", HandleSet},
     {"alias", HandleAlias},
+    {"syscall", HandleSyscall},
     {"ls", HandleLs},
     {"stat", HandleStat},
     {"cat", HandleCat},

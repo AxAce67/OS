@@ -33,6 +33,7 @@ const char* const kBuiltInCommands[] = {
     "ime",
     "set",
     "alias",
+    "syscall",
     "xhciinfo",
     "xhciregs",
     "xhcistop",

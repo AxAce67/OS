@@ -6,6 +6,7 @@
 #include "boot_info.h"
 #include "shell/context.hpp"
 #include "shell/text.hpp"
+#include "syscall/syscall.hpp"
 
 extern Console* console;
 extern bool g_key_repeat_enabled;
@@ -47,7 +48,7 @@ bool ExecuteHelpCommand() {
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
     console->PrintLine("help: misc  history clearhistory inputstat about");
-    console->PrintLine("help: cfg   repeat layout ime(on/off/toggle/stat/save/import/export/resetlearn) set alias xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll xhcihidstat xhciauto xhciautostart mouseabs usbports");
+    console->PrintLine("help: cfg   repeat layout ime(on/off/toggle/stat/save/import/export/resetlearn) set alias syscall xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll xhcihidstat xhciauto xhciautostart mouseabs usbports");
     return true;
 }
 
@@ -398,6 +399,56 @@ bool ExecuteInputStatCommand() {
     console->Print(" hid.kbd=");
     console->Print(g_xhci_hid_decode_keyboard ? "on" : "off");
     console->Print("\n");
+    return true;
+}
+
+bool ExecuteSyscallCommand(const char* rest) {
+    if (rest[0] == '\0' || StrEqual(rest, "stat")) {
+        console->PrintLine("syscall abi=1 methods=write,tick,version");
+        return true;
+    }
+
+    if (StrEqual(rest, "tick")) {
+        const int64_t ret = syscall::Dispatch(static_cast<uint64_t>(syscall::Number::kCurrentTick), 0, 0, 0, 0);
+        console->Print("syscall tick -> ");
+        console->PrintDec(ret);
+        console->Print("\n");
+        return true;
+    }
+
+    if (StrEqual(rest, "version")) {
+        const int64_t ret = syscall::Dispatch(static_cast<uint64_t>(syscall::Number::kAbiVersion), 0, 0, 0, 0);
+        console->Print("syscall version -> ");
+        console->PrintDec(ret);
+        console->Print("\n");
+        return true;
+    }
+
+    if (StrStartsWith(rest, "write ")) {
+        const char* text = rest + 6;
+        const int64_t ret = syscall::Dispatch(
+            static_cast<uint64_t>(syscall::Number::kWriteText),
+            reinterpret_cast<uint64_t>(text),
+            static_cast<uint64_t>(StrLength(text)),
+            0,
+            0);
+        console->Print("\nsyscall write -> ");
+        console->PrintDec(ret);
+        console->Print("\n");
+        return true;
+    }
+
+    if (StrEqual(rest, "invalid")) {
+        const int64_t ret = syscall::Dispatch(0xFFFF, 0, 0, 0, 0);
+        console->Print("syscall invalid -> ");
+        console->PrintDec(ret);
+        console->Print(" (");
+        console->Print(syscall::ErrorName(ret));
+        console->Print(")\n");
+        return true;
+    }
+
+    console->PrintLine("usage: syscall [stat|tick|version|write <text>|invalid]");
     return true;
 }
 
