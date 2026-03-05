@@ -205,6 +205,26 @@ bool UpsertExecEnv(char out[][128], const char** out_ptrs, int max_count, int* i
     }
     return AppendExecEnv(out, out_ptrs, max_count, io_count, key, value);
 }
+
+void RemoveExecEnvByKey(char out[][128], const char** out_ptrs, int* io_count, const char* key) {
+    if (out == nullptr || out_ptrs == nullptr || io_count == nullptr || key == nullptr) {
+        return;
+    }
+    int count = *io_count;
+    const int idx = FindExecEnvIndex(out_ptrs, count, key);
+    if (idx < 0) {
+        return;
+    }
+    for (int i = idx; i + 1 < count; ++i) {
+        CopyString(out[i], out[i + 1], 128);
+        out_ptrs[i] = out[i];
+    }
+    if (count > 0) {
+        out[count - 1][0] = '\0';
+        out_ptrs[count - 1] = nullptr;
+        *io_count = count - 1;
+    }
+}
 }  // namespace
 
 bool ExecuteHelpCommand() {
@@ -957,6 +977,8 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
     char env_opt_keys[kExecMaxEnv][32];
     char env_opt_values[kExecMaxEnv][96];
     int env_opt_count = 0;
+    char unset_env_keys[kExecMaxEnv][32];
+    int unset_env_count = 0;
 
     while (true) {
         char tok[64];
@@ -981,6 +1003,20 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
             ++env_opt_count;
             continue;
         }
+        if (StrEqual(tok, "--unsetenv")) {
+            char key[32];
+            if (!NextToken(command, &pos, key, sizeof(key))) {
+                console->PrintLine("exec: --unsetenv requires KEY");
+                return true;
+            }
+            if (unset_env_count >= kExecMaxEnv) {
+                console->PrintLine("exec: too many --unsetenv options");
+                return true;
+            }
+            CopyString(unset_env_keys[unset_env_count], key, sizeof(unset_env_keys[unset_env_count]));
+            ++unset_env_count;
+            continue;
+        }
         if (path[0] == '\0') {
             CopyString(path, tok, sizeof(path));
             continue;
@@ -995,7 +1031,7 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
     }
     if (path[0] == '\0') {
         console->PrintLine("exec: path required");
-        console->PrintLine("usage: exec [--env KEY=VALUE ...] <bootfs-path> [args...]");
+        console->PrintLine("usage: exec [--unsetenv KEY ...] [--env KEY=VALUE ...] <bootfs-path> [args...]");
         return true;
     }
 
@@ -1016,6 +1052,9 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
             console->PrintLine("exec: env full (some vars dropped)");
             break;
         }
+    }
+    for (int i = 0; i < unset_env_count; ++i) {
+        RemoveExecEnvByKey(envs, env_ptrs, &envc, unset_env_keys[i]);
     }
     for (int i = 0; i < env_opt_count; ++i) {
         if (!UpsertExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, env_opt_keys[i], env_opt_values[i])) {
