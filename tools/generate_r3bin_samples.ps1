@@ -221,6 +221,36 @@ function New-ImageUnsetenvAfterSet {
     )
 }
 
+function New-ImageSetenvBadKey {
+    return [byte[]](
+        0x48,0xB8,0x06,0,0,0,0,0,0,0,          # mov rax,6 (setenv)
+        0x48,0x8D,0x3D,0x37,0,0,0,             # lea rdi,[rip+0x37] -> key
+        0x48,0xBE,0x00,0,0,0,0,0,0,0,          # mov rsi,0 (invalid key len)
+        0x48,0x8D,0x15,0x27,0,0,0,             # lea rdx,[rip+0x27] -> value
+        0x48,0xB9,0x01,0,0,0,0,0,0,0,          # mov rcx,1
+        0xCD,0x80,                               # int 0x80
+        0x48,0x89,0xC7,                          # mov rdi,rax
+        0x48,0xB8,0x04,0,0,0,0,0,0,0,          # mov rax,4
+        0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE,
+        0x4B,                                    # 'K'
+        0x56                                     # 'V'
+    )
+}
+
+function New-ImageUnsetenvBadKey {
+    return [byte[]](
+        0x48,0xB8,0x07,0,0,0,0,0,0,0,          # mov rax,7 (unsetenv)
+        0x48,0x8D,0x3D,0x2C,0,0,0,             # lea rdi,[rip+0x2C] -> key
+        0x48,0xBE,0x00,0,0,0,0,0,0,0,          # mov rsi,0 (invalid key len)
+        0x48,0x31,0xD2,0x48,0x31,0xC9,          # xor rdx/rcx
+        0xCD,0x80,                               # int 0x80
+        0x48,0x89,0xC7,                          # mov rdi,rax
+        0x48,0xB8,0x04,0,0,0,0,0,0,0,          # mov rax,4
+        0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE,
+        0x4B                                     # 'K'
+    )
+}
+
 function New-ImageGetenvLen {
     return [byte[]](
         0x48,0xB8,0x05,0,0,0,0,0,0,0,          # mov rax,5 (getenv)
@@ -266,3 +296,5 @@ New-R3BinFile -Path (Join-Path $OutputDir "getenvlen.r3bin") -Image (New-ImageGe
 New-R3BinFile -Path (Join-Path $OutputDir "getenvbad.r3bin") -Image (New-ImageGetenvBad)
 New-R3BinFile -Path (Join-Path $OutputDir "setenvok.r3bin") -Image (New-ImageSetenvOk)
 New-R3BinFile -Path (Join-Path $OutputDir "unsetenvbad.r3bin") -Image (New-ImageUnsetenvAfterSet)
+New-R3BinFile -Path (Join-Path $OutputDir "setenvbadkey.r3bin") -Image (New-ImageSetenvBadKey)
+New-R3BinFile -Path (Join-Path $OutputDir "unsetenvbadkey.r3bin") -Image (New-ImageUnsetenvBadKey)

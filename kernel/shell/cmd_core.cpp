@@ -572,7 +572,7 @@ bool ExecuteInputStatCommand() {
 
 bool ExecuteSyscallCommand(const char* rest) {
     if (rest[0] == '\0' || StrEqual(rest, "stat")) {
-        console->PrintLine("syscall abi=1 methods=write,tick,version,getenv trap=int80");
+        console->PrintLine("syscall abi=1 methods=write,tick,version,getenv,setenv,unsetenv trap=int80");
         return true;
     }
 
@@ -636,6 +636,69 @@ bool ExecuteSyscallCommand(const char* rest) {
             console->Print(syscall::ErrorName(ret));
             console->Print(")\n");
         }
+        return true;
+    }
+
+    if (StrStartsWith(rest, "setenv ")) {
+        int pos = 0;
+        char sub[16];
+        char key[64];
+        char value[96];
+        NextToken(rest, &pos, sub, sizeof(sub)); // setenv
+        if (!NextToken(rest, &pos, key, sizeof(key)) || !NextToken(rest, &pos, value, sizeof(value))) {
+            console->PrintLine("usage: syscall setenv <key> <value>");
+            return true;
+        }
+        char extra[8];
+        if (NextToken(rest, &pos, extra, sizeof(extra))) {
+            console->PrintLine("usage: syscall setenv <key> <value>");
+            return true;
+        }
+        const int64_t ret = syscall::Dispatch(
+            static_cast<uint64_t>(syscall::Number::kSetEnv),
+            reinterpret_cast<uint64_t>(key),
+            static_cast<uint64_t>(StrLength(key)),
+            reinterpret_cast<uint64_t>(value),
+            static_cast<uint64_t>(StrLength(value)));
+        console->Print("syscall setenv -> ");
+        console->PrintDec(ret);
+        if (ret < 0) {
+            console->Print(" (");
+            console->Print(syscall::ErrorName(ret));
+            console->Print(")");
+        }
+        console->Print("\n");
+        return true;
+    }
+
+    if (StrStartsWith(rest, "unsetenv ")) {
+        int pos = 0;
+        char sub[16];
+        char key[64];
+        NextToken(rest, &pos, sub, sizeof(sub)); // unsetenv
+        if (!NextToken(rest, &pos, key, sizeof(key))) {
+            console->PrintLine("usage: syscall unsetenv <key>");
+            return true;
+        }
+        char extra[8];
+        if (NextToken(rest, &pos, extra, sizeof(extra))) {
+            console->PrintLine("usage: syscall unsetenv <key>");
+            return true;
+        }
+        const int64_t ret = syscall::Dispatch(
+            static_cast<uint64_t>(syscall::Number::kUnsetEnv),
+            reinterpret_cast<uint64_t>(key),
+            static_cast<uint64_t>(StrLength(key)),
+            0,
+            0);
+        console->Print("syscall unsetenv -> ");
+        console->PrintDec(ret);
+        if (ret < 0) {
+            console->Print(" (");
+            console->Print(syscall::ErrorName(ret));
+            console->Print(")");
+        }
+        console->Print("\n");
         return true;
     }
 
@@ -717,7 +780,74 @@ bool ExecuteSyscallCommand(const char* rest) {
         return true;
     }
 
-    console->PrintLine("usage: syscall [stat|tick|version|write <text>|getenv <key>|invalid|trap tick|trap version|trap write <text>|trap getenv <key>|trap invalid|trap badptr]");
+    if (StrStartsWith(rest, "trap setenv ")) {
+        int pos = 0;
+        char sub1[16];
+        char sub2[16];
+        char key[64];
+        char value[96];
+        NextToken(rest, &pos, sub1, sizeof(sub1)); // trap
+        NextToken(rest, &pos, sub2, sizeof(sub2)); // setenv
+        if (!NextToken(rest, &pos, key, sizeof(key)) || !NextToken(rest, &pos, value, sizeof(value))) {
+            console->PrintLine("usage: syscall trap setenv <key> <value>");
+            return true;
+        }
+        char extra[8];
+        if (NextToken(rest, &pos, extra, sizeof(extra))) {
+            console->PrintLine("usage: syscall trap setenv <key> <value>");
+            return true;
+        }
+        const int64_t ret = InvokeSyscallInt80(
+            static_cast<uint64_t>(syscall::Number::kSetEnv),
+            reinterpret_cast<uint64_t>(key),
+            static_cast<uint64_t>(StrLength(key)),
+            reinterpret_cast<uint64_t>(value),
+            static_cast<uint64_t>(StrLength(value)));
+        console->Print("syscall trap setenv -> ");
+        console->PrintDec(ret);
+        if (ret < 0) {
+            console->Print(" (");
+            console->Print(syscall::ErrorName(ret));
+            console->Print(")");
+        }
+        console->Print("\n");
+        return true;
+    }
+
+    if (StrStartsWith(rest, "trap unsetenv ")) {
+        int pos = 0;
+        char sub1[16];
+        char sub2[16];
+        char key[64];
+        NextToken(rest, &pos, sub1, sizeof(sub1)); // trap
+        NextToken(rest, &pos, sub2, sizeof(sub2)); // unsetenv
+        if (!NextToken(rest, &pos, key, sizeof(key))) {
+            console->PrintLine("usage: syscall trap unsetenv <key>");
+            return true;
+        }
+        char extra[8];
+        if (NextToken(rest, &pos, extra, sizeof(extra))) {
+            console->PrintLine("usage: syscall trap unsetenv <key>");
+            return true;
+        }
+        const int64_t ret = InvokeSyscallInt80(
+            static_cast<uint64_t>(syscall::Number::kUnsetEnv),
+            reinterpret_cast<uint64_t>(key),
+            static_cast<uint64_t>(StrLength(key)),
+            0,
+            0);
+        console->Print("syscall trap unsetenv -> ");
+        console->PrintDec(ret);
+        if (ret < 0) {
+            console->Print(" (");
+            console->Print(syscall::ErrorName(ret));
+            console->Print(")");
+        }
+        console->Print("\n");
+        return true;
+    }
+
+    console->PrintLine("usage: syscall [stat|tick|version|write <text>|getenv <key>|setenv <k> <v>|unsetenv <k>|invalid|trap tick|trap version|trap write <text>|trap getenv <k>|trap setenv <k> <v>|trap unsetenv <k>|trap invalid|trap badptr]");
     return true;
 }
 
