@@ -11,15 +11,60 @@ param(
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
 
+function Resolve-ToolPath {
+    param(
+        [string]$ToolLabel,
+        [string[]]$CandidatePaths,
+        [string[]]$CommandNames
+    )
+
+    foreach ($p in $CandidatePaths) {
+        if (-Not [string]::IsNullOrWhiteSpace($p) -and (Test-Path $p)) {
+            return (Resolve-Path $p).Path
+        }
+    }
+    foreach ($name in $CommandNames) {
+        if ([string]::IsNullOrWhiteSpace($name)) {
+            continue
+        }
+        $cmd = Get-Command $name -ErrorAction SilentlyContinue
+        if ($null -ne $cmd -and -Not [string]::IsNullOrWhiteSpace($cmd.Source)) {
+            return $cmd.Source
+        }
+    }
+
+    Write-Host "Error: $ToolLabel not found." -ForegroundColor Red
+    if ($CandidatePaths.Count -gt 0) {
+        Write-Host "Checked candidate paths:" -ForegroundColor Yellow
+        foreach ($p in $CandidatePaths) {
+            if (-Not [string]::IsNullOrWhiteSpace($p)) {
+                Write-Host "  - $p" -ForegroundColor Yellow
+            }
+        }
+    }
+    if ($CommandNames.Count -gt 0) {
+        Write-Host "Checked command names:" -ForegroundColor Yellow
+        foreach ($n in $CommandNames) {
+            if (-Not [string]::IsNullOrWhiteSpace($n)) {
+                Write-Host "  - $n" -ForegroundColor Yellow
+            }
+        }
+    }
+    exit 1
+}
+
 if (-Not $NoRun) {
     Write-Host "Stopping existing QEMU processes..." -ForegroundColor Yellow
     Stop-Process -Name qemu-system-x86_64 -Force -ErrorAction SilentlyContinue
 }
 
 # 1. コンパイラとリンカのパス（LLVM）
-$clang = "C:\Program Files\LLVM\bin\clang.exe"
-$lld_link = "C:\Program Files\LLVM\bin\lld-link.exe"
-$qemu = "C:\Program Files\qemu\qemu-system-x86_64.exe"
+$clang = Resolve-ToolPath -ToolLabel "clang" `
+    -CandidatePaths @("C:\Program Files\LLVM\bin\clang.exe") `
+    -CommandNames @("clang", "clang.exe")
+$lld_link = Resolve-ToolPath -ToolLabel "lld-link" `
+    -CandidatePaths @("C:\Program Files\LLVM\bin\lld-link.exe") `
+    -CommandNames @("lld-link", "lld-link.exe")
 
 # OVFMF.fd (UEFI BIOS ROM) は本来QEMU付属のものか、EDK2のビルド済みイメージが必要
 # ここではQEMUパッケージなどに一部付属している想定（もしくは警告無視）で起動テストします
@@ -48,7 +93,9 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Compiling kernel.c -> kernel.elf..." -ForegroundColor Cyan
 
 # 4. カーネル本体とフォントのコンパイルとリンク (ELF形式)
-$ld_lld = "C:\Program Files\LLVM\bin\ld.lld.exe"
+$ld_lld = Resolve-ToolPath -ToolLabel "ld.lld" `
+    -CandidatePaths @("C:\Program Files\LLVM\bin\ld.lld.exe") `
+    -CommandNames @("ld.lld", "ld.lld.exe")
 $commonKernelIncludes = @(
     "-I", "boot",
     "-I", "kernel",
@@ -219,6 +266,10 @@ if ($NoRun) {
 }
 
 Write-Host "Starting QEMU..." -ForegroundColor Cyan
+
+$qemu = Resolve-ToolPath -ToolLabel "qemu-system-x86_64" `
+    -CandidatePaths @("C:\Program Files\qemu\qemu-system-x86_64.exe") `
+    -CommandNames @("qemu-system-x86_64", "qemu-system-x86_64.exe")
 
 # 5. QEMUの実行
 # ※Windows上での素のQEMUはデフォルトでレガシーBIOSなので、OVMF (UEFIファーム) を指定する必要がある。

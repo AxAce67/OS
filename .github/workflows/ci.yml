@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM
+        shell: pwsh
+        run: choco install llvm --yes --no-progress
+
+      - name: Build (NoRun)
+        shell: pwsh
+        run: .\scripts\build.ps1 -NoRun -StrictDisk
+
+  smoke:
+    runs-on: windows-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM and QEMU
+        shell: pwsh
+        run: |
+          choco install llvm --yes --no-progress
+          choco install qemu --yes --no-progress
+
+      - name: Smoke Boot
+        shell: pwsh
+        run: .\scripts\build.ps1 -Smoke -StrictDisk
+
