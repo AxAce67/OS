@@ -22,6 +22,45 @@ function Ensure-ToolExists {
     }
 }
 
+function New-Ring3SampleBinary {
+    param(
+        [string]$OutputPath
+    )
+    $msgText = "[ring3-file] hello from runfile`n"
+    $msgBytes = [System.Text.Encoding]::ASCII.GetBytes($msgText)
+    $image = New-Object System.Collections.Generic.List[byte]
+
+    # mov rax, 1 (write)
+    $image.AddRange([byte[]](0x48,0xB8,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00))
+    # lea rdi, [rip + disp32]  (message at offset 61, next ip after lea is 17 => disp=44)
+    $image.AddRange([byte[]](0x48,0x8D,0x3D,0x2C,0x00,0x00,0x00))
+    # mov rsi, msg_len
+    $msgLen = [uint64]$msgBytes.Length
+    $image.AddRange([byte[]](0x48,0xBE))
+    $image.AddRange([System.BitConverter]::GetBytes($msgLen))
+    # xor rdx,rdx ; xor rcx,rcx ; int 0x80
+    $image.AddRange([byte[]](0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80))
+    # mov rax, 4 (exit-to-kernel)
+    $image.AddRange([byte[]](0x48,0xB8,0x04,0x00,0x00,0x00,0x00,0x00,0x00,0x00))
+    # xor rdi,rdi ; xor rsi,rsi ; xor rdx,rdx ; xor rcx,rcx ; int 0x80 ; jmp $
+    $image.AddRange([byte[]](0x48,0x31,0xFF,0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE))
+    $image.AddRange($msgBytes)
+
+    $header = New-Object System.Collections.Generic.List[byte]
+    $header.AddRange([System.Text.Encoding]::ASCII.GetBytes("R3BIN01"))
+    $header.Add(0x00)
+    $header.AddRange([System.BitConverter]::GetBytes([uint32]1))   # version
+    $header.AddRange([System.BitConverter]::GetBytes([uint32]0))   # entry_offset
+    $header.AddRange([System.BitConverter]::GetBytes([uint32]28))  # image_offset
+    $header.AddRange([System.BitConverter]::GetBytes([uint32]$image.Count))
+    $header.AddRange([System.BitConverter]::GetBytes([uint32]1))   # stack_pages
+
+    $bytes = New-Object System.Collections.Generic.List[byte]
+    $bytes.AddRange($header)
+    $bytes.AddRange($image)
+    [System.IO.File]::WriteAllBytes($OutputPath, $bytes.ToArray())
+}
+
 if (-Not $NoRun) {
     Write-Host "Stopping existing QEMU processes..." -ForegroundColor Yellow
     Stop-Process -Name qemu-system-x86_64 -Force -ErrorAction SilentlyContinue
@@ -233,6 +272,7 @@ try {
     if (Test-Path "ime.learn") {
         Copy-Item "ime.learn" -Destination "disk\ime.learn" -Force -ErrorAction Stop
     }
+    New-Ring3SampleBinary -OutputPath "disk\hello.r3bin"
 }
 catch {
     Write-Host "Error: failed to copy build artifacts into disk/." -ForegroundColor Red
