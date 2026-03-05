@@ -23,3 +23,8 @@ struct Ring3UserBinHeader {
 - `image_offset + image_size <= file_size`
 
 `image` はそのままユーザー実行ページへコピーされ、`entry_offset` から実行される。
+
+## Exit Code Convention (PoC)
+
+- `kExitToKernel` (`rax=4`) を呼ぶとき、`rdi` を終了コードとして扱う。
+- `ring3 runfile` 実行後は `ring3.last_sysret` に表示される。

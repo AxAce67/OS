@@ -54,9 +54,10 @@ uint32_t BuildUserProgram(bool fault_case, uint64_t message_addr, uint64_t messa
     Emit8(code, capacity, &o, 0xCD); Emit8(code, capacity, &o, 0x80);
     Emit8(code, capacity, &o, 0x48); Emit8(code, capacity, &o, 0xA3);
     Emit64(code, capacity, &o, ret_slot_addr);
+    // mov rdi, rax (exit code = last syscall return)
+    Emit8(code, capacity, &o, 0x48); Emit8(code, capacity, &o, 0x89); Emit8(code, capacity, &o, 0xC7);
     Emit8(code, capacity, &o, 0x48); Emit8(code, capacity, &o, 0xB8);
     Emit64(code, capacity, &o, static_cast<uint64_t>(syscall::Number::kExitToKernel));
-    Emit8(code, capacity, &o, 0x48); Emit8(code, capacity, &o, 0x31); Emit8(code, capacity, &o, 0xFF);
     Emit8(code, capacity, &o, 0x48); Emit8(code, capacity, &o, 0x31); Emit8(code, capacity, &o, 0xF6);
     Emit8(code, capacity, &o, 0x48); Emit8(code, capacity, &o, 0x31); Emit8(code, capacity, &o, 0xD2);
     Emit8(code, capacity, &o, 0x48); Emit8(code, capacity, &o, 0x31); Emit8(code, capacity, &o, 0xC9);
@@ -276,6 +277,7 @@ bool RunRing3BinaryFromBuffer(const uint8_t* data, uint64_t size) {
     const uint64_t entry = g_state.code_base + header->entry_offset;
     const uint64_t user_rsp = g_state.stack_top - 16;
     RunUserModeFunction(entry, user_rsp);
+    g_last_ring3_syscall_ret = GetLastRing3ExitCode();
     g_last_ring3_error = "ok";
     return true;
 }

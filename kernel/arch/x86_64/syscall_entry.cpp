@@ -29,6 +29,7 @@ extern "C" volatile uint64_t g_ring3_saved_rsp = 0;
 extern "C" volatile uint64_t g_ring3_resume_rip = 0;
 extern "C" volatile uint8_t g_ring3_active = 0;
 extern "C" volatile uint8_t g_ring3_return_requested = 0;
+extern "C" volatile int64_t g_ring3_last_exit_code = 0;
 
 constexpr uint16_t kUserCodeSelector = 0x23;
 constexpr uint16_t kUserDataSelector = 0x1B;
@@ -46,6 +47,7 @@ extern "C" void HandleSyscallTrap(SyscallTrapFrame* frame) {
         number == static_cast<uint64_t>(syscall::Number::kExitToKernel) &&
         g_ring3_active != 0 &&
         g_ring3_resume_rip != 0) {
+        g_ring3_last_exit_code = static_cast<int64_t>(frame->rdi);
         g_ring3_return_requested = 1;
     }
     frame->rax = static_cast<uint64_t>(ret);
@@ -132,4 +134,8 @@ int RunUserModeFunction(uint64_t entry_rip, uint64_t user_rsp) {
           [user_ss] "i"(kUserDataSelector)
         : "rax", "memory");
     return 0;
+}
+
+int64_t GetLastRing3ExitCode() {
+    return g_ring3_last_exit_code;
 }

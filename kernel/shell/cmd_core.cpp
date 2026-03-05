@@ -549,6 +549,15 @@ bool ExecuteRing3Command(const char* rest) {
         } else if (usermode::RunRing3BinaryFromBuffer(file->data, file->size)) {
             console->Print("ring3.runfile=ok: ");
             console->PrintLine(path);
+            const int64_t ret = usermode::GetLastRing3SyscallReturn();
+            console->Print("ring3.last_sysret=");
+            console->PrintDec(ret);
+            if (ret < 0) {
+                console->Print(" (");
+                console->Print(syscall::ErrorName(ret));
+                console->Print(")");
+            }
+            console->Print("\n");
         } else {
             console->Print("ring3.runfile=failed: ");
             console->Print(path);

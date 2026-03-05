@@ -287,7 +287,10 @@ try {
     if (Test-Path "ime.learn") {
         Copy-Item "ime.learn" -Destination "disk\ime.learn" -Force -ErrorAction Stop
     }
-    New-Ring3SampleBinary -OutputPath (Join-Path $projectRoot "disk\hello.r3bin")
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $projectRoot "tools\generate_r3bin_samples.ps1") -OutputDir (Join-Path $projectRoot "disk")
+    if ($LASTEXITCODE -ne 0) {
+        throw "generate_r3bin_samples.ps1 failed"
+    }
 }
 catch {
     Write-Host "Error: failed to copy build artifacts into disk/." -ForegroundColor Red
