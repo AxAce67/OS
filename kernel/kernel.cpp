@@ -3159,6 +3159,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             InsertByteAtCursor,
             RenderInputLine);
     };
+    auto AdvanceImeCandidate = [&]() {
+        return input::AdvanceImeCandidateIndex(ime_candidate_entry, &ime_candidate_index);
+    };
+    auto HasImeCandidateEntry = [](const ImeCandidateEntry* entry) {
+        return entry != nullptr && entry->count > 0;
+    };
+    auto HasActiveSelection = [&]() {
+        return input::HasSelection(selection_anchor, selection_end);
+    };
     auto HandleKeyboardMessage = [&](const Message& msg) {
         input::RuntimeEnterCommandRefs enter_refs{};
         input::RuntimeCommandInputStateRefs reset_refs{};
@@ -3203,7 +3212,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             KeycodeToAsciiByLayout,
             EnsureLiveConsole,
             ToLowerAscii,
-            [&]() { return input::AdvanceImeCandidateIndex(ime_candidate_entry, &ime_candidate_index); },
+            AdvanceImeCandidate,
             ReplaceImeCandidateText,
             CommitImeCandidateLearning,
             ClearImeCandidate,
@@ -3212,8 +3221,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             RefreshInputLine,
             ResolveImeCandidateEntryFromRomaji,
             TryBuildPrefixCandidateEntry,
-            [](const ImeCandidateEntry* entry) { return entry != nullptr && entry->count > 0; },
-            [&]() { return input::HasSelection(selection_anchor, selection_end); },
+            HasImeCandidateEntry,
+            HasActiveSelection,
             DeleteSelection,
             StartImeCandidateSessionForEntry,
             IsPrintableAscii,
