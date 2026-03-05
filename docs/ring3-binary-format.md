@@ -31,6 +31,10 @@ struct Ring3UserBinHeader {
   - `rsi = argv` (`char**`, 最後は `NULL`)
 - `exec /app.r3bin a b` の場合、`argc=2`、`argv[0]="a"`、`argv[1]="b"`。
 
+検証サンプル:
+- `argc.r3bin`: `argc` を終了コードで返す
+- `argv0head.r3bin`: `argv[0][0]` のASCIIコードを終了コードで返す
+
 ## Exit Code Convention (PoC)
 
 - `kExitToKernel` (`rax=4`) を呼ぶとき、`rdi` を終了コードとして扱う。
