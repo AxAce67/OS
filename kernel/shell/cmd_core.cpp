@@ -48,7 +48,7 @@ int ImportImeLearningFromBuffer(const uint8_t* data, int size, bool clear_before
 int ExportImeLearningToBuffer(char* out, int out_len);
 
 bool ExecuteHelpCommand() {
-    console->PrintLine("help: core  help clear tick time mem uptime echo reboot");
+    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec");
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
     console->PrintLine("help: misc  history clearhistory inputstat about");
@@ -605,6 +605,48 @@ bool ExecuteRing3Command(const char* rest) {
         console->Print("\n");
     }
     console->PrintLine("ring3.next=enter ring3 hello (WIP)");
+    return true;
+}
+
+bool ExecuteExecCommand(const char* command, int* pos_ptr) {
+    int& pos = *pos_ptr;
+    char path[96];
+    if (!NextToken(command, &pos, path, sizeof(path))) {
+        console->PrintLine("exec: path required");
+        console->PrintLine("usage: exec <bootfs-path>");
+        return true;
+    }
+    char extra[96];
+    if (NextToken(command, &pos, extra, sizeof(extra))) {
+        console->PrintLine("exec: arguments are not supported yet");
+        return true;
+    }
+
+    const BootFileEntry* file = FindBootFileByPath(g_cwd, path);
+    if (file == nullptr) {
+        console->Print("exec: not found: ");
+        console->PrintLine(path);
+        return true;
+    }
+    if (usermode::RunRing3BinaryFromBuffer(file->data, file->size)) {
+        console->Print("exec: ok: ");
+        console->PrintLine(path);
+        const int64_t ret = usermode::GetLastRing3SyscallReturn();
+        console->Print("exec.ret=");
+        console->PrintDec(ret);
+        if (ret < 0) {
+            console->Print(" (");
+            console->Print(syscall::ErrorName(ret));
+            console->Print(")");
+        }
+        console->Print("\n");
+    } else {
+        console->Print("exec: failed: ");
+        console->Print(path);
+        console->Print(" (");
+        console->Print(usermode::GetLastRing3Error());
+        console->Print(")\n");
+    }
     return true;
 }
 
