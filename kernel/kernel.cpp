@@ -1998,12 +1998,28 @@ void* operator new(size_t size, void* buf) {
     }
 }
 
+[[noreturn]] static void KernelPanic(const char* code, const char* detail) {
+    if (console != nullptr) {
+        console->PrintLine("");
+        console->Print("KERNEL PANIC [");
+        console->Print(code != nullptr ? code : "UNKNOWN");
+        console->PrintLine("]");
+        if (detail != nullptr) {
+            console->Print("detail: ");
+            console->PrintLine(detail);
+        }
+    }
+    HaltCpuForever();
+}
+
 [[noreturn]] static void PanicOutOfMemory(const char* reason, size_t request_size, size_t request_pages) {
     if (console != nullptr) {
         console->PrintLine("");
-        console->PrintLine("KERNEL PANIC: memory allocation failed");
+        console->Print("KERNEL PANIC [");
+        console->Print("K001");
+        console->PrintLine("]");
         if (reason != nullptr) {
-            console->Print("reason: ");
+            console->Print("detail: ");
             console->PrintLine(reason);
         }
         console->Print("request bytes: ");
@@ -2083,6 +2099,9 @@ LayerManager* layer_manager;
 // カーネルの真のエントリポイント（UEFIシステムからは切り離されている）
 // ブートローダー(main.efi)からポインタ経由で呼び出されるため、C言語の呼び出し規約を強制する
 extern "C" void KernelMain(const struct BootInfo* boot_info) {
+    if (boot_info == nullptr || boot_info->frame_buffer_config == nullptr) {
+        KernelPanic("K002", "invalid boot info");
+    }
     const struct FrameBufferConfig* frame_buffer_config = boot_info->frame_buffer_config;
     g_boot_info = boot_info;
 

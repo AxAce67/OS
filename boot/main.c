@@ -29,6 +29,20 @@ static int IsEfiError(EFI_STATUS status) {
     return status != EFI_SUCCESS;
 }
 
+__attribute__((noreturn))
+static void BootFatal(EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL* con_out,
+                      const CHAR16* code,
+                      const CHAR16* message) {
+    if (con_out != NULL) {
+        con_out->OutputString(con_out, L"BOOT ERROR [");
+        con_out->OutputString(con_out, (CHAR16*)(code != NULL ? code : L"UNKNOWN"));
+        con_out->OutputString(con_out, L"] ");
+        con_out->OutputString(con_out, (CHAR16*)(message != NULL ? message : L"(no detail)"));
+        con_out->OutputString(con_out, L"\r\n");
+    }
+    while (1) {}
+}
+
 static int AddOverflowU64(uint64_t a, uint64_t b, uint64_t* out) {
     if (out == NULL) {
         return 1;
@@ -381,8 +395,7 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
         &gEfiGraphicsOutputProtocolGuid, NULL, (void **)&gop);
 
     if (status != EFI_SUCCESS) {
-        conOut->OutputString(conOut, L"Error: Failed to locate GOP.\r\n");
-        while(1){}
+        BootFatal(conOut, L"B101", L"Failed to locate GOP.");
     }
 
     SelectBestGraphicsMode(gop, SystemTable);
@@ -398,8 +411,7 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     } else if (gop->Mode->Info->PixelFormat == PixelRedGreenBlueReserved8BitPerColor) {
         config.pixel_format = kPixelRGBResv8BitPerColor;
     } else {
-        conOut->OutputString(conOut, L"Error: Unsupported GOP PixelFormat.\r\n");
-        while (1) {}
+        BootFatal(conOut, L"B102", L"Unsupported GOP PixelFormat.");
     }
 
     // ----------- ここから「カーネルファイルの読み込みとジャンプ」 -----------
@@ -410,8 +422,7 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
         ImageHandle, NULL, 0x00000001 // BY_HANDLE_PROTOCOL
     );
     if (IsEfiError(status) || loaded_image == NULL) {
-        conOut->OutputString(conOut, L"Error: Failed to open LoadedImage protocol.\r\n");
-        while (1) {}
+        BootFatal(conOut, L"B110", L"Failed to open LoadedImage protocol.");
     }
 
     // 4. このプログラムが入っていたディスク（ファイルシステム）を開く
@@ -421,24 +432,21 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
         ImageHandle, NULL, 0x00000001
     );
     if (IsEfiError(status) || fs == NULL) {
-        conOut->OutputString(conOut, L"Error: Failed to open SimpleFileSystem protocol.\r\n");
-        while (1) {}
+        BootFatal(conOut, L"B111", L"Failed to open SimpleFileSystem protocol.");
     }
 
     // 5. ディスクのルートディレクトリを開く
     EFI_FILE_PROTOCOL *root = NULL;
     status = fs->OpenVolume(fs, &root);
     if (IsEfiError(status) || root == NULL) {
-        conOut->OutputString(conOut, L"Error: Failed to open root volume.\r\n");
-        while (1) {}
+        BootFatal(conOut, L"B112", L"Failed to open root volume.");
     }
 
     // 6. カーネルファイル（kernel.elf）をオープンする
     EFI_FILE_PROTOCOL *kernel_file = NULL;
     status = root->Open(root, &kernel_file, L"kernel.elf", EFI_FILE_MODE_READ, 0);
     if (IsEfiError(status)) {
-        conOut->OutputString(conOut, L"Error: Failed to open kernel.elf\r\n");
-        while(1){}
+        BootFatal(conOut, L"B120", L"Failed to open kernel.elf.");
     }
 
     // 7. ファイルサイズを調べる
@@ -446,8 +454,7 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     uint8_t file_info_buffer[256];
     status = kernel_file->GetInfo(kernel_file, (EFI_GUID *)&gEfiFileInfoGuid, &file_info_size, file_info_buffer);
     if (IsEfiError(status)) {
-        conOut->OutputString(conOut, L"Error: Failed to get kernel file info.\r\n");
-        while (1) {}
+        BootFatal(conOut, L"B121", L"Failed to get kernel file info.");
     }
     EFI_FILE_INFO *file_info = (EFI_FILE_INFO *)file_info_buffer;
 
@@ -455,16 +462,14 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     void *kernel_buffer = NULL;
     status = SystemTable->BootServices->AllocatePool(EfiLoaderData, file_info->FileSize, &kernel_buffer);
     if (IsEfiError(status) || kernel_buffer == NULL) {
-        conOut->OutputString(conOut, L"Error: Failed to allocate kernel buffer.\r\n");
-        while (1) {}
+        BootFatal(conOut, L"B122", L"Failed to allocate kernel buffer.");
     }
 
     // 9. ファイルの中身をメモリに読み込む
     UINTN kernel_size = file_info->FileSize;
     status = kernel_file->Read(kernel_file, &kernel_size, kernel_buffer);
     if (IsEfiError(status) || kernel_size != file_info->FileSize) {
-        conOut->OutputString(conOut, L"Error: Failed to read full kernel image.\r\n");
-        while (1) {}
+        BootFatal(conOut, L"B123", L"Failed to read full kernel image.");
     }
     kernel_file->Close(kernel_file);
 
@@ -472,8 +477,7 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     struct BootFileSystem* boot_fs = NULL;
     status = LoadBootFileSystem(root, SystemTable, &boot_fs);
     if (IsEfiError(status) || boot_fs == NULL) {
-        conOut->OutputString(conOut, L"Error: Failed to build boot file system.\r\n");
-        while (1) {}
+        BootFatal(conOut, L"B124", L"Failed to build boot file system.");
     }
 
     conOut->OutputString(conOut, L"Kernel loaded. Analyzing ELF header...\r\n");
@@ -482,8 +486,7 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     ElfLoadPlan load_plan;
     status = ValidateAndBuildElfLoadPlan(kernel_buffer, kernel_size, &load_plan);
     if (IsEfiError(status)) {
-        conOut->OutputString(conOut, L"Error: Invalid or unsafe ELF layout.\r\n");
-        while (1) {}
+        BootFatal(conOut, L"B130", L"Invalid or unsafe ELF layout.");
     }
     Elf64_Ehdr* elf_header = (Elf64_Ehdr*)kernel_buffer;
 
@@ -498,8 +501,7 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     );
 
     if (IsEfiError(status)) {
-        conOut->OutputString(conOut, L"Error: Failed to allocate pages for ELF segments.\r\n");
-        while(1){}
+        BootFatal(conOut, L"B131", L"Failed to allocate pages for ELF segments.");
     }
 
     // セグメントをメモリの正しい仮想アドレス(VMA)にコピーする
@@ -527,8 +529,7 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     }
 
     if (elf_header->e_entry < load_plan.first_vaddr || elf_header->e_entry >= load_plan.last_vaddr) {
-        conOut->OutputString(conOut, L"Error: ELF entry point outside load range.\r\n");
-        while (1) {}
+        BootFatal(conOut, L"B132", L"ELF entry point outside load range.");
     }
 
     // エントリーポイントの取得
@@ -547,16 +548,14 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     status = SystemTable->BootServices->GetMemoryMap(
         &memory_map_size, memory_map, &map_key, &descriptor_size, &descriptor_version);
     if (status != EFI_BUFFER_TOO_SMALL) {
-        conOut->OutputString(conOut, L"Error: Unexpected GetMemoryMap status.\r\n");
-        while (1) {}
+        BootFatal(conOut, L"B140", L"Unexpected GetMemoryMap status.");
     }
     
     // 取得したサイズに少し余裕を持たせて（このAllocatePool自体で容量が変わるため）メモリ確保
     memory_map_size += descriptor_size * 8;
     status = SystemTable->BootServices->AllocatePool(EfiLoaderData, memory_map_size, (void**)&memory_map);
     if (IsEfiError(status) || memory_map == NULL) {
-        conOut->OutputString(conOut, L"Error: Failed to allocate memory-map buffer.\r\n");
-        while (1) {}
+        BootFatal(conOut, L"B141", L"Failed to allocate memory-map buffer.");
     }
 
     while (1) {
@@ -564,8 +563,7 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
         status = SystemTable->BootServices->GetMemoryMap(
             &current_map_size, memory_map, &map_key, &descriptor_size, &descriptor_version);
         if (IsEfiError(status)) {
-            conOut->OutputString(conOut, L"Error: Failed to get memory map.\r\n");
-            while (1) {}
+            BootFatal(conOut, L"B142", L"Failed to get memory map.");
         }
 
         status = SystemTable->BootServices->ExitBootServices(ImageHandle, map_key);
@@ -574,7 +572,7 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
             break;
         }
         if (status != EFI_INVALID_PARAMETER) {
-            while (1) {}
+            BootFatal(conOut, L"B143", L"ExitBootServices failed.");
         }
     }
     // ------ これ以降、conOut->OutputString などのUEFI関数は一切呼び出し禁止！！ ------
