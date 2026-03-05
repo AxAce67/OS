@@ -24,6 +24,13 @@ struct Ring3UserBinHeader {
 
 `image` はそのままユーザー実行ページへコピーされ、`entry_offset` から実行される。
 
+## Entry ABI (current)
+
+- エントリ時のレジスタ:
+  - `rdi = argc`
+  - `rsi = argv` (`char**`, 最後は `NULL`)
+- `exec /app.r3bin a b` の場合、`argc=2`、`argv[0]="a"`、`argv[1]="b"`。
+
 ## Exit Code Convention (PoC)
 
 - `kExitToKernel` (`rax=4`) を呼ぶとき、`rdi` を終了コードとして扱う。

@@ -20,6 +20,7 @@ void GetRing3PrepState(Ring3PrepState* out_state);
 bool RunRing3Hello();
 bool RunRing3BadPtrTest();
 bool RunRing3BinaryFromBuffer(const uint8_t* data, uint64_t size);
+bool RunRing3BinaryFromBufferWithArgs(const uint8_t* data, uint64_t size, const char* const* argv, int argc);
 int64_t GetLastRing3SyscallReturn();
 const char* GetLastRing3Error();
 

@@ -613,13 +613,25 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
     char path[96];
     if (!NextToken(command, &pos, path, sizeof(path))) {
         console->PrintLine("exec: path required");
-        console->PrintLine("usage: exec <bootfs-path>");
+        console->PrintLine("usage: exec <bootfs-path> [args...]");
         return true;
     }
-    char extra[96];
-    if (NextToken(command, &pos, extra, sizeof(extra))) {
-        console->PrintLine("exec: arguments are not supported yet");
-        return true;
+
+    char args[16][64];
+    const char* arg_ptrs[16];
+    int argc = 0;
+    while (true) {
+        char tok[64];
+        if (!NextToken(command, &pos, tok, sizeof(tok))) {
+            break;
+        }
+        if (argc >= static_cast<int>(sizeof(args) / sizeof(args[0]))) {
+            console->PrintLine("exec: too many arguments");
+            return true;
+        }
+        CopyString(args[argc], tok, sizeof(args[argc]));
+        arg_ptrs[argc] = args[argc];
+        ++argc;
     }
 
     const BootFileEntry* file = FindBootFileByPath(g_cwd, path);
@@ -628,7 +640,7 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
         console->PrintLine(path);
         return true;
     }
-    if (usermode::RunRing3BinaryFromBuffer(file->data, file->size)) {
+    if (usermode::RunRing3BinaryFromBufferWithArgs(file->data, file->size, arg_ptrs, argc)) {
         console->Print("exec: ok: ");
         console->PrintLine(path);
         const int64_t ret = usermode::GetLastRing3SyscallReturn();

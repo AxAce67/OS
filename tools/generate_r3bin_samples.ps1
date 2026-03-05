@@ -76,7 +76,16 @@ function New-ImageTick {
     )
 }
 
+function New-ImageArgc {
+    return [byte[]](
+        0x48,0x89,0xFF,                          # mov rdi,rdi (argc already in rdi; keep explicit)
+        0x48,0xB8,0x04,0,0,0,0,0,0,0,          # mov rax,4
+        0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE
+    )
+}
+
 [System.IO.Directory]::CreateDirectory($OutputDir) | Out-Null
 New-R3BinFile -Path (Join-Path $OutputDir "hello.r3bin") -Image (New-ImageHello)
 New-R3BinFile -Path (Join-Path $OutputDir "fault.r3bin") -Image (New-ImageFault)
 New-R3BinFile -Path (Join-Path $OutputDir "tick.r3bin") -Image (New-ImageTick)
+New-R3BinFile -Path (Join-Path $OutputDir "argc.r3bin") -Image (New-ImageArgc)

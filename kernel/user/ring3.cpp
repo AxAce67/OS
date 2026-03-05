@@ -16,6 +16,7 @@ constexpr uint64_t kCodePageCount = 1;
 constexpr uint64_t kDefaultStackPages = 1;
 constexpr uint64_t kMaxStackPages = 16;
 constexpr uint64_t kMaxUserImageBytes = 128 * 1024;
+constexpr int kMaxExecArgs = 16;
 
 struct Ring3UserBinHeader {
     uint8_t magic[8];
@@ -72,6 +73,13 @@ uint64_t AlignUp(uint64_t value, uint64_t align) {
     }
     const uint64_t rem = value % align;
     return rem == 0 ? value : (value + (align - rem));
+}
+
+uint64_t AlignDown(uint64_t value, uint64_t align) {
+    if (align == 0) {
+        return value;
+    }
+    return value - (value % align);
 }
 
 void CopyBytes(uint8_t* dst, const uint8_t* src, uint64_t n) {
@@ -190,6 +198,59 @@ bool ValidateUserBinHeader(const Ring3UserBinHeader* h, uint64_t file_size) {
     return true;
 }
 
+bool BuildUserArgBlock(uint64_t stack_base,
+                       uint64_t stack_top,
+                       const char* const* argv,
+                       int argc,
+                       uint64_t* out_rsp,
+                       uint64_t* out_argc,
+                       uint64_t* out_argv_ptr) {
+    if (out_rsp == nullptr || out_argc == nullptr || out_argv_ptr == nullptr) {
+        return false;
+    }
+    if (argc < 0 || argc > kMaxExecArgs) {
+        return false;
+    }
+
+    uint64_t sp = stack_top;
+    uint64_t arg_ptrs[kMaxExecArgs];
+    for (int i = argc - 1; i >= 0; --i) {
+        const char* s = (argv != nullptr && argv[i] != nullptr) ? argv[i] : "";
+        int len = 0;
+        while (s[len] != '\0') {
+            ++len;
+        }
+        const uint64_t need = static_cast<uint64_t>(len + 1);
+        if (sp < stack_base + need) {
+            return false;
+        }
+        sp -= need;
+        uint8_t* dst = reinterpret_cast<uint8_t*>(sp);
+        for (int j = 0; j < len; ++j) {
+            dst[j] = static_cast<uint8_t>(s[j]);
+        }
+        dst[len] = 0;
+        arg_ptrs[i] = sp;
+    }
+
+    sp = AlignDown(sp, 16);
+    const uint64_t ptr_block_size = static_cast<uint64_t>(argc + 1) * sizeof(uint64_t);
+    if (sp < stack_base + ptr_block_size) {
+        return false;
+    }
+    sp -= ptr_block_size;
+    uint64_t* argv_block = reinterpret_cast<uint64_t*>(sp);
+    for (int i = 0; i < argc; ++i) {
+        argv_block[i] = arg_ptrs[i];
+    }
+    argv_block[argc] = 0;
+
+    *out_rsp = AlignDown(sp, 16);
+    *out_argc = static_cast<uint64_t>(argc);
+    *out_argv_ptr = sp;
+    return true;
+}
+
 }  // namespace
 
 bool PrepareRing3Stack(uint64_t pages) {
@@ -253,6 +314,10 @@ int64_t GetLastRing3SyscallReturn() {
 }
 
 bool RunRing3BinaryFromBuffer(const uint8_t* data, uint64_t size) {
+    return RunRing3BinaryFromBufferWithArgs(data, size, nullptr, 0);
+}
+
+bool RunRing3BinaryFromBufferWithArgs(const uint8_t* data, uint64_t size, const char* const* argv, int argc) {
     if (data == nullptr) {
         g_last_ring3_error = "bin.null";
         return false;
@@ -275,8 +340,15 @@ bool RunRing3BinaryFromBuffer(const uint8_t* data, uint64_t size) {
     CopyBytes(dst, data + header->image_offset, header->image_size);
 
     const uint64_t entry = g_state.code_base + header->entry_offset;
-    const uint64_t user_rsp = g_state.stack_top - 16;
-    RunUserModeFunction(entry, user_rsp);
+    uint64_t user_rsp = 0;
+    uint64_t user_argc = 0;
+    uint64_t user_argv_ptr = 0;
+    if (!BuildUserArgBlock(g_state.stack_base, g_state.stack_top, argv, argc,
+                           &user_rsp, &user_argc, &user_argv_ptr)) {
+        g_last_ring3_error = "argv.build";
+        return false;
+    }
+    RunUserModeFunctionWithArgs(entry, user_rsp, user_argc, user_argv_ptr);
     g_last_ring3_syscall_ret = GetLastRing3ExitCode();
     g_last_ring3_error = "ok";
     return true;
