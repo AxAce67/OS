@@ -3189,6 +3189,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             if (g_host_clipboard_ready && g_host_clipboard[0] != '\0') {
                 InsertCStringAtCursor(g_host_clipboard);
                 RenderInputLine();
+                RefreshInputLine();
                 return true;
             }
             const int history_count = command_history.Count();
@@ -3197,6 +3198,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 if (last != nullptr && last[0] != '\0') {
                     InsertCStringAtCursor(last);
                     RenderInputLine();
+                    RefreshInputLine();
                 }
             }
             return true;
