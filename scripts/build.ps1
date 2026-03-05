@@ -304,10 +304,13 @@ if (-Not $hasOvmf) {
 $ovmfPath = (Resolve-Path $ovmf).Path
 Write-Host "Using OVMF: $ovmfPath" -ForegroundColor Cyan
 
+$ovmfPathForQemu = $ovmfPath.Replace('"', '\"')
+$pflashArg = "if=pflash,format=raw,readonly=on,file=`"$ovmfPathForQemu`""
+
 $qemuArgs = @(
     "-m", "512M",
     "-machine", "q35",
-    "-drive", "if=pflash,format=raw,readonly=on,file=$ovmfPath"
+    "-drive", $pflashArg
 )
 if ($UseUsbTablet) {
     $qemuArgs += @("-device", "qemu-xhci,msi=off", "-device", "usb-tablet")
