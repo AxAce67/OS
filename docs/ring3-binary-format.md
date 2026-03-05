@@ -43,6 +43,8 @@ struct Ring3UserBinHeader {
 - `getenvcwd0.r3bin`: syscall `kGetEnv(5)` で `CWD` を取り、先頭1文字のASCIIコードを終了コードで返す
 - `getenvlen.r3bin`: syscall `kGetEnv(5)` で `LAYOUT` の値長を取得し、終了コードで返す（期待: `2`）
 - `getenvbad.r3bin`: 存在しないキー `NOPE` を取得し、`-22 (EINVAL)` を終了コードで返す
+- `setenvok.r3bin`: syscall `kSetEnv(6)` で `TEST=Z` を設定し、戻り値 `0` を終了コードで返す
+- `unsetenvbad.r3bin`: `kSetEnv(6)` で `TEST` を作成後 `kUnsetEnv(7)` で削除し、`kGetEnv(5)` が `-22 (EINVAL)` を返すことを確認する
 
 ## Exit Code Convention (PoC)
 

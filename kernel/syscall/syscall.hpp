@@ -10,6 +10,8 @@ enum class Number : uint64_t {
     kAbiVersion = 3,
     kExitToKernel = 4,
     kGetEnv = 5,
+    kSetEnv = 6,
+    kUnsetEnv = 7,
 };
 
 constexpr int64_t kErrNoSys = -38;

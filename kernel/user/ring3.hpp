@@ -29,6 +29,8 @@ bool RunRing3BinaryFromBufferWithContext(const uint8_t* data, uint64_t size,
                                          const char* const* envp, int envc);
 const char* const* GetCurrentExecEnvp();
 int GetCurrentExecEnvc();
+bool SetCurrentExecEnv(const char* key, const char* value);
+bool UnsetCurrentExecEnv(const char* key);
 int64_t GetLastRing3SyscallReturn();
 const char* GetLastRing3Error();
 

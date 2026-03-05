@@ -13,6 +13,8 @@ volatile int64_t g_last_ring3_syscall_ret = 0;
 const char* g_last_ring3_error = "ok";
 const char* const* g_current_exec_envp = nullptr;
 int g_current_exec_envc = 0;
+char g_current_exec_env_entries[24][128];
+const char* g_current_exec_env_ptrs[24];
 
 constexpr uint64_t kCodePageCount = 1;
 constexpr uint64_t kDefaultStackPages = 1;
@@ -20,6 +22,7 @@ constexpr uint64_t kMaxStackPages = 16;
 constexpr uint64_t kMaxUserImageBytes = 128 * 1024;
 constexpr int kMaxExecArgs = 16;
 constexpr int kMaxExecEnvs = 24;
+constexpr int kMaxExecEnvEntryLen = 128;
 
 struct Ring3UserBinHeader {
     uint8_t magic[8];
@@ -92,6 +95,128 @@ void CopyBytes(uint8_t* dst, const uint8_t* src, uint64_t n) {
     for (uint64_t i = 0; i < n; ++i) {
         dst[i] = src[i];
     }
+}
+
+bool StrEqLocal(const char* a, const char* b) {
+    if (a == nullptr || b == nullptr) {
+        return false;
+    }
+    int i = 0;
+    while (a[i] != '\0' && b[i] != '\0') {
+        if (a[i] != b[i]) {
+            return false;
+        }
+        ++i;
+    }
+    return a[i] == '\0' && b[i] == '\0';
+}
+
+int FindEqPos(const char* s) {
+    if (s == nullptr) {
+        return -1;
+    }
+    for (int i = 0; s[i] != '\0'; ++i) {
+        if (s[i] == '=') {
+            return i;
+        }
+    }
+    return -1;
+}
+
+void CopyStringLocal(char* dst, int dst_len, const char* src) {
+    if (dst == nullptr || dst_len <= 0) {
+        return;
+    }
+    if (src == nullptr) {
+        dst[0] = '\0';
+        return;
+    }
+    int i = 0;
+    while (src[i] != '\0' && i + 1 < dst_len) {
+        dst[i] = src[i];
+        ++i;
+    }
+    dst[i] = '\0';
+}
+
+bool BuildEnvEntry(char* dst, int dst_len, const char* key, const char* value) {
+    if (dst == nullptr || dst_len <= 2 || key == nullptr || value == nullptr) {
+        return false;
+    }
+    int di = 0;
+    for (int i = 0; key[i] != '\0' && di + 1 < dst_len; ++i) {
+        if (key[i] == '=') {
+            return false;
+        }
+        dst[di++] = key[i];
+    }
+    if (di == 0 || di + 1 >= dst_len) {
+        return false;
+    }
+    dst[di++] = '=';
+    for (int i = 0; value[i] != '\0' && di + 1 < dst_len; ++i) {
+        dst[di++] = value[i];
+    }
+    dst[di] = '\0';
+    return true;
+}
+
+bool SplitEnvEntry(const char* entry, char* out_key, int out_key_len, const char** out_value) {
+    if (entry == nullptr || out_key == nullptr || out_key_len <= 1 || out_value == nullptr) {
+        return false;
+    }
+    const int eq = FindEqPos(entry);
+    if (eq <= 0 || eq >= out_key_len) {
+        return false;
+    }
+    for (int i = 0; i < eq; ++i) {
+        out_key[i] = entry[i];
+    }
+    out_key[eq] = '\0';
+    *out_value = entry + eq + 1;
+    return true;
+}
+
+void ClearCurrentExecEnv() {
+    for (int i = 0; i < kMaxExecEnvs; ++i) {
+        g_current_exec_env_entries[i][0] = '\0';
+        g_current_exec_env_ptrs[i] = nullptr;
+    }
+    g_current_exec_envc = 0;
+    g_current_exec_envp = nullptr;
+}
+
+void LoadCurrentExecEnv(const char* const* envp, int envc) {
+    ClearCurrentExecEnv();
+    if (envp == nullptr || envc <= 0) {
+        return;
+    }
+    if (envc > kMaxExecEnvs) {
+        envc = kMaxExecEnvs;
+    }
+    int loaded = 0;
+    for (int i = 0; i < envc; ++i) {
+        const char* src = envp[i];
+        if (src == nullptr || src[0] == '\0') {
+            continue;
+        }
+        int len = 0;
+        while (src[len] != '\0' && len + 1 < kMaxExecEnvEntryLen) {
+            g_current_exec_env_entries[loaded][len] = src[len];
+            ++len;
+        }
+        if (src[len] != '\0') {
+            continue;
+        }
+        g_current_exec_env_entries[loaded][len] = '\0';
+        g_current_exec_env_ptrs[loaded] = g_current_exec_env_entries[loaded];
+        ++loaded;
+        if (loaded >= kMaxExecEnvs) {
+            break;
+        }
+    }
+    g_current_exec_envc = loaded;
+    g_current_exec_envp = g_current_exec_env_ptrs;
 }
 
 bool AllocateRing3Memory(uint64_t code_pages, uint64_t stack_pages) {
@@ -405,11 +530,9 @@ bool RunRing3BinaryFromBufferWithContext(const uint8_t* data, uint64_t size,
         g_last_ring3_error = "argv.build";
         return false;
     }
-    g_current_exec_envp = envp;
-    g_current_exec_envc = envc;
+    LoadCurrentExecEnv(envp, envc);
     RunUserModeFunctionWithArgs(entry, user_rsp, user_argc, user_argv_ptr, user_envp_ptr);
-    g_current_exec_envp = nullptr;
-    g_current_exec_envc = 0;
+    ClearCurrentExecEnv();
     g_last_ring3_syscall_ret = GetLastRing3ExitCode();
     g_last_ring3_error = "ok";
     return true;
@@ -421,6 +544,65 @@ const char* const* GetCurrentExecEnvp() {
 
 int GetCurrentExecEnvc() {
     return g_current_exec_envc;
+}
+
+bool SetCurrentExecEnv(const char* key, const char* value) {
+    if (key == nullptr || value == nullptr) {
+        return false;
+    }
+    char merged[kMaxExecEnvEntryLen];
+    if (!BuildEnvEntry(merged, kMaxExecEnvEntryLen, key, value)) {
+        return false;
+    }
+    for (int i = 0; i < g_current_exec_envc; ++i) {
+        char existing_key[64];
+        const char* existing_value = nullptr;
+        if (!SplitEnvEntry(g_current_exec_env_ptrs[i], existing_key, sizeof(existing_key), &existing_value)) {
+            continue;
+        }
+        (void)existing_value;
+        if (!StrEqLocal(existing_key, key)) {
+            continue;
+        }
+        CopyStringLocal(g_current_exec_env_entries[i], kMaxExecEnvEntryLen, merged);
+        g_current_exec_env_ptrs[i] = g_current_exec_env_entries[i];
+        return true;
+    }
+    if (g_current_exec_envc >= kMaxExecEnvs) {
+        return false;
+    }
+    CopyStringLocal(g_current_exec_env_entries[g_current_exec_envc], kMaxExecEnvEntryLen, merged);
+    g_current_exec_env_ptrs[g_current_exec_envc] = g_current_exec_env_entries[g_current_exec_envc];
+    ++g_current_exec_envc;
+    g_current_exec_envp = g_current_exec_env_ptrs;
+    return true;
+}
+
+bool UnsetCurrentExecEnv(const char* key) {
+    if (key == nullptr || key[0] == '\0') {
+        return false;
+    }
+    for (int i = 0; i < g_current_exec_envc; ++i) {
+        char existing_key[64];
+        const char* existing_value = nullptr;
+        if (!SplitEnvEntry(g_current_exec_env_ptrs[i], existing_key, sizeof(existing_key), &existing_value)) {
+            continue;
+        }
+        (void)existing_value;
+        if (!StrEqLocal(existing_key, key)) {
+            continue;
+        }
+        for (int j = i; j + 1 < g_current_exec_envc; ++j) {
+            CopyStringLocal(g_current_exec_env_entries[j], kMaxExecEnvEntryLen, g_current_exec_env_entries[j + 1]);
+            g_current_exec_env_ptrs[j] = g_current_exec_env_entries[j];
+        }
+        --g_current_exec_envc;
+        g_current_exec_env_entries[g_current_exec_envc][0] = '\0';
+        g_current_exec_env_ptrs[g_current_exec_envc] = nullptr;
+        g_current_exec_envp = g_current_exec_env_ptrs;
+        return true;
+    }
+    return false;
 }
 
 const char* GetLastRing3Error() {

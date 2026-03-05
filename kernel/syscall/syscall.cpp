@@ -12,6 +12,7 @@ namespace {
 constexpr uint64_t kAbiVersion = 1;
 constexpr uint64_t kMaxWriteLen = 512;
 constexpr uint64_t kMaxEnvKeyLen = 64;
+constexpr uint64_t kMaxEnvValueLen = 96;
 constexpr uint64_t kMinUserAddress = 0x1000ULL;
 constexpr uint64_t kUserUpperExclusive = 0x0000800000000000ULL;
 
@@ -171,6 +172,73 @@ int64_t HandleGetEnv(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3,
     return kErrInvalid;
 }
 
+int64_t HandleSetEnv(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, bool from_user) {
+    if (arg0 == 0) {
+        return kErrFault;
+    }
+    const uint64_t key_len = arg1;
+    const uint64_t value_len = arg3;
+    if (key_len == 0 || key_len > kMaxEnvKeyLen || value_len > kMaxEnvValueLen) {
+        return kErrInvalid;
+    }
+    if (!ValidateReadRange(arg0, key_len, from_user)) {
+        return kErrFault;
+    }
+    if (value_len > 0) {
+        if (arg2 == 0 || !ValidateReadRange(arg2, value_len, from_user)) {
+            return kErrFault;
+        }
+    }
+
+    char key[kMaxEnvKeyLen + 1];
+    const char* src_key = reinterpret_cast<const char*>(arg0);
+    for (uint64_t i = 0; i < key_len; ++i) {
+        if (src_key[i] == '=' || src_key[i] == '\0') {
+            return kErrInvalid;
+        }
+        key[i] = src_key[i];
+    }
+    key[key_len] = '\0';
+
+    char value[kMaxEnvValueLen + 1];
+    if (value_len > 0) {
+        const char* src_value = reinterpret_cast<const char*>(arg2);
+        for (uint64_t i = 0; i < value_len; ++i) {
+            if (src_value[i] == '\0') {
+                return kErrInvalid;
+            }
+            value[i] = src_value[i];
+        }
+    }
+    value[value_len] = '\0';
+
+    return usermode::SetCurrentExecEnv(key, value) ? 0 : kErrInvalid;
+}
+
+int64_t HandleUnsetEnv(uint64_t arg0, uint64_t arg1, bool from_user) {
+    if (arg0 == 0) {
+        return kErrFault;
+    }
+    const uint64_t key_len = arg1;
+    if (key_len == 0 || key_len > kMaxEnvKeyLen) {
+        return kErrInvalid;
+    }
+    if (!ValidateReadRange(arg0, key_len, from_user)) {
+        return kErrFault;
+    }
+
+    char key[kMaxEnvKeyLen + 1];
+    const char* src_key = reinterpret_cast<const char*>(arg0);
+    for (uint64_t i = 0; i < key_len; ++i) {
+        if (src_key[i] == '=' || src_key[i] == '\0') {
+            return kErrInvalid;
+        }
+        key[i] = src_key[i];
+    }
+    key[key_len] = '\0';
+    return usermode::UnsetCurrentExecEnv(key) ? 0 : kErrInvalid;
+}
+
 }  // namespace
 
 int64_t Dispatch(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3) {
@@ -189,6 +257,10 @@ int64_t DispatchFromTrap(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t
             return 0;
         case Number::kGetEnv:
             return HandleGetEnv(arg0, arg1, arg2, arg3, from_user);
+        case Number::kSetEnv:
+            return HandleSetEnv(arg0, arg1, arg2, arg3, from_user);
+        case Number::kUnsetEnv:
+            return HandleUnsetEnv(arg0, arg1, from_user);
         default:
             return kErrNoSys;
     }
