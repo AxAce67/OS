@@ -681,6 +681,8 @@ int g_ime_user_candidate_count = 0;
 ImeCandidateLearnEntry g_ime_learn_entries[64];
 char g_host_clipboard[128];
 bool g_host_clipboard_ready = false;
+char g_serial_clip_line[192];
+int g_serial_clip_line_len = 0;
 char ToLowerAscii(char c);
 const BootFileEntry* FindBootFileByName(const char* name);
 void ToLowerAsciiString(const char* src, char* dst, int dst_len);
@@ -989,6 +991,70 @@ int LoadHostClipboardFromBootFS(char* out, int out_len) {
     }
     out[w] = '\0';
     return w;
+}
+
+constexpr uint16_t kCom1Base = 0x3F8;
+
+void InitHostClipSerialCom1() {
+    Out8(kCom1Base + 1, 0x00); // Disable interrupts
+    Out8(kCom1Base + 3, 0x80); // DLAB
+    Out8(kCom1Base + 0, 0x01); // 115200 divisor low
+    Out8(kCom1Base + 1, 0x00); // divisor high
+    Out8(kCom1Base + 3, 0x03); // 8N1
+    Out8(kCom1Base + 2, 0xC7); // FIFO
+    Out8(kCom1Base + 4, 0x0B); // IRQ enable + RTS/DSR
+}
+
+bool Com1HasByte() {
+    return (In8(kCom1Base + 5) & 0x01) != 0;
+}
+
+void ApplyHostClipLine(const char* line) {
+    if (line == nullptr) {
+        return;
+    }
+    const char prefix[] = "CLIP:";
+    int p = 0;
+    while (prefix[p] != '\0') {
+        if (line[p] != prefix[p]) {
+            return;
+        }
+        ++p;
+    }
+    int w = 0;
+    while (line[p] != '\0' && w + 1 < static_cast<int>(sizeof(g_host_clipboard))) {
+        const char c = line[p++];
+        if (c >= 32 && c <= 126) {
+            g_host_clipboard[w++] = c;
+        }
+    }
+    while (w > 0 && g_host_clipboard[w - 1] == ' ') {
+        --w;
+    }
+    g_host_clipboard[w] = '\0';
+    g_host_clipboard_ready = (w > 0);
+}
+
+void PollHostClipSerialCom1() {
+    int guard = 0;
+    while (Com1HasByte() && guard < 256) {
+        ++guard;
+        const char c = static_cast<char>(In8(kCom1Base));
+        if (c == '\r') {
+            continue;
+        }
+        if (c == '\n') {
+            g_serial_clip_line[g_serial_clip_line_len] = '\0';
+            ApplyHostClipLine(g_serial_clip_line);
+            g_serial_clip_line_len = 0;
+            continue;
+        }
+        if (g_serial_clip_line_len + 1 < static_cast<int>(sizeof(g_serial_clip_line))) {
+            g_serial_clip_line[g_serial_clip_line_len++] = c;
+        } else {
+            g_serial_clip_line_len = 0;
+        }
+    }
 }
 
 char ToLowerAscii(char c);
@@ -2385,6 +2451,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     const int loaded_ime_learn = LoadImeLearningFromBootFS();
     const int loaded_host_clip = LoadHostClipboardFromBootFS(g_host_clipboard, static_cast<int>(sizeof(g_host_clipboard)));
     g_host_clipboard_ready = loaded_host_clip > 0;
+    g_serial_clip_line_len = 0;
+    InitHostClipSerialCom1();
 
     console->Print("Waiting for hardware interrupts (Keyboard/Mouse/LAPIC Timer)...\n");
     console->Print("Input mode: layout=");
@@ -3443,6 +3511,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         __asm__ volatile("cli");
         if (event_queue::Count(main_queue) == 0) {
             __asm__ volatile("sti");
+            PollHostClipSerialCom1();
             if (HandleXHCIAutoPollOnIdle()) {
                 return false;
             }
@@ -3476,6 +3545,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             continue;
         }
         DispatchMessage(msg);
+        PollHostClipSerialCom1();
         ProcessCompositorUpdates();
     }
 }

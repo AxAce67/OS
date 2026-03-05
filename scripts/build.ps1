@@ -5,7 +5,8 @@ param(
     [switch]$UseWhpx,
     [switch]$UseUsbTablet,
     [switch]$StrictDisk,
-    [switch]$Smoke
+    [switch]$Smoke,
+    [switch]$NoClipBridge
 )
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -382,6 +383,9 @@ if ($UseUsbTablet) {
     $qemuArgs += @("-device", "qemu-xhci,msi=off", "-device", "usb-tablet")
 }
 $qemuArgs += @("-drive", "format=raw,file=fat:rw:disk")
+if (-not $NoClipBridge) {
+    $qemuArgs += @("-serial", "tcp:127.0.0.1:4545,server=on,wait=off")
+}
 
 if ($Smoke) {
     $smokeLogName = "qemu-smoke.log"
@@ -453,4 +457,34 @@ if ($Smoke) {
     exit 1
 }
 
-& $qemuPath @qemuArgs
+$bridgeProc = $null
+if (-not $NoClipBridge) {
+    $bridgeScript = Join-Path $projectRoot "tools\clip_bridge.ps1"
+    if (Test-Path $bridgeScript) {
+        try {
+            $bridgeProc = Start-Process -FilePath "powershell.exe" `
+                                       -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $bridgeScript, "-Host", "127.0.0.1", "-Port", "4545") `
+                                       -WorkingDirectory $projectRoot `
+                                       -PassThru
+            Write-Host "Clipboard bridge started (COM1 tcp:4545)." -ForegroundColor DarkCyan
+        }
+        catch {
+            Write-Host "Warning: failed to start clipboard bridge. continuing without realtime host clipboard." -ForegroundColor Yellow
+            $bridgeProc = $null
+        }
+    }
+}
+
+$qemuProc = $null
+try {
+    $qemuProc = Start-Process -FilePath $qemuPath `
+                              -ArgumentList $qemuArgs `
+                              -WorkingDirectory $projectRoot `
+                              -PassThru
+    Wait-Process -Id $qemuProc.Id
+}
+finally {
+    if ($bridgeProc -ne $null -and -not $bridgeProc.HasExited) {
+        Stop-Process -Id $bridgeProc.Id -Force -ErrorAction SilentlyContinue
+    }
+}
