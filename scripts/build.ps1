@@ -3,7 +3,8 @@
 param(
     [switch]$NoRun,
     [switch]$UseWhpx,
-    [switch]$UseUsbTablet
+    [switch]$UseUsbTablet,
+    [switch]$StrictDisk
 )
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -188,6 +189,10 @@ if (Test-Path "disk") {
         Remove-Item -Recurse -Force "disk" -ErrorAction Stop
     }
     catch {
+        if ($StrictDisk) {
+            Write-Host "Error: failed to clean disk/ (file lock). aborting because -StrictDisk is enabled." -ForegroundColor Red
+            exit 1
+        }
         Write-Host "Warning: failed to clean disk/ (file lock). continuing with existing directory." -ForegroundColor Yellow
     }
 }
