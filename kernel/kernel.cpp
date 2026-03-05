@@ -84,6 +84,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "input/key_handler_exec.hpp"
 #include "input/runtime_input_flow.hpp"
 #include "input/input_runtime_bridge.hpp"
+#include "input/runtime_input_dispatch.hpp"
 #include "input/key_flow.hpp"
 #include "input/line_editor.hpp"
 #include "input/line_ops.hpp"
@@ -2927,15 +2928,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                     const input::RuntimeMouseWindowGeometry& geometry,
                                     const input::RuntimeConsoleGridMetrics& console_metrics,
                                     const input::RuntimeMouseConsoleSelectionRefs& mouse_selection_refs) {
-        input::HandleMouseMessageRuntime(
-            msg,
-            CurrentTick(),
-            active_window,
-            mouse_context,
-            geometry,
-            console_metrics,
-            mouse_selection_refs,
-            input::HasSelection(selection_anchor, selection_end),
+        auto callbacks = input::dispatch::MouseCallbacksRefT(
             ApplyWindowFocus,
             ClearSelection,
             EnsureLiveConsole,
@@ -2944,6 +2937,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             ScrollConsoleUp,
             ScrollConsoleDown,
             RefreshConsole);
+        input::dispatch::HandleMouseRuntimeWithCallbacks(
+            msg,
+            CurrentTick(),
+            active_window,
+            mouse_context,
+            geometry,
+            console_metrics,
+            mouse_selection_refs,
+            input::HasSelection(selection_anchor, selection_end),
+            callbacks);
     };
 
     auto HandleMouseMessage = [&](const Message& msg) {
@@ -3210,9 +3213,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             const input::RuntimeKeyboardMessageContextT<ImeCandidateEntry>& keyboard_context,
             const input::RuntimeEnterCommandRefs& enter_refs,
             const input::RuntimeCommandInputStateRefs& reset_refs) {
-            input::HandleKeyboardMessageRuntime(
-                keycode,
-                keyboard_context,
+            auto on_enter = [&]() { ProcessEnterKey(enter_refs, reset_refs); };
+            auto callbacks = input::dispatch::KeyboardCallbacksRefT(
                 HandleExtendedKey,
                 HandleRegularKeyShortcut,
                 KeycodeToAsciiByLayout,
@@ -3232,9 +3234,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 DeleteSelection,
                 StartImeCandidateSessionForEntry,
                 IsPrintableAscii,
-                [&]() { ProcessEnterKey(enter_refs, reset_refs); },
+                on_enter,
                 ProcessPrintableInputByte,
                 RefreshConsole);
+            input::dispatch::HandleKeyboardRuntimeWithCallbacks<ImeCandidateEntry>(
+                keycode,
+                keyboard_context,
+                callbacks);
         };
     auto HandleKeyboardMessage = [&](const Message& msg) {
         input::RuntimeEnterCommandRefs enter_refs{};
