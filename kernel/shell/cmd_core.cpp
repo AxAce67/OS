@@ -225,6 +225,91 @@ void RemoveExecEnvByKey(char out[][128], const char** out_ptrs, int* io_count, c
         *io_count = count - 1;
     }
 }
+
+void TrimAsciiSpaces(char* s) {
+    if (s == nullptr) {
+        return;
+    }
+    int len = StrLength(s);
+    int begin = 0;
+    while (begin < len && (s[begin] == ' ' || s[begin] == '\t')) {
+        ++begin;
+    }
+    int end = len;
+    while (end > begin && (s[end - 1] == ' ' || s[end - 1] == '\t')) {
+        --end;
+    }
+    if (begin == 0 && end == len) {
+        return;
+    }
+    int w = 0;
+    for (int i = begin; i < end; ++i) {
+        s[w++] = s[i];
+    }
+    s[w] = '\0';
+}
+
+bool ParseEnvFileBuffer(const uint8_t* data, uint64_t size,
+                        char out_keys[][32], char out_values[][96],
+                        int max_count, int* io_count) {
+    if (data == nullptr || out_keys == nullptr || out_values == nullptr || io_count == nullptr) {
+        return false;
+    }
+    char line[160];
+    int line_len = 0;
+    for (uint64_t i = 0; i <= size; ++i) {
+        const char c = (i < size) ? static_cast<char>(data[i]) : '\n';
+        if (c == '\r') {
+            continue;
+        }
+        if (c != '\n') {
+            if (line_len + 1 < static_cast<int>(sizeof(line))) {
+                line[line_len++] = c;
+            }
+            continue;
+        }
+        line[line_len] = '\0';
+        line_len = 0;
+        TrimAsciiSpaces(line);
+        if (line[0] == '\0' || line[0] == '#') {
+            continue;
+        }
+        int eq = -1;
+        for (int k = 0; line[k] != '\0'; ++k) {
+            if (line[k] == '=') {
+                eq = k;
+                break;
+            }
+        }
+        if (eq <= 0) {
+            continue;
+        }
+        if (*io_count >= max_count) {
+            return false;
+        }
+        char key[32];
+        char value[96];
+        int kw = 0;
+        for (int k = 0; k < eq && kw + 1 < static_cast<int>(sizeof(key)); ++k) {
+            key[kw++] = line[k];
+        }
+        key[kw] = '\0';
+        int vw = 0;
+        for (int k = eq + 1; line[k] != '\0' && vw + 1 < static_cast<int>(sizeof(value)); ++k) {
+            value[vw++] = line[k];
+        }
+        value[vw] = '\0';
+        TrimAsciiSpaces(key);
+        TrimAsciiSpaces(value);
+        if (key[0] == '\0') {
+            continue;
+        }
+        CopyString(out_keys[*io_count], key, 32);
+        CopyString(out_values[*io_count], value, 96);
+        ++(*io_count);
+    }
+    return true;
+}
 }  // namespace
 
 bool ExecuteHelpCommand() {
@@ -977,6 +1062,9 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
     char env_opt_keys[kExecMaxEnv][32];
     char env_opt_values[kExecMaxEnv][96];
     int env_opt_count = 0;
+    char env_file_keys[kExecMaxEnv][32];
+    char env_file_values[kExecMaxEnv][96];
+    int env_file_count = 0;
     char unset_env_keys[kExecMaxEnv][32];
     int unset_env_count = 0;
 
@@ -1017,6 +1105,39 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
             ++unset_env_count;
             continue;
         }
+        if (StrEqual(tok, "--env-file")) {
+            char env_file_path[96];
+            if (!NextToken(command, &pos, env_file_path, sizeof(env_file_path))) {
+                console->PrintLine("exec: --env-file requires path");
+                return true;
+            }
+            const ShellFile* user_file = FindShellFileByPath(g_cwd, env_file_path);
+            const BootFileEntry* boot_file = nullptr;
+            if (user_file == nullptr) {
+                boot_file = FindBootFileByPath(g_cwd, env_file_path);
+            }
+            if (user_file == nullptr && boot_file == nullptr) {
+                console->Print("exec: --env-file not found: ");
+                console->PrintLine(env_file_path);
+                return true;
+            }
+            const uint8_t* src_data = nullptr;
+            uint64_t src_size = 0;
+            if (user_file != nullptr) {
+                src_data = user_file->data;
+                src_size = user_file->size;
+            } else {
+                src_data = boot_file->data;
+                src_size = boot_file->size;
+            }
+            if (!ParseEnvFileBuffer(src_data, src_size,
+                                    env_file_keys, env_file_values,
+                                    kExecMaxEnv, &env_file_count)) {
+                console->PrintLine("exec: --env-file too many entries");
+                return true;
+            }
+            continue;
+        }
         if (path[0] == '\0') {
             CopyString(path, tok, sizeof(path));
             continue;
@@ -1031,7 +1152,7 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
     }
     if (path[0] == '\0') {
         console->PrintLine("exec: path required");
-        console->PrintLine("usage: exec [--unsetenv KEY ...] [--env KEY=VALUE ...] <bootfs-path> [args...]");
+        console->PrintLine("usage: exec [--unsetenv KEY ...] [--env-file PATH ...] [--env KEY=VALUE ...] <bootfs-path> [args...]");
         return true;
     }
 
@@ -1055,6 +1176,12 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
     }
     for (int i = 0; i < unset_env_count; ++i) {
         RemoveExecEnvByKey(envs, env_ptrs, &envc, unset_env_keys[i]);
+    }
+    for (int i = 0; i < env_file_count; ++i) {
+        if (!UpsertExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, env_file_keys[i], env_file_values[i])) {
+            console->PrintLine("exec: env full (some --env-file entries dropped)");
+            break;
+        }
     }
     for (int i = 0; i < env_opt_count; ++i) {
         if (!UpsertExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, env_opt_keys[i], env_opt_values[i])) {
