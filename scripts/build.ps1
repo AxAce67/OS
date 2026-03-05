@@ -29,50 +29,35 @@ function New-Ring3SampleBinary {
     $msgText = "[ring3-file] hello from runfile`n"
     $msgBytes = [System.Text.Encoding]::ASCII.GetBytes($msgText)
     $msgLen = [uint64]$msgBytes.Length
+    $imgPart1 = [byte[]](0x48,0xB8,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00) # mov rax,1
+    $imgPart2 = [byte[]](0x48,0x8D,0x3D,0x2C,0x00,0x00,0x00)                 # lea rdi,[rip+44]
+    $imgPart3 = [byte[]](0x48,0xBE)                                           # mov rsi,imm64
+    $imgPart4 = [System.BitConverter]::GetBytes($msgLen)
+    $imgPart5 = [byte[]](0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80)           # xor/xor/int80
+    $imgPart6 = [byte[]](0x48,0xB8,0x04,0x00,0x00,0x00,0x00,0x00,0x00,0x00) # mov rax,4
+    $imgPart7 = [byte[]](0x48,0x31,0xFF,0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE)
 
-    # 互換性のため BinaryWriter でバイト列を構築する
-    $imgMs = New-Object System.IO.MemoryStream
-    $imgBw = New-Object System.IO.BinaryWriter -ArgumentList $imgMs
-    try {
-        # mov rax, 1 (write)
-        $imgBw.Write([byte[]](0x48,0xB8,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00))
-        # lea rdi, [rip + disp32]  (message at offset 61, next ip after lea is 17 => disp=44)
-        $imgBw.Write([byte[]](0x48,0x8D,0x3D,0x2C,0x00,0x00,0x00))
-        # mov rsi, msg_len
-        $imgBw.Write([byte[]](0x48,0xBE))
-        $imgBw.Write([System.BitConverter]::GetBytes($msgLen))
-        # xor rdx,rdx ; xor rcx,rcx ; int 0x80
-        $imgBw.Write([byte[]](0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80))
-        # mov rax, 4 (exit-to-kernel)
-        $imgBw.Write([byte[]](0x48,0xB8,0x04,0x00,0x00,0x00,0x00,0x00,0x00,0x00))
-        # xor rdi,rdi ; xor rsi,rsi ; xor rdx,rdx ; xor rcx,rcx ; int 0x80 ; jmp $
-        $imgBw.Write([byte[]](0x48,0x31,0xFF,0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE))
-        $imgBw.Write($msgBytes)
-        $imgBw.Flush()
-        $imageBytes = $imgMs.ToArray()
-    }
-    finally {
-        $imgBw.Dispose()
-        $imgMs.Dispose()
-    }
+    $imageLen = $imgPart1.Length + $imgPart2.Length + $imgPart3.Length + $imgPart4.Length + $imgPart5.Length + $imgPart6.Length + $imgPart7.Length + $msgBytes.Length
+    $imageBytes = New-Object byte[] $imageLen
+    $off = 0
+    [Array]::Copy($imgPart1, 0, $imageBytes, $off, $imgPart1.Length); $off += $imgPart1.Length
+    [Array]::Copy($imgPart2, 0, $imageBytes, $off, $imgPart2.Length); $off += $imgPart2.Length
+    [Array]::Copy($imgPart3, 0, $imageBytes, $off, $imgPart3.Length); $off += $imgPart3.Length
+    [Array]::Copy($imgPart4, 0, $imageBytes, $off, $imgPart4.Length); $off += $imgPart4.Length
+    [Array]::Copy($imgPart5, 0, $imageBytes, $off, $imgPart5.Length); $off += $imgPart5.Length
+    [Array]::Copy($imgPart6, 0, $imageBytes, $off, $imgPart6.Length); $off += $imgPart6.Length
+    [Array]::Copy($imgPart7, 0, $imageBytes, $off, $imgPart7.Length); $off += $imgPart7.Length
+    [Array]::Copy($msgBytes, 0, $imageBytes, $off, $msgBytes.Length)
 
-    $hdrMs = New-Object System.IO.MemoryStream
-    $hdrBw = New-Object System.IO.BinaryWriter -ArgumentList $hdrMs
-    try {
-        $hdrBw.Write([System.Text.Encoding]::ASCII.GetBytes("R3BIN01"))
-        $hdrBw.Write([byte]0x00)
-        $hdrBw.Write([uint32]1)  # version
-        $hdrBw.Write([uint32]0)  # entry_offset
-        $hdrBw.Write([uint32]28) # image_offset
-        $hdrBw.Write([uint32]$imageBytes.Length)
-        $hdrBw.Write([uint32]1)  # stack_pages
-        $hdrBw.Flush()
-        $headerBytes = $hdrMs.ToArray()
-    }
-    finally {
-        $hdrBw.Dispose()
-        $hdrMs.Dispose()
-    }
+    $headerBytes = New-Object byte[] 28
+    $magic = [System.Text.Encoding]::ASCII.GetBytes("R3BIN01")
+    [Array]::Copy($magic, 0, $headerBytes, 0, $magic.Length)
+    $headerBytes[7] = 0
+    [Array]::Copy([System.BitConverter]::GetBytes([uint32]1), 0, $headerBytes, 8, 4)   # version
+    [Array]::Copy([System.BitConverter]::GetBytes([uint32]0), 0, $headerBytes, 12, 4)  # entry_offset
+    [Array]::Copy([System.BitConverter]::GetBytes([uint32]28), 0, $headerBytes, 16, 4) # image_offset
+    [Array]::Copy([System.BitConverter]::GetBytes([uint32]$imageBytes.Length), 0, $headerBytes, 20, 4)
+    [Array]::Copy([System.BitConverter]::GetBytes([uint32]1), 0, $headerBytes, 24, 4)  # stack_pages
 
     $outDir = Split-Path -Parent $OutputPath
     if (-not [string]::IsNullOrWhiteSpace($outDir) -and -not (Test-Path $outDir)) {
