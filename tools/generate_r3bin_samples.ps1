@@ -179,6 +179,36 @@ function New-ImageGetenvCwd0 {
     )
 }
 
+function New-ImageGetenvLen {
+    return [byte[]](
+        0x48,0xB8,0x05,0,0,0,0,0,0,0,          # mov rax,5 (getenv)
+        0x48,0x8D,0x3D,0x2C,0,0,0,             # lea rdi,[rip+0x2C] -> "LAYOUT"
+        0x48,0xBE,0x06,0,0,0,0,0,0,0,          # mov rsi,6
+        0x48,0x31,0xD2,                          # xor rdx,rdx
+        0x48,0x31,0xC9,                          # xor rcx,rcx
+        0xCD,0x80,                               # int 0x80
+        0x48,0x89,0xC7,                          # mov rdi,rax
+        0x48,0xB8,0x04,0,0,0,0,0,0,0,          # mov rax,4
+        0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE,
+        0x4C,0x41,0x59,0x4F,0x55,0x54           # "LAYOUT"
+    )
+}
+
+function New-ImageGetenvBad {
+    return [byte[]](
+        0x48,0xB8,0x05,0,0,0,0,0,0,0,          # mov rax,5 (getenv)
+        0x48,0x8D,0x3D,0x2C,0,0,0,             # lea rdi,[rip+0x2C] -> "NOPE"
+        0x48,0xBE,0x04,0,0,0,0,0,0,0,          # mov rsi,4
+        0x48,0x31,0xD2,                          # xor rdx,rdx
+        0x48,0x31,0xC9,                          # xor rcx,rcx
+        0xCD,0x80,                               # int 0x80
+        0x48,0x89,0xC7,                          # mov rdi,rax
+        0x48,0xB8,0x04,0,0,0,0,0,0,0,          # mov rax,4
+        0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE,
+        0x4E,0x4F,0x50,0x45                     # "NOPE"
+    )
+}
+
 [System.IO.Directory]::CreateDirectory($OutputDir) | Out-Null
 New-R3BinFile -Path (Join-Path $OutputDir "hello.r3bin") -Image (New-ImageHello)
 New-R3BinFile -Path (Join-Path $OutputDir "fault.r3bin") -Image (New-ImageFault)
@@ -190,3 +220,5 @@ New-R3BinFile -Path (Join-Path $OutputDir "env0head.r3bin") -Image (New-ImageEnv
 New-R3BinFile -Path (Join-Path $OutputDir "env1head.r3bin") -Image (New-ImageEnv1Head)
 New-R3BinFile -Path (Join-Path $OutputDir "env2head.r3bin") -Image (New-ImageEnv2Head)
 New-R3BinFile -Path (Join-Path $OutputDir "getenvcwd0.r3bin") -Image (New-ImageGetenvCwd0)
+New-R3BinFile -Path (Join-Path $OutputDir "getenvlen.r3bin") -Image (New-ImageGetenvLen)
+New-R3BinFile -Path (Join-Path $OutputDir "getenvbad.r3bin") -Image (New-ImageGetenvBad)
