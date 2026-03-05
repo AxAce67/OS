@@ -38,3 +38,13 @@ jobs:
         shell: pwsh
         run: .\scripts\build.ps1 -Smoke -StrictDisk
 
+      - name: Upload Smoke Logs On Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-smoke-logs
+          path: |
+            qemu-smoke.log
+            qemu-smoke.stdout.log
+            qemu-smoke.stderr.log
+          if-no-files-found: warn
