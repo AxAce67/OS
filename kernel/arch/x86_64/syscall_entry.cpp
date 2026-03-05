@@ -28,8 +28,8 @@ struct SyscallTrapFrame {
 extern "C" volatile uint64_t g_ring3_saved_rsp = 0;
 extern "C" volatile uint64_t g_ring3_resume_rip = 0;
 extern "C" volatile uint8_t g_ring3_active = 0;
+extern "C" volatile uint8_t g_ring3_return_requested = 0;
 
-constexpr uint16_t kKernelCodeSelector = 0x08;
 constexpr uint16_t kUserCodeSelector = 0x23;
 constexpr uint16_t kUserDataSelector = 0x1B;
 
@@ -46,9 +46,7 @@ extern "C" void HandleSyscallTrap(SyscallTrapFrame* frame) {
         number == static_cast<uint64_t>(syscall::Number::kExitToKernel) &&
         g_ring3_active != 0 &&
         g_ring3_resume_rip != 0) {
-        frame->rip = g_ring3_resume_rip;
-        frame->cs = kKernelCodeSelector;
-        frame->rflags |= (1ULL << 9);
+        g_ring3_return_requested = 1;
     }
     frame->rax = static_cast<uint64_t>(ret);
 }
@@ -75,6 +73,14 @@ extern "C" __attribute__((naked)) void IntHandlerSyscallEntry() {
         "movq %rsp, %rdi\n"
         "cld\n"
         "callq HandleSyscallTrap\n"
+        "cmpb $0, g_ring3_return_requested(%rip)\n"
+        "je 1f\n"
+        "movb $0, g_ring3_return_requested(%rip)\n"
+        "movb $0, g_ring3_active(%rip)\n"
+        "movq g_ring3_saved_rsp(%rip), %rsp\n"
+        "movq g_ring3_resume_rip(%rip), %rax\n"
+        "jmp *%rax\n"
+        "1:\n"
         "popq %r15\n"
         "popq %r14\n"
         "popq %r13\n"
