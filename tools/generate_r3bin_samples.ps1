@@ -87,10 +87,10 @@ function New-ImageArgc {
 function New-ImageArgv0Head {
     return [byte[]](
         0x48,0x85,0xFF,                          # test rdi,rdi
-        0x74,0x11,                               # je +0x11 (to zero path)
+        0x74,0x0D,                               # je +0x0D (to zero path)
         0x48,0x8B,0x06,                          # mov rax,[rsi]      ; argv[0]
         0x48,0x85,0xC0,                          # test rax,rax
-        0x74,0x09,                               # je +0x09
+        0x74,0x05,                               # je +0x05
         0x0F,0xB6,0x38,                          # movzx edi,byte [rax]
         0xEB,0x03,                               # jmp +0x03
         0x48,0x31,0xFF,                          # xor rdi,rdi
