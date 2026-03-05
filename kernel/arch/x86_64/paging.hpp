@@ -13,3 +13,5 @@ inline void SetCR3(uint64_t cr3) {
 
 // ページングを初期化し、OS専用のページテーブルを構築・適用する
 void InitializePaging();
+void PrepareUserModeMappings();
+bool AreUserModeMappingsReady();

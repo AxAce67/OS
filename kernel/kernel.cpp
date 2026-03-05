@@ -2136,6 +2136,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     // 割り込みハンドラへのアドレス解決がOSのページテーブル経由で正しく行われるようにする
     extern InterruptDescriptor idt[256];
     InitializePaging();
+    PrepareUserModeMappings();
     LoadIDT(sizeof(idt) - 1, reinterpret_cast<uint64_t>(&idt[0]));
 
     // 2. GUI描画を総括する LayerManager の初期化

@@ -4,6 +4,7 @@
 #include "timer.hpp"
 #include "arch/x86_64/interrupt_handler.hpp"
 #include "arch/x86_64/interrupt.hpp"
+#include "arch/x86_64/paging.hpp"
 #include "boot_info.h"
 #include "shell/context.hpp"
 #include "shell/text.hpp"
@@ -519,6 +520,8 @@ bool ExecuteRing3Command(const char* rest) {
     console->Print("ring3.tss.rsp0=0x");
     console->PrintHex(GetKernelTSSStack(), 16);
     console->Print("\n");
+    console->Print("ring3.paging.user=");
+    console->PrintLine(AreUserModeMappingsReady() ? "ready" : "not-ready");
     console->PrintLine("ring3.next=user hello stub (WIP)");
     return true;
 }

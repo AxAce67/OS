@@ -15,6 +15,8 @@ __attribute__((aligned(4096))) uint64_t page_directory[kPageDirectoryCount][512]
 __attribute__((aligned(4096))) uint64_t pdp_table_high[512];
 __attribute__((aligned(4096))) uint64_t page_directory_high_mmio[512];
 
+bool g_user_mode_mappings_ready = false;
+
 void InitializePaging() {
     // 1. PML4(第4層)の先頭の1エントリを、PDP(第3層)へ向ける
     // [設定値の意味] bit0: Present(有効), bit1: Read/Write(読み書き可)
@@ -52,4 +54,31 @@ void InitializePaging() {
     // ※ 現在はUEFIが構築した恒等マッピング上にあるため、仮想アドレス＝物理アドレスになっている。
     // ※ したがって、アドレスをそのままCR3に書き込んでも大丈夫。
     SetCR3(reinterpret_cast<uint64_t>(&pml4_table[0]));
+}
+
+void PrepareUserModeMappings() {
+    // ring3 PoC向けに、現在使っている恒等マップへ User/Supervisor ビットを付与する。
+    // 本来はユーザー空間専用ページだけに付与すべきなので、後段で分離する。
+    pml4_table[0] |= 0x004;
+    pml4_table[1] |= 0x004;
+
+    for (size_t i = 0; i < kPageDirectoryCount; ++i) {
+        pdp_table[i] |= 0x004;
+        for (size_t j = 0; j < 512; ++j) {
+            page_directory[i][j] |= 0x004;
+        }
+    }
+
+    pdp_table_high[256] |= 0x004;
+    for (size_t j = 0; j < 512; ++j) {
+        page_directory_high_mmio[j] |= 0x004;
+    }
+
+    // TLBを明示更新
+    SetCR3(reinterpret_cast<uint64_t>(&pml4_table[0]));
+    g_user_mode_mappings_ready = true;
+}
+
+bool AreUserModeMappingsReady() {
+    return g_user_mode_mappings_ready;
 }
