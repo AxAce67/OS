@@ -3140,6 +3140,31 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
 
     auto HandleRegularKeyShortcut = [&](uint8_t key) {
+        if (IsCtrlPressed(keyboard_mods) && key == 0x2F) { // Ctrl+V
+            EnsureLiveConsole();
+            if (ime_candidate_active) {
+                CommitImeCandidateLearning();
+                ClearImeCandidate();
+            }
+            if (g_ime_enabled && ime_romaji_len > 0) {
+                FlushImeRomaji(true);
+            }
+            if (input::HasSelection(selection_anchor, selection_end)) {
+                DeleteSelection();
+            }
+            const int history_count = command_history.Count();
+            if (history_count <= 0) {
+                return true;
+            }
+            const char* last = command_history.Entry(history_count - 1);
+            if (last == nullptr || last[0] == '\0') {
+                return true;
+            }
+            InsertCStringAtCursor(last);
+            RenderInputLine();
+            return true;
+        }
+
         input::RegularExecPlan exec_plan{};
         RuntimeExecInputRefs refs{};
         BuildRegularExecRefs(&refs);
