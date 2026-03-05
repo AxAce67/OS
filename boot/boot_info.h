@@ -18,6 +18,23 @@ struct MemoryDescriptor {
 // UEFIにおけるOS使用可能メモリのタイプ番号 (EfiConventionalMemory)
 const uint32_t kEfiConventionalMemory = 7;
 
+enum {
+    kMaxBootFiles = 32,
+    kMaxBootFileNameLen = 64,
+    kMaxBootFileDataSize = 256 * 1024
+};
+
+typedef struct BootFileEntry {
+    char name[kMaxBootFileNameLen];
+    uint64_t size;
+    uint8_t* data;
+} BootFileEntry;
+
+typedef struct BootFileSystem {
+    uint32_t file_count;
+    BootFileEntry files[kMaxBootFiles];
+} BootFileSystem;
+
 struct BootInfo {
     struct FrameBufferConfig* frame_buffer_config;
     
@@ -25,4 +42,5 @@ struct BootInfo {
     uint8_t* memory_map;      // MemoryDescriptorの配列の先頭ポインタ
     uint64_t memory_map_size; // 配列全体のバイトサイズ
     uint64_t descriptor_size; // 配列の要素1つぶんのバイトサイズ
+    struct BootFileSystem* boot_fs;  // ブート時に読み込んだ簡易RAMファイルシステム
 };
