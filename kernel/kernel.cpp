@@ -71,6 +71,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "io.hpp"
 #include "usb/xhci.hpp"
 #include "queue.hpp"
+#include "event_queue.hpp"
 #include "input/message.hpp"
 #include "input/key_event.hpp"
 #include "input/key_layout.hpp"
@@ -1726,12 +1727,15 @@ void PrintBootFile(const BootFileEntry* file) {
 char WaitPagerKey() {
     while (1) {
         __asm__ volatile("cli");
-        if (main_queue == nullptr || main_queue->Count() == 0) {
+        if (event_queue::Count(main_queue) == 0) {
             __asm__ volatile("sti\n\thlt");
             continue;
         }
         Message msg;
-        main_queue->Pop(msg);
+        if (!event_queue::Pop(main_queue, &msg)) {
+            __asm__ volatile("sti");
+            continue;
+        }
         __asm__ volatile("sti");
 
         if (msg.type == Message::Type::kInterruptMouse) {
@@ -1988,21 +1992,40 @@ void* operator new(size_t size, void* buf) {
     return buf;
 }
 
+[[noreturn]] static void HaltCpuForever() {
+    while (1) {
+        __asm__ volatile("cli\n\thlt");
+    }
+}
+
+[[noreturn]] static void PanicOutOfMemory(const char* reason, size_t request_size, size_t request_pages) {
+    if (console != nullptr) {
+        console->PrintLine("");
+        console->PrintLine("KERNEL PANIC: memory allocation failed");
+        if (reason != nullptr) {
+            console->Print("reason: ");
+            console->PrintLine(reason);
+        }
+        console->Print("request bytes: ");
+        console->PrintDec(static_cast<uint64_t>(request_size));
+        console->Print(" pages: ");
+        console->PrintDec(static_cast<uint64_t>(request_pages));
+        console->PrintLine("");
+    }
+    HaltCpuForever();
+}
+
 // OSのメモリ管理機能を利用した、待望の真の「動的メモリ確保」
 void* operator new(size_t size) {
     if (memory_manager == nullptr) {
-        while (1) {
-            __asm__ volatile("cli\n\thlt");
-        }
+        PanicOutOfMemory("memory manager is not initialized", size, 0);
     }
 
     const size_t total_size = size + sizeof(AllocationHeader);
     size_t num_pages = (total_size + kPageSize - 1) / kPageSize;
     uint64_t addr = memory_manager->Allocate(num_pages);
     if (addr == 0) {
-        while (1) {
-            __asm__ volatile("cli\n\thlt");
-        }
+        PanicOutOfMemory("physical page allocator returned 0", size, num_pages);
     }
 
     auto* header = reinterpret_cast<AllocationHeader*>(addr);
@@ -2463,7 +2486,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (memory_manager != nullptr) {
             free_mib = (memory_manager->CountFreePages() * kPageSize) / kMiB;
         }
-        const uint32_t queue_count = static_cast<uint32_t>((main_queue != nullptr) ? main_queue->Count() : 0);
+    const uint32_t queue_count = static_cast<uint32_t>(event_queue::Count(main_queue));
         system_monitor_panel.Refresh(CurrentTick(), free_mib, queue_count,
                                      g_keyboard_dropped_events, g_mouse_dropped_events,
                                      g_jp_layout, g_ime_enabled);
@@ -3247,18 +3270,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             DispatchKeyboardRuntime,
             msg);
     };
-    auto QueueCount = [&]() { return main_queue != nullptr ? main_queue->Count() : 0; };
+    auto QueueCount = [&]() { return event_queue::Count(main_queue); };
     auto QueuePeekMessage = [&](Message* out_next) {
-        if (main_queue == nullptr || out_next == nullptr) {
-            return false;
-        }
-        return main_queue->Peek(*out_next);
+        return event_queue::Peek(main_queue, out_next);
     };
     auto QueuePopMessage = [&](Message* out_next) {
-        if (main_queue == nullptr || out_next == nullptr) {
-            return false;
-        }
-        return main_queue->Pop(*out_next);
+        return event_queue::Pop(main_queue, out_next);
     };
     auto CoalesceMouseInterrupt = [&](Message* msg) {
         input::CoalesceMouseInterruptMessage(
@@ -3310,7 +3327,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         // Avoid periodic hitch while pointer is actively moving.
         if ((active_window == 1 || (now_tick - last_pointer_move_tick) >= kSystemInfoPointerIdleTicks) &&
-            main_queue != nullptr && main_queue->Count() <= 8) {
+            event_queue::Count(main_queue) <= 8) {
             RefreshSystemInfo();
         }
         next_system_info_tick = now_tick + ((active_window == 1)
@@ -3329,7 +3346,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         // Check queue state under interrupt mask to avoid races with IRQ producer.
         __asm__ volatile("cli");
-        if (main_queue->Count() == 0) {
+        if (event_queue::Count(main_queue) == 0) {
             __asm__ volatile("sti");
             if (HandleXHCIAutoPollOnIdle()) {
                 return false;
@@ -3337,7 +3354,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             __asm__ volatile("hlt");
             return false;
         }
-        main_queue->Pop(*out_msg);
+        if (!event_queue::Pop(main_queue, out_msg)) {
+            __asm__ volatile("sti");
+            return false;
+        }
         CoalesceMouseInterrupt(out_msg);
         __asm__ volatile("sti");
         return true;

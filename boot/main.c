@@ -17,8 +17,149 @@ typedef void __attribute__((sysv_abi)) (*KernelEntryPoint)(const struct BootInfo
 #define EFI_BUFFER_TOO_SMALL  (EFI_ERROR_BIT | 5)
 #define EFI_INVALID_PARAMETER (EFI_ERROR_BIT | 2)
 
+typedef struct ElfLoadPlan {
+    Elf64_Addr first_vaddr;
+    Elf64_Addr last_vaddr;
+    EFI_PHYSICAL_ADDRESS alloc_base;
+    UINTN num_pages;
+    Elf64_Phdr* program_headers;
+} ElfLoadPlan;
+
 static int IsEfiError(EFI_STATUS status) {
     return status != EFI_SUCCESS;
+}
+
+static int AddOverflowU64(uint64_t a, uint64_t b, uint64_t* out) {
+    if (out == NULL) {
+        return 1;
+    }
+    *out = a + b;
+    return *out < a;
+}
+
+static int MulOverflowU64(uint64_t a, uint64_t b, uint64_t* out) {
+    if (out == NULL) {
+        return 1;
+    }
+    if (a == 0 || b == 0) {
+        *out = 0;
+        return 0;
+    }
+    if (a > (~(uint64_t)0) / b) {
+        return 1;
+    }
+    *out = a * b;
+    return 0;
+}
+
+static uint64_t AlignDownU64(uint64_t value, uint64_t align) {
+    if (align == 0) {
+        return value;
+    }
+    return value & ~(align - 1);
+}
+
+static uint64_t AlignUpU64(uint64_t value, uint64_t align) {
+    if (align == 0) {
+        return value;
+    }
+    if (value > (~(uint64_t)0) - (align - 1)) {
+        return 0;
+    }
+    return (value + (align - 1)) & ~(align - 1);
+}
+
+static EFI_STATUS ValidateAndBuildElfLoadPlan(void* kernel_buffer,
+                                              UINTN kernel_size,
+                                              ElfLoadPlan* out_plan) {
+    if (kernel_buffer == NULL || out_plan == NULL) {
+        return EFI_INVALID_PARAMETER;
+    }
+    if (kernel_size < sizeof(Elf64_Ehdr)) {
+        return EFI_INVALID_PARAMETER;
+    }
+
+    Elf64_Ehdr* elf_header = (Elf64_Ehdr*)kernel_buffer;
+    if (elf_header->e_ident[0] != 0x7F || elf_header->e_ident[1] != 'E' ||
+        elf_header->e_ident[2] != 'L' || elf_header->e_ident[3] != 'F') {
+        return EFI_INVALID_PARAMETER;
+    }
+    if (elf_header->e_phentsize != sizeof(Elf64_Phdr) || elf_header->e_phnum == 0) {
+        return EFI_INVALID_PARAMETER;
+    }
+    if ((uint64_t)elf_header->e_phoff > (uint64_t)kernel_size) {
+        return EFI_INVALID_PARAMETER;
+    }
+
+    uint64_t phdr_table_bytes = 0;
+    if (MulOverflowU64((uint64_t)elf_header->e_phnum, sizeof(Elf64_Phdr), &phdr_table_bytes)) {
+        return EFI_INVALID_PARAMETER;
+    }
+    uint64_t phdr_table_end = 0;
+    if (AddOverflowU64((uint64_t)elf_header->e_phoff, phdr_table_bytes, &phdr_table_end)) {
+        return EFI_INVALID_PARAMETER;
+    }
+    if (phdr_table_end > (uint64_t)kernel_size) {
+        return EFI_INVALID_PARAMETER;
+    }
+
+    Elf64_Phdr* phdr = (Elf64_Phdr*)((uint8_t*)elf_header + elf_header->e_phoff);
+    Elf64_Addr first_vaddr = ~0ULL;
+    Elf64_Addr last_vaddr = 0;
+    int found_load = 0;
+
+    for (int i = 0; i < elf_header->e_phnum; ++i) {
+        if (phdr[i].p_type != PT_LOAD) {
+            continue;
+        }
+        found_load = 1;
+        if (phdr[i].p_filesz > phdr[i].p_memsz) {
+            return EFI_INVALID_PARAMETER;
+        }
+        if ((uint64_t)phdr[i].p_offset > (uint64_t)kernel_size) {
+            return EFI_INVALID_PARAMETER;
+        }
+        uint64_t seg_file_end = 0;
+        if (AddOverflowU64((uint64_t)phdr[i].p_offset, (uint64_t)phdr[i].p_filesz, &seg_file_end)) {
+            return EFI_INVALID_PARAMETER;
+        }
+        if (seg_file_end > (uint64_t)kernel_size) {
+            return EFI_INVALID_PARAMETER;
+        }
+        uint64_t seg_mem_end = 0;
+        if (AddOverflowU64((uint64_t)phdr[i].p_vaddr, (uint64_t)phdr[i].p_memsz, &seg_mem_end)) {
+            return EFI_INVALID_PARAMETER;
+        }
+        if (phdr[i].p_vaddr < first_vaddr) {
+            first_vaddr = phdr[i].p_vaddr;
+        }
+        if ((Elf64_Addr)seg_mem_end > last_vaddr) {
+            last_vaddr = (Elf64_Addr)seg_mem_end;
+        }
+    }
+
+    if (!found_load || first_vaddr >= last_vaddr) {
+        return EFI_INVALID_PARAMETER;
+    }
+
+    const uint64_t kPageSize = 0x1000;
+    const uint64_t alloc_base = AlignDownU64((uint64_t)first_vaddr, kPageSize);
+    const uint64_t alloc_last = AlignUpU64((uint64_t)last_vaddr, kPageSize);
+    if (alloc_last == 0 || alloc_last <= alloc_base) {
+        return EFI_INVALID_PARAMETER;
+    }
+
+    const uint64_t pages64 = (alloc_last - alloc_base) / kPageSize;
+    if (pages64 == 0 || pages64 > (uint64_t)(~(UINTN)0)) {
+        return EFI_INVALID_PARAMETER;
+    }
+
+    out_plan->first_vaddr = first_vaddr;
+    out_plan->last_vaddr = last_vaddr;
+    out_plan->alloc_base = (EFI_PHYSICAL_ADDRESS)alloc_base;
+    out_plan->num_pages = (UINTN)pages64;
+    out_plan->program_headers = phdr;
+    return EFI_SUCCESS;
 }
 
 static void Char16ToAscii(const CHAR16* src, char* dst, UINTN dst_len) {
@@ -62,15 +203,37 @@ static EFI_STATUS LoadBootFileSystem(
         root->SetPosition(root, 0);
     }
 
+    UINTN dir_info_capacity = sizeof(EFI_FILE_INFO) + sizeof(CHAR16) * 128;
+    uint8_t* dir_info_buffer = NULL;
+    status = SystemTable->BootServices->AllocatePool(EfiLoaderData, dir_info_capacity, (void**)&dir_info_buffer);
+    if (IsEfiError(status) || dir_info_buffer == NULL) {
+        return status;
+    }
+
     while (boot_fs->file_count < kMaxBootFiles) {
-        uint8_t dir_info_buffer[512];
-        UINTN dir_info_size = sizeof(dir_info_buffer);
+        UINTN dir_info_size = dir_info_capacity;
         status = root->Read(root, &dir_info_size, dir_info_buffer);
+        if (status == EFI_BUFFER_TOO_SMALL) {
+            if (dir_info_size <= dir_info_capacity || dir_info_size > 64 * 1024) {
+                break;
+            }
+            SystemTable->BootServices->FreePool(dir_info_buffer);
+            dir_info_buffer = NULL;
+            dir_info_capacity = dir_info_size;
+            status = SystemTable->BootServices->AllocatePool(EfiLoaderData, dir_info_capacity, (void**)&dir_info_buffer);
+            if (IsEfiError(status) || dir_info_buffer == NULL) {
+                break;
+            }
+            continue;
+        }
         if (IsEfiError(status)) {
             break;
         }
         if (dir_info_size == 0) {
             break;
+        }
+        if (dir_info_size < sizeof(EFI_FILE_INFO)) {
+            continue;
         }
 
         EFI_FILE_INFO* dir_info = (EFI_FILE_INFO*)dir_info_buffer;
@@ -114,18 +277,22 @@ static EFI_STATUS LoadBootFileSystem(
         }
 
         void* data = NULL;
-        status = SystemTable->BootServices->AllocatePool(EfiLoaderData, info->FileSize, &data);
-        if (IsEfiError(status) || data == NULL) {
-            SystemTable->BootServices->FreePool(info);
-            file->Close(file);
-            continue;
+        UINTN read_size = 0;
+        if (info->FileSize > 0) {
+            status = SystemTable->BootServices->AllocatePool(EfiLoaderData, info->FileSize, &data);
+            if (IsEfiError(status) || data == NULL) {
+                SystemTable->BootServices->FreePool(info);
+                file->Close(file);
+                continue;
+            }
+            read_size = info->FileSize;
+            status = file->Read(file, &read_size, data);
         }
-
-        UINTN read_size = info->FileSize;
-        status = file->Read(file, &read_size, data);
         file->Close(file);
-        if (IsEfiError(status) || read_size != info->FileSize) {
-            SystemTable->BootServices->FreePool(data);
+        if ((info->FileSize > 0) && (IsEfiError(status) || read_size != info->FileSize)) {
+            if (data != NULL) {
+                SystemTable->BootServices->FreePool(data);
+            }
             SystemTable->BootServices->FreePool(info);
             continue;
         }
@@ -140,6 +307,9 @@ static EFI_STATUS LoadBootFileSystem(
         SystemTable->BootServices->FreePool(info);
     }
 
+    if (dir_info_buffer != NULL) {
+        SystemTable->BootServices->FreePool(dir_info_buffer);
+    }
     *out_boot_fs = boot_fs;
     return EFI_SUCCESS;
 }
@@ -309,38 +479,21 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     conOut->OutputString(conOut, L"Kernel loaded. Analyzing ELF header...\r\n");
 
     // 11. ELFファイルの解析とメモリ配置 (ELF Loader)
-    Elf64_Ehdr* elf_header = (Elf64_Ehdr*)kernel_buffer;
-
-    // ELFヘッダのシグネチャチェック (0x7F 'E' 'L' 'F')
-    if (elf_header->e_ident[0] != 0x7F || elf_header->e_ident[1] != 'E' ||
-        elf_header->e_ident[2] != 'L'  || elf_header->e_ident[3] != 'F') {
-        conOut->OutputString(conOut, L"Error: Invalid ELF header.\r\n");
-        while(1){}
-    }
-
-    // LOADセグメントの展開先アドレス範囲を計算する
-    Elf64_Addr kernel_first_addr = 0xffffffffffffffff;
-    Elf64_Addr kernel_last_addr = 0;
-    Elf64_Phdr* phdr = (Elf64_Phdr*)((uint8_t*)elf_header + elf_header->e_phoff);
-
-    for (int i = 0; i < elf_header->e_phnum; ++i) {
-        if (phdr[i].p_type != PT_LOAD) continue;
-        if (phdr[i].p_vaddr < kernel_first_addr) kernel_first_addr = phdr[i].p_vaddr;
-        if (phdr[i].p_vaddr + phdr[i].p_memsz > kernel_last_addr) kernel_last_addr = phdr[i].p_vaddr + phdr[i].p_memsz;
-    }
-    if (kernel_first_addr > kernel_last_addr) {
-        conOut->OutputString(conOut, L"Error: No PT_LOAD segment found.\r\n");
+    ElfLoadPlan load_plan;
+    status = ValidateAndBuildElfLoadPlan(kernel_buffer, kernel_size, &load_plan);
+    if (IsEfiError(status)) {
+        conOut->OutputString(conOut, L"Error: Invalid or unsafe ELF layout.\r\n");
         while (1) {}
     }
+    Elf64_Ehdr* elf_header = (Elf64_Ehdr*)kernel_buffer;
 
     // 必要なページ数を確保する (4KB = 0x1000 バイト単位)
-    UINTN num_pages = (kernel_last_addr - kernel_first_addr + 0xfff) / 0x1000;
-    EFI_PHYSICAL_ADDRESS kernel_base_addr = kernel_first_addr;
+    EFI_PHYSICAL_ADDRESS kernel_base_addr = load_plan.alloc_base;
     
     status = SystemTable->BootServices->AllocatePages(
         AllocateAddress,
         EfiLoaderData,  // 実行可能・データ領域として確保
-        num_pages,
+        load_plan.num_pages,
         &kernel_base_addr
     );
 
@@ -351,23 +504,31 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
 
     // セグメントをメモリの正しい仮想アドレス(VMA)にコピーする
     for (int i = 0; i < elf_header->e_phnum; ++i) {
-        if (phdr[i].p_type != PT_LOAD) continue;
+        Elf64_Phdr* seg = &load_plan.program_headers[i];
+        if (seg->p_type != PT_LOAD) continue;
 
         // ファイルからデータをコピー
-        SystemTable->BootServices->CopyMem(
-            (void*)phdr[i].p_vaddr,
-            (void*)((uint8_t*)elf_header + phdr[i].p_offset),
-            phdr[i].p_filesz
-        );
+        if (seg->p_filesz > 0) {
+            SystemTable->BootServices->CopyMem(
+                (void*)seg->p_vaddr,
+                (void*)((uint8_t*)elf_header + seg->p_offset),
+                seg->p_filesz
+            );
+        }
 
         // ファイルサイズよりメモリサイズが大きい部分は0で埋める (BSSセクション等)
-        if (phdr[i].p_memsz > phdr[i].p_filesz) {
+        if (seg->p_memsz > seg->p_filesz) {
             SystemTable->BootServices->SetMem(
-                (void*)(phdr[i].p_vaddr + phdr[i].p_filesz),
-                phdr[i].p_memsz - phdr[i].p_filesz,
+                (void*)(seg->p_vaddr + seg->p_filesz),
+                seg->p_memsz - seg->p_filesz,
                 0
             );
         }
+    }
+
+    if (elf_header->e_entry < load_plan.first_vaddr || elf_header->e_entry >= load_plan.last_vaddr) {
+        conOut->OutputString(conOut, L"Error: ELF entry point outside load range.\r\n");
+        while (1) {}
     }
 
     // エントリーポイントの取得

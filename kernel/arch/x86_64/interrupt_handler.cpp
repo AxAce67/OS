@@ -8,6 +8,7 @@
 #include "timer.hpp"
 #include "ps2.hpp"
 #include "input/message.hpp"
+#include "event_queue.hpp"
 
 // kernel.cpp で定義しているコンソールとマウスカーソルの参照
 extern Console* console;
@@ -100,7 +101,7 @@ void IntHandlerMouse(InterruptFrame* frame) {
             msg.wheel = wheel;
             msg.buttons = static_cast<uint8_t>(mouse_buf[0] & 0x07);
             msg.keycode = 0;
-            if (!main_queue->Push(msg)) {
+            if (!event_queue::PushFromInterrupt(main_queue, msg)) {
                 ++g_mouse_dropped_events;
             }
         }
@@ -128,7 +129,7 @@ void EnqueueKeyboardScancode(uint8_t scancode) {
         msg.wheel = 0;
         msg.buttons = 0;
         msg.keycode = scancode;
-        if (!main_queue->Push(msg)) {
+        if (!event_queue::PushFromInterrupt(main_queue, msg)) {
             ++g_keyboard_dropped_events;
         }
     }
@@ -179,7 +180,7 @@ void EnqueueAbsolutePointerEvent(int32_t x, int32_t y, int32_t wheel, uint8_t bu
     msg.wheel = wheel;
     msg.buttons = buttons;
     msg.keycode = 0;
-    if (!main_queue->Push(msg)) {
+    if (!event_queue::PushFromInterrupt(main_queue, msg)) {
         ++g_mouse_dropped_events;
     }
 }
