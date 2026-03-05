@@ -489,7 +489,22 @@ bool ExecuteSyscallCommand(const char* rest) {
         return true;
     }
 
-    console->PrintLine("usage: syscall [stat|tick|version|write <text>|invalid|trap tick|trap version|trap write <text>|trap invalid]");
+    if (StrEqual(rest, "trap badptr")) {
+        const int64_t ret = InvokeSyscallInt80(
+            static_cast<uint64_t>(syscall::Number::kWriteText),
+            0x8,
+            16,
+            0,
+            0);
+        console->Print("syscall trap badptr -> ");
+        console->PrintDec(ret);
+        console->Print(" (");
+        console->Print(syscall::ErrorName(ret));
+        console->Print(")\n");
+        return true;
+    }
+
+    console->PrintLine("usage: syscall [stat|tick|version|write <text>|invalid|trap tick|trap version|trap write <text>|trap invalid|trap badptr]");
     return true;
 }
 

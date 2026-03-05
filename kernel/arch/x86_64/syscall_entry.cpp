@@ -29,7 +29,9 @@ extern "C" void HandleSyscallTrap(SyscallTrapFrame* frame) {
     if (frame == nullptr) {
         return;
     }
-    frame->rax = static_cast<uint64_t>(syscall::Dispatch(frame->rax, frame->rdi, frame->rsi, frame->rdx, frame->rcx));
+    const bool from_user = (frame->cs & 0x3) == 0x3;
+    frame->rax = static_cast<uint64_t>(
+        syscall::DispatchFromTrap(frame->rax, frame->rdi, frame->rsi, frame->rdx, frame->rcx, from_user));
 }
 
 }  // namespace
