@@ -322,8 +322,9 @@ if (-Not $hasOvmf) {
 $ovmfPath = (Resolve-Path $ovmf).Path
 Write-Host "Using OVMF: $ovmfPath" -ForegroundColor Cyan
 
-$ovmfPathForQemu = $ovmfPath.Replace('"', '\"')
-$pflashArg = "if=pflash,format=raw,readonly=on,file=`"$ovmfPathForQemu`""
+$ovmfPathQuoted = $ovmfPath.Replace('"', '""')
+$pflashArg = "if=pflash,format=raw,readonly=on,file=$ovmfPath"
+$pflashArgForStartProcess = "if=pflash,format=raw,readonly=on,file=""$ovmfPathQuoted"""
 
 $qemuArgs = @(
     "-m", "512M",
@@ -350,7 +351,16 @@ if ($Smoke) {
         Remove-Item $smokeStderrPath -Force -ErrorAction SilentlyContinue
     }
 
-    $qemuSmokeArgs = @($qemuArgs) + @(
+    $qemuSmokeArgs = @(
+        "-m", "512M",
+        "-machine", "q35",
+        "-drive", $pflashArgForStartProcess
+    )
+    if ($UseUsbTablet) {
+        $qemuSmokeArgs += @("-device", "qemu-xhci,msi=off", "-device", "usb-tablet")
+    }
+    $qemuSmokeArgs += @(
+        "-drive", "format=raw,file=fat:rw:disk",
         "-display", "none",
         "-serial", "none",
         "-monitor", "none",
