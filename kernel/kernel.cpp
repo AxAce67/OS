@@ -3205,6 +3205,37 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 ime_candidate_entry,
                 &ime_candidate_entry);
         };
+    auto DispatchKeyboardRuntime =
+        [&](uint8_t keycode,
+            const input::RuntimeKeyboardMessageContextT<ImeCandidateEntry>& keyboard_context,
+            const input::RuntimeEnterCommandRefs& enter_refs,
+            const input::RuntimeCommandInputStateRefs& reset_refs) {
+            input::HandleKeyboardMessageRuntime(
+                keycode,
+                keyboard_context,
+                HandleExtendedKey,
+                HandleRegularKeyShortcut,
+                KeycodeToAsciiByLayout,
+                EnsureLiveConsole,
+                ToLowerAscii,
+                AdvanceImeCandidate,
+                ReplaceImeCandidateText,
+                CommitImeCandidateLearning,
+                ClearImeCandidate,
+                FlushImeRomaji,
+                RenderInputLine,
+                RefreshInputLine,
+                ResolveImeCandidateEntryFromRomaji,
+                TryBuildPrefixCandidateEntry,
+                HasImeCandidateEntry,
+                HasActiveSelection,
+                DeleteSelection,
+                StartImeCandidateSessionForEntry,
+                IsPrintableAscii,
+                [&]() { ProcessEnterKey(enter_refs, reset_refs); },
+                ProcessPrintableInputByte,
+                RefreshConsole);
+        };
     auto HandleKeyboardMessage = [&](const Message& msg) {
         input::RuntimeEnterCommandRefs enter_refs{};
         input::RuntimeCommandInputStateRefs reset_refs{};
@@ -3216,31 +3247,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                   &keyboard_decode_refs,
                                   &ime_process_context,
                                   &keyboard_context);
-        input::HandleKeyboardMessageRuntime(
-            msg.keycode,
-            keyboard_context,
-            HandleExtendedKey,
-            HandleRegularKeyShortcut,
-            KeycodeToAsciiByLayout,
-            EnsureLiveConsole,
-            ToLowerAscii,
-            AdvanceImeCandidate,
-            ReplaceImeCandidateText,
-            CommitImeCandidateLearning,
-            ClearImeCandidate,
-            FlushImeRomaji,
-            RenderInputLine,
-            RefreshInputLine,
-            ResolveImeCandidateEntryFromRomaji,
-            TryBuildPrefixCandidateEntry,
-            HasImeCandidateEntry,
-            HasActiveSelection,
-            DeleteSelection,
-            StartImeCandidateSessionForEntry,
-            IsPrintableAscii,
-            [&]() { ProcessEnterKey(enter_refs, reset_refs); },
-            ProcessPrintableInputByte,
-            RefreshConsole);
+        DispatchKeyboardRuntime(msg.keycode, keyboard_context, enter_refs, reset_refs);
     };
     auto QueueCount = [&]() { return main_queue != nullptr ? main_queue->Count() : 0; };
     auto QueuePeekMessage = [&](Message* out_next) {
