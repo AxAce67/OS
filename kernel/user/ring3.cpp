@@ -11,6 +11,8 @@ namespace {
 Ring3PrepState g_state = {};
 volatile int64_t g_last_ring3_syscall_ret = 0;
 const char* g_last_ring3_error = "ok";
+const char* const* g_current_exec_envp = nullptr;
+int g_current_exec_envc = 0;
 
 constexpr uint64_t kCodePageCount = 1;
 constexpr uint64_t kDefaultStackPages = 1;
@@ -403,10 +405,22 @@ bool RunRing3BinaryFromBufferWithContext(const uint8_t* data, uint64_t size,
         g_last_ring3_error = "argv.build";
         return false;
     }
+    g_current_exec_envp = envp;
+    g_current_exec_envc = envc;
     RunUserModeFunctionWithArgs(entry, user_rsp, user_argc, user_argv_ptr, user_envp_ptr);
+    g_current_exec_envp = nullptr;
+    g_current_exec_envc = 0;
     g_last_ring3_syscall_ret = GetLastRing3ExitCode();
     g_last_ring3_error = "ok";
     return true;
+}
+
+const char* const* GetCurrentExecEnvp() {
+    return g_current_exec_envp;
+}
+
+int GetCurrentExecEnvc() {
+    return g_current_exec_envc;
 }
 
 const char* GetLastRing3Error() {

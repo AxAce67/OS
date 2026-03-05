@@ -489,7 +489,7 @@ bool ExecuteInputStatCommand() {
 
 bool ExecuteSyscallCommand(const char* rest) {
     if (rest[0] == '\0' || StrEqual(rest, "stat")) {
-        console->PrintLine("syscall abi=1 methods=write,tick,version trap=int80");
+        console->PrintLine("syscall abi=1 methods=write,tick,version,getenv trap=int80");
         return true;
     }
 
@@ -530,6 +530,29 @@ bool ExecuteSyscallCommand(const char* rest) {
         console->Print(" (");
         console->Print(syscall::ErrorName(ret));
         console->Print(")\n");
+        return true;
+    }
+
+    if (StrStartsWith(rest, "getenv ")) {
+        const char* key = rest + 7;
+        const uint64_t key_len = static_cast<uint64_t>(StrLength(key));
+        char value[128];
+        const int64_t ret = syscall::Dispatch(
+            static_cast<uint64_t>(syscall::Number::kGetEnv),
+            reinterpret_cast<uint64_t>(key),
+            key_len,
+            reinterpret_cast<uint64_t>(value),
+            static_cast<uint64_t>(sizeof(value)));
+        console->Print("syscall getenv -> ");
+        console->PrintDec(ret);
+        if (ret >= 0) {
+            console->Print(" value=");
+            console->PrintLine(value);
+        } else {
+            console->Print(" (");
+            console->Print(syscall::ErrorName(ret));
+            console->Print(")\n");
+        }
         return true;
     }
 
@@ -588,7 +611,30 @@ bool ExecuteSyscallCommand(const char* rest) {
         return true;
     }
 
-    console->PrintLine("usage: syscall [stat|tick|version|write <text>|invalid|trap tick|trap version|trap write <text>|trap invalid|trap badptr]");
+    if (StrStartsWith(rest, "trap getenv ")) {
+        const char* key = rest + 12;
+        const uint64_t key_len = static_cast<uint64_t>(StrLength(key));
+        char value[128];
+        const int64_t ret = InvokeSyscallInt80(
+            static_cast<uint64_t>(syscall::Number::kGetEnv),
+            reinterpret_cast<uint64_t>(key),
+            key_len,
+            reinterpret_cast<uint64_t>(value),
+            static_cast<uint64_t>(sizeof(value)));
+        console->Print("syscall trap getenv -> ");
+        console->PrintDec(ret);
+        if (ret >= 0) {
+            console->Print(" value=");
+            console->PrintLine(value);
+        } else {
+            console->Print(" (");
+            console->Print(syscall::ErrorName(ret));
+            console->Print(")\n");
+        }
+        return true;
+    }
+
+    console->PrintLine("usage: syscall [stat|tick|version|write <text>|getenv <key>|invalid|trap tick|trap version|trap write <text>|trap getenv <key>|trap invalid|trap badptr]");
     return true;
 }
 

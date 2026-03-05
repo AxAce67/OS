@@ -159,6 +159,26 @@ function New-ImageEnv2Head {
     )
 }
 
+function New-ImageGetenvCwd0 {
+    return [byte[]](
+        0x48,0xB8,0x05,0,0,0,0,0,0,0,          # mov rax,5 (getenv)
+        0x48,0x8D,0x3D,0x45,0,0,0,             # lea rdi,[rip+0x45] -> "CWD"
+        0x48,0xBE,0x03,0,0,0,0,0,0,0,          # mov rsi,3
+        0x48,0x8D,0x15,0x37,0,0,0,             # lea rdx,[rip+0x37] -> buf
+        0x48,0xB9,0x10,0,0,0,0,0,0,0,          # mov rcx,16
+        0xCD,0x80,                               # int 0x80
+        0x48,0x85,0xC0,                          # test rax,rax
+        0x7E,0x06,                               # jle +0x06
+        0x0F,0xB6,0x3D,0x1F,0,0,0,             # movzx edi,byte [rip+0x1F] -> buf[0]
+        0xEB,0x03,                               # jmp +0x03
+        0x48,0x31,0xFF,                          # xor rdi,rdi
+        0x48,0xB8,0x04,0,0,0,0,0,0,0,          # mov rax,4
+        0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE,
+        0x43,0x57,0x44,                          # "CWD"
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0        # buf[16]
+    )
+}
+
 [System.IO.Directory]::CreateDirectory($OutputDir) | Out-Null
 New-R3BinFile -Path (Join-Path $OutputDir "hello.r3bin") -Image (New-ImageHello)
 New-R3BinFile -Path (Join-Path $OutputDir "fault.r3bin") -Image (New-ImageFault)
@@ -169,3 +189,4 @@ New-R3BinFile -Path (Join-Path $OutputDir "argv1head.r3bin") -Image (New-ImageAr
 New-R3BinFile -Path (Join-Path $OutputDir "env0head.r3bin") -Image (New-ImageEnv0Head)
 New-R3BinFile -Path (Join-Path $OutputDir "env1head.r3bin") -Image (New-ImageEnv1Head)
 New-R3BinFile -Path (Join-Path $OutputDir "env2head.r3bin") -Image (New-ImageEnv2Head)
+New-R3BinFile -Path (Join-Path $OutputDir "getenvcwd0.r3bin") -Image (New-ImageGetenvCwd0)
