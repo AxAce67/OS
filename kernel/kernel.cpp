@@ -3032,25 +3032,32 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             [&]() { EnsureLiveConsole(); },
             [&]() { ClearSelection(); });
     };
+    auto TryHandleExtendedCandidateNav = [&](input::CandidateNav nav) -> bool {
+        return input::TryHandleCandidateNav(
+            nav,
+            EnsureLiveConsole,
+            [&](int direction) { return CycleImeCandidate(direction); });
+    };
+    auto PrepareExtendedExecPlan = [&](uint8_t key,
+                                       input::CandidateNav nav,
+                                       input::ExtendedExecPlan* out_plan) -> bool {
+        return input::PrepareExtendedExecPlanStatus(
+                   key,
+                   g_ime_enabled,
+                   ime_romaji_len,
+                   ime_candidate_active,
+                   nav != input::CandidateNav::kNone,
+                   ApplyExtendedKeySideEffects,
+                   out_plan) == input::PlanPrepareStatus::kReady;
+    };
     auto HandleExtendedKey = [&](uint8_t key) -> bool {
         const input::CandidateNav nav =
             input::DecideCandidateNavOnExtendedKey(key, ime_candidate_active, ime_candidate_entry);
-        if (input::TryHandleCandidateNav(
-                nav,
-                EnsureLiveConsole,
-                [&](int direction) { return CycleImeCandidate(direction); })) {
+        if (TryHandleExtendedCandidateNav(nav)) {
             return true;
         }
         input::ExtendedExecPlan exec_plan{};
-        if (input::PrepareExtendedExecPlanStatus(
-                key,
-                g_ime_enabled,
-                ime_romaji_len,
-                ime_candidate_active,
-                nav != input::CandidateNav::kNone,
-                ApplyExtendedKeySideEffects,
-                &exec_plan) !=
-            input::PlanPrepareStatus::kReady) {
+        if (!PrepareExtendedExecPlan(key, nav, &exec_plan)) {
             return false;
         }
         return HandleExecChain([&](RuntimeFlowBundles* bundles) {
