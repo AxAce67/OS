@@ -3168,42 +3168,54 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     auto HasActiveSelection = [&]() {
         return input::HasSelection(selection_anchor, selection_end);
     };
+    auto BuildKeyboardRuntimeState =
+        [&](input::RuntimeEnterCommandRefs* enter_refs,
+            input::RuntimeCommandInputStateRefs* reset_refs,
+            input::RuntimeKeyboardDecodeRefs* keyboard_decode_refs,
+            input::RuntimeImeProcessContextT<ImeCandidateEntry>* ime_process_context,
+            input::RuntimeKeyboardMessageContextT<ImeCandidateEntry>* keyboard_context) {
+            input::bridge::BuildKeyboardRuntimeInvocation<ImeCandidateEntry>(
+                enter_refs,
+                reset_refs,
+                keyboard_decode_refs,
+                ime_process_context,
+                keyboard_context,
+                command_buffer,
+                static_cast<int>(sizeof(command_buffer)),
+                &command_len,
+                &cursor_pos,
+                &rendered_len,
+                ime_romaji_buffer,
+                static_cast<int>(sizeof(ime_romaji_buffer)),
+                &ime_romaji_len,
+                &g_keyboard_irq_count,
+                &g_keyboard_last_raw,
+                &g_keyboard_last_key,
+                &g_keyboard_last_extended,
+                &g_keyboard_last_released,
+                &e0_prefix,
+                &keyboard_mods,
+                key_down_extended,
+                key_down_normal,
+                g_key_repeat_enabled,
+                g_jp_layout,
+                g_ime_enabled,
+                g_has_halfwidth_kana_font,
+                ime_candidate_active,
+                ime_candidate_entry,
+                &ime_candidate_entry);
+        };
     auto HandleKeyboardMessage = [&](const Message& msg) {
         input::RuntimeEnterCommandRefs enter_refs{};
         input::RuntimeCommandInputStateRefs reset_refs{};
         input::RuntimeKeyboardDecodeRefs keyboard_decode_refs{};
         input::RuntimeImeProcessContextT<ImeCandidateEntry> ime_process_context{};
         input::RuntimeKeyboardMessageContextT<ImeCandidateEntry> keyboard_context{};
-        input::bridge::BuildKeyboardRuntimeInvocation<ImeCandidateEntry>(
-            &enter_refs,
-            &reset_refs,
-            &keyboard_decode_refs,
-            &ime_process_context,
-            &keyboard_context,
-            command_buffer,
-            static_cast<int>(sizeof(command_buffer)),
-            &command_len,
-            &cursor_pos,
-            &rendered_len,
-            ime_romaji_buffer,
-            static_cast<int>(sizeof(ime_romaji_buffer)),
-            &ime_romaji_len,
-            &g_keyboard_irq_count,
-            &g_keyboard_last_raw,
-            &g_keyboard_last_key,
-            &g_keyboard_last_extended,
-            &g_keyboard_last_released,
-            &e0_prefix,
-            &keyboard_mods,
-            key_down_extended,
-            key_down_normal,
-            g_key_repeat_enabled,
-            g_jp_layout,
-            g_ime_enabled,
-            g_has_halfwidth_kana_font,
-            ime_candidate_active,
-            ime_candidate_entry,
-            &ime_candidate_entry);
+        BuildKeyboardRuntimeState(&enter_refs,
+                                  &reset_refs,
+                                  &keyboard_decode_refs,
+                                  &ime_process_context,
+                                  &keyboard_context);
         input::HandleKeyboardMessageRuntime(
             msg.keycode,
             keyboard_context,
