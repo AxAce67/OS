@@ -21,6 +21,12 @@ bool RunRing3Hello();
 bool RunRing3BadPtrTest();
 bool RunRing3BinaryFromBuffer(const uint8_t* data, uint64_t size);
 bool RunRing3BinaryFromBufferWithArgs(const uint8_t* data, uint64_t size, const char* const* argv, int argc);
+bool RunRing3BinaryFromBufferWithArgsEnv(const uint8_t* data, uint64_t size,
+                                         const char* const* argv, int argc,
+                                         const char* const* envp, int envc);
+bool RunRing3BinaryFromBufferWithContext(const uint8_t* data, uint64_t size,
+                                         const char* const* argv, int argc,
+                                         const char* const* envp, int envc);
 int64_t GetLastRing3SyscallReturn();
 const char* GetLastRing3Error();
 

@@ -62,6 +62,7 @@ struct ExecProcessEntry {
 ExecProcessEntry g_exec_processes[16];
 uint32_t g_exec_next_pid = 1;
 int g_exec_next_slot = 0;
+constexpr int kExecMaxEnv = 24;
 
 void InitExecProcessTableIfNeeded() {
     static bool initialized = false;
@@ -97,6 +98,33 @@ void EndExecProcessRecord(ExecProcessEntry* e, bool ok, int64_t exit_code) {
     e->exit_code = exit_code;
     e->end_tick = CurrentTick();
     CopyString(e->status, ok ? "exited" : "failed", sizeof(e->status));
+}
+
+bool AppendExecEnv(char out[][128], const char** out_ptrs, int max_count, int* io_count,
+                   const char* key, const char* value) {
+    if (out == nullptr || out_ptrs == nullptr || io_count == nullptr || key == nullptr || value == nullptr) {
+        return false;
+    }
+    int count = *io_count;
+    if (count < 0 || count >= max_count) {
+        return false;
+    }
+    char* dst = out[count];
+    int di = 0;
+    for (int i = 0; key[i] != '\0' && di + 1 < 128; ++i) {
+        dst[di++] = key[i];
+    }
+    if (di + 1 >= 128) {
+        return false;
+    }
+    dst[di++] = '=';
+    for (int i = 0; value[i] != '\0' && di + 1 < 128; ++i) {
+        dst[di++] = value[i];
+    }
+    dst[di] = '\0';
+    out_ptrs[count] = dst;
+    *io_count = count + 1;
+    return true;
 }
 }  // namespace
 
@@ -687,6 +715,25 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
         ++argc;
     }
 
+    char envs[kExecMaxEnv][128];
+    const char* env_ptrs[kExecMaxEnv];
+    int envc = 0;
+    if (!AppendExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, "CWD", g_cwd) ||
+        !AppendExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, "LAYOUT", g_jp_layout ? "jp" : "us") ||
+        !AppendExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, "IME", g_ime_enabled ? "on" : "off")) {
+        console->PrintLine("exec: env overflow");
+        return true;
+    }
+    for (int i = 0; i < static_cast<int>(sizeof(g_vars) / sizeof(g_vars[0])); ++i) {
+        if (g_vars[i].key[0] == '\0') {
+            continue;
+        }
+        if (!AppendExecEnv(envs, env_ptrs, kExecMaxEnv, &envc, g_vars[i].key, g_vars[i].value)) {
+            console->PrintLine("exec: env full (some vars dropped)");
+            break;
+        }
+    }
+
     const BootFileEntry* file = FindBootFileByPath(g_cwd, path);
     ExecProcessEntry* proc = BeginExecProcessRecord(path);
     if (file == nullptr) {
@@ -695,7 +742,7 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
         EndExecProcessRecord(proc, false, -1);
         return true;
     }
-    if (usermode::RunRing3BinaryFromBufferWithArgs(file->data, file->size, arg_ptrs, argc)) {
+    if (usermode::RunRing3BinaryFromBufferWithArgsEnv(file->data, file->size, arg_ptrs, argc, env_ptrs, envc)) {
         console->Print("exec: ok: ");
         console->PrintLine(path);
         const int64_t ret = usermode::GetLastRing3SyscallReturn();

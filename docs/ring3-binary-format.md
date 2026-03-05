@@ -29,12 +29,15 @@ struct Ring3UserBinHeader {
 - エントリ時のレジスタ:
   - `rdi = argc`
   - `rsi = argv` (`char**`, 最後は `NULL`)
+  - `rdx = envp` (`char**`, 最後は `NULL`)
 - `exec /app.r3bin a b` の場合、`argc=2`、`argv[0]="a"`、`argv[1]="b"`。
+- `envp` にはシェル実行時の `KEY=VALUE` が渡される（例: `CWD=/`, `LAYOUT=jp`, `IME=off`, `set` で設定した変数）。
 
 検証サンプル:
 - `argc.r3bin`: `argc` を終了コードで返す
 - `argv0head.r3bin`: `argv[0][0]` のASCIIコードを終了コードで返す
 - `argv1head.r3bin`: `argv[1][0]` のASCIIコードを終了コードで返す（`argc < 2` は `0`）
+- `env0head.r3bin`: `envp[0][0]` のASCIIコードを終了コードで返す（`envp` 空の場合は `0`）
 
 ## Exit Code Convention (PoC)
 

@@ -17,6 +17,7 @@ constexpr uint64_t kDefaultStackPages = 1;
 constexpr uint64_t kMaxStackPages = 16;
 constexpr uint64_t kMaxUserImageBytes = 128 * 1024;
 constexpr int kMaxExecArgs = 16;
+constexpr int kMaxExecEnvs = 24;
 
 struct Ring3UserBinHeader {
     uint8_t magic[8];
@@ -198,22 +199,26 @@ bool ValidateUserBinHeader(const Ring3UserBinHeader* h, uint64_t file_size) {
     return true;
 }
 
-bool BuildUserArgBlock(uint64_t stack_base,
-                       uint64_t stack_top,
-                       const char* const* argv,
-                       int argc,
-                       uint64_t* out_rsp,
-                       uint64_t* out_argc,
-                       uint64_t* out_argv_ptr) {
-    if (out_rsp == nullptr || out_argc == nullptr || out_argv_ptr == nullptr) {
+bool BuildUserArgEnvBlock(uint64_t stack_base,
+                          uint64_t stack_top,
+                          const char* const* argv,
+                          int argc,
+                          const char* const* envp,
+                          int envc,
+                          uint64_t* out_rsp,
+                          uint64_t* out_argc,
+                          uint64_t* out_argv_ptr,
+                          uint64_t* out_envp_ptr) {
+    if (out_rsp == nullptr || out_argc == nullptr || out_argv_ptr == nullptr || out_envp_ptr == nullptr) {
         return false;
     }
-    if (argc < 0 || argc > kMaxExecArgs) {
+    if (argc < 0 || argc > kMaxExecArgs || envc < 0 || envc > kMaxExecEnvs) {
         return false;
     }
 
     uint64_t sp = stack_top;
     uint64_t arg_ptrs[kMaxExecArgs];
+    uint64_t env_ptrs[kMaxExecEnvs];
     for (int i = argc - 1; i >= 0; --i) {
         const char* s = (argv != nullptr && argv[i] != nullptr) ? argv[i] : "";
         int len = 0;
@@ -233,21 +238,56 @@ bool BuildUserArgBlock(uint64_t stack_base,
         arg_ptrs[i] = sp;
     }
 
+    for (int i = envc - 1; i >= 0; --i) {
+        const char* s = (envp != nullptr && envp[i] != nullptr) ? envp[i] : "";
+        int len = 0;
+        while (s[len] != '\0') {
+            ++len;
+        }
+        const uint64_t need = static_cast<uint64_t>(len + 1);
+        if (sp < stack_base + need) {
+            return false;
+        }
+        sp -= need;
+        uint8_t* dst = reinterpret_cast<uint8_t*>(sp);
+        for (int j = 0; j < len; ++j) {
+            dst[j] = static_cast<uint8_t>(s[j]);
+        }
+        dst[len] = 0;
+        env_ptrs[i] = sp;
+    }
+
     sp = AlignDown(sp, 16);
-    const uint64_t ptr_block_size = static_cast<uint64_t>(argc + 1) * sizeof(uint64_t);
-    if (sp < stack_base + ptr_block_size) {
+    const uint64_t argv_block_size = static_cast<uint64_t>(argc + 1) * sizeof(uint64_t);
+    const uint64_t env_block_size = static_cast<uint64_t>(envc + 1) * sizeof(uint64_t);
+    if (sp < stack_base + argv_block_size + env_block_size) {
         return false;
     }
-    sp -= ptr_block_size;
+
+    sp -= env_block_size;
+    const uint64_t envp_ptr = sp;
+    uint64_t* env_block = reinterpret_cast<uint64_t*>(sp);
+    for (int i = 0; i < envc; ++i) {
+        env_block[i] = env_ptrs[i];
+    }
+    env_block[envc] = 0;
+
+    sp -= argv_block_size;
+    const uint64_t argv_ptr = sp;
     uint64_t* argv_block = reinterpret_cast<uint64_t*>(sp);
     for (int i = 0; i < argc; ++i) {
         argv_block[i] = arg_ptrs[i];
     }
     argv_block[argc] = 0;
 
-    *out_rsp = AlignDown(sp, 16);
+    const uint64_t final_sp = AlignDown(sp, 16);
+    if (final_sp < stack_base) {
+        return false;
+    }
+    *out_rsp = final_sp;
     *out_argc = static_cast<uint64_t>(argc);
-    *out_argv_ptr = sp;
+    *out_argv_ptr = argv_ptr;
+    *out_envp_ptr = envp_ptr;
     return true;
 }
 
@@ -318,6 +358,18 @@ bool RunRing3BinaryFromBuffer(const uint8_t* data, uint64_t size) {
 }
 
 bool RunRing3BinaryFromBufferWithArgs(const uint8_t* data, uint64_t size, const char* const* argv, int argc) {
+    return RunRing3BinaryFromBufferWithArgsEnv(data, size, argv, argc, nullptr, 0);
+}
+
+bool RunRing3BinaryFromBufferWithArgsEnv(const uint8_t* data, uint64_t size,
+                                         const char* const* argv, int argc,
+                                         const char* const* envp, int envc) {
+    return RunRing3BinaryFromBufferWithContext(data, size, argv, argc, envp, envc);
+}
+
+bool RunRing3BinaryFromBufferWithContext(const uint8_t* data, uint64_t size,
+                                         const char* const* argv, int argc,
+                                         const char* const* envp, int envc) {
     if (data == nullptr) {
         g_last_ring3_error = "bin.null";
         return false;
@@ -343,12 +395,15 @@ bool RunRing3BinaryFromBufferWithArgs(const uint8_t* data, uint64_t size, const 
     uint64_t user_rsp = 0;
     uint64_t user_argc = 0;
     uint64_t user_argv_ptr = 0;
-    if (!BuildUserArgBlock(g_state.stack_base, g_state.stack_top, argv, argc,
-                           &user_rsp, &user_argc, &user_argv_ptr)) {
+    uint64_t user_envp_ptr = 0;
+    if (!BuildUserArgEnvBlock(g_state.stack_base, g_state.stack_top,
+                              argv, argc,
+                              envp, envc,
+                              &user_rsp, &user_argc, &user_argv_ptr, &user_envp_ptr)) {
         g_last_ring3_error = "argv.build";
         return false;
     }
-    RunUserModeFunctionWithArgs(entry, user_rsp, user_argc, user_argv_ptr);
+    RunUserModeFunctionWithArgs(entry, user_rsp, user_argc, user_argv_ptr, user_envp_ptr);
     g_last_ring3_syscall_ret = GetLastRing3ExitCode();
     g_last_ring3_error = "ok";
     return true;

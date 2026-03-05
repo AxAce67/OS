@@ -112,10 +112,10 @@ int64_t InvokeSyscallInt80(uint64_t number, uint64_t arg0, uint64_t arg1, uint64
 }
 
 int RunUserModeFunction(uint64_t entry_rip, uint64_t user_rsp) {
-    return RunUserModeFunctionWithArgs(entry_rip, user_rsp, 0, 0);
+    return RunUserModeFunctionWithArgs(entry_rip, user_rsp, 0, 0, 0);
 }
 
-int RunUserModeFunctionWithArgs(uint64_t entry_rip, uint64_t user_rsp, uint64_t arg0, uint64_t arg1) {
+int RunUserModeFunctionWithArgs(uint64_t entry_rip, uint64_t user_rsp, uint64_t arg0, uint64_t arg1, uint64_t arg2) {
     __asm__ volatile(
         "movq %%rsp, g_ring3_saved_rsp(%%rip)\n"
         "lea 1f(%%rip), %%rax\n"
@@ -136,6 +136,7 @@ int RunUserModeFunctionWithArgs(uint64_t entry_rip, uint64_t user_rsp, uint64_t 
           [user_rsp] "r"(user_rsp),
           [arg0] "D"(arg0),
           [arg1] "S"(arg1),
+          [arg2] "d"(arg2),
           [user_cs] "i"(kUserCodeSelector),
           [user_ss] "i"(kUserDataSelector)
         : "rax", "memory");
