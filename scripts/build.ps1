@@ -467,7 +467,7 @@ if (-not $NoClipBridge) {
             if (Test-Path $bridgeOut) { Remove-Item $bridgeOut -Force -ErrorAction SilentlyContinue }
             if (Test-Path $bridgeErr) { Remove-Item $bridgeErr -Force -ErrorAction SilentlyContinue }
             $bridgeProc = Start-Process -FilePath "powershell.exe" `
-                                       -ArgumentList @("-Sta", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $bridgeScript, "-Host", "127.0.0.1", "-Port", "4545") `
+                                       -ArgumentList @("-Sta", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $bridgeScript, "-TargetHost", "127.0.0.1", "-Port", "4545") `
                                        -WorkingDirectory $projectRoot `
                                        -RedirectStandardOutput $bridgeOut `
                                        -RedirectStandardError $bridgeErr `

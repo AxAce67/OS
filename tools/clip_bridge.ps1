@@ -1,5 +1,5 @@
 param(
-    [string]$Host = "127.0.0.1",
+    [string]$TargetHost = "127.0.0.1",
     [int]$Port = 4545,
     [int]$PollMs = 300,
     [int]$MaxChars = 120,
@@ -49,7 +49,7 @@ try {
                 if ($null -ne $stream) { $stream.Dispose(); $stream = $null }
                 if ($null -ne $client) { $client.Close(); $client = $null }
                 $client = New-Object System.Net.Sockets.TcpClient
-                $client.Connect($Host, $Port)
+                $client.Connect($TargetHost, $Port)
                 $stream = $client.GetStream()
                 $writer = New-Object System.IO.StreamWriter($stream, [System.Text.Encoding]::ASCII)
                 $writer.AutoFlush = $true
