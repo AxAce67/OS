@@ -22,6 +22,38 @@ function Ensure-ToolExists {
     }
 }
 
+function Write-HostClipboardSnapshot {
+    param(
+        [string]$OutputPath,
+        [int]$MaxChars = 120
+    )
+    try {
+        $clip = Get-Clipboard -Raw -ErrorAction Stop
+        if ($null -eq $clip) { return }
+        $clip = $clip -replace "(\r\n|\r|\n)+", " "
+        $clip = $clip -replace "\t+", " "
+        $clip = $clip.Trim()
+        if ([string]::IsNullOrWhiteSpace($clip)) { return }
+
+        $sb = New-Object System.Text.StringBuilder
+        for ($i = 0; $i -lt $clip.Length -and $sb.Length -lt $MaxChars; $i++) {
+            $ch = $clip[$i]
+            $code = [int][char]$ch
+            if ($code -ge 32 -and $code -le 126) {
+                [void]$sb.Append($ch)
+            } else {
+                [void]$sb.Append("?")
+            }
+        }
+        $sanitized = $sb.ToString().Trim()
+        if ([string]::IsNullOrWhiteSpace($sanitized)) { return }
+        [System.IO.File]::WriteAllText($OutputPath, $sanitized, [System.Text.Encoding]::ASCII)
+    }
+    catch {
+        # Clipboard access is optional; continue build/run flow.
+    }
+}
+
 function New-Ring3SampleBinary {
     param(
         [string]$OutputPath
@@ -287,6 +319,7 @@ try {
     if (Test-Path "ime.learn") {
         Copy-Item "ime.learn" -Destination "disk\ime.learn" -Force -ErrorAction Stop
     }
+    Write-HostClipboardSnapshot -OutputPath (Join-Path $projectRoot "disk\host.clip")
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $projectRoot "tools\generate_r3bin_samples.ps1") -OutputDir (Join-Path $projectRoot "disk")
     if ($LASTEXITCODE -ne 0) {
         throw "generate_r3bin_samples.ps1 failed"

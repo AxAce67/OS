@@ -679,6 +679,8 @@ ImeUserCandidateEntry g_ime_user_candidates[16];
 ImeCandidateEntry g_ime_user_candidate_views[16];
 int g_ime_user_candidate_count = 0;
 ImeCandidateLearnEntry g_ime_learn_entries[64];
+char g_host_clipboard[128];
+bool g_host_clipboard_ready = false;
 char ToLowerAscii(char c);
 const BootFileEntry* FindBootFileByName(const char* name);
 void ToLowerAsciiString(const char* src, char* dst, int dst_len);
@@ -959,6 +961,34 @@ int LoadImeLearningFromBootFS() {
     }
     const int n = (file->size > 0x7FFFFFFFu) ? 0x7FFFFFFF : static_cast<int>(file->size);
     return ImportImeLearningFromBuffer(file->data, n, false);
+}
+
+int LoadHostClipboardFromBootFS(char* out, int out_len) {
+    if (out == nullptr || out_len <= 1) {
+        return 0;
+    }
+    out[0] = '\0';
+    const BootFileEntry* file = FindBootFileByName("host.clip");
+    if (file == nullptr || file->data == nullptr || file->size == 0) {
+        return 0;
+    }
+    int w = 0;
+    for (uint64_t i = 0; i < file->size && w + 1 < out_len; ++i) {
+        const char c = static_cast<char>(file->data[i]);
+        if (c == '\r' || c == '\n' || c == '\0') {
+            break;
+        }
+        if (c >= 32 && c <= 126) {
+            out[w++] = c;
+        } else {
+            out[w++] = '?';
+        }
+    }
+    while (w > 0 && out[w - 1] == ' ') {
+        --w;
+    }
+    out[w] = '\0';
+    return w;
 }
 
 char ToLowerAscii(char c);
@@ -2353,6 +2383,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     InitImeLearning();
     LoadImeDictionaryFromBootFS();
     const int loaded_ime_learn = LoadImeLearningFromBootFS();
+    const int loaded_host_clip = LoadHostClipboardFromBootFS(g_host_clipboard, static_cast<int>(sizeof(g_host_clipboard)));
+    g_host_clipboard_ready = loaded_host_clip > 0;
 
     console->Print("Waiting for hardware interrupts (Keyboard/Mouse/LAPIC Timer)...\n");
     console->Print("Input mode: layout=");
@@ -2368,6 +2400,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     console->Print(" (+");
     console->PrintDec(loaded_ime_learn);
     console->Print(")");
+    console->Print(" host.clip=");
+    console->Print(g_host_clipboard_ready ? "on" : "off");
     console->Print("\n");
     PrintPrompt();
     DebugConWrite("PROMPT_READY\n");
@@ -3152,16 +3186,19 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             if (input::HasSelection(selection_anchor, selection_end)) {
                 DeleteSelection();
             }
+            if (g_host_clipboard_ready && g_host_clipboard[0] != '\0') {
+                InsertCStringAtCursor(g_host_clipboard);
+                RenderInputLine();
+                return true;
+            }
             const int history_count = command_history.Count();
-            if (history_count <= 0) {
-                return true;
+            if (history_count > 0) {
+                const char* last = command_history.Entry(history_count - 1);
+                if (last != nullptr && last[0] != '\0') {
+                    InsertCStringAtCursor(last);
+                    RenderInputLine();
+                }
             }
-            const char* last = command_history.Entry(history_count - 1);
-            if (last == nullptr || last[0] == '\0') {
-                return true;
-            }
-            InsertCStringAtCursor(last);
-            RenderInputLine();
             return true;
         }
 
