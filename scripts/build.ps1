@@ -28,8 +28,19 @@ function Resolve-ToolPath {
             continue
         }
         $cmd = Get-Command $name -ErrorAction SilentlyContinue
-        if ($null -ne $cmd -and -Not [string]::IsNullOrWhiteSpace($cmd.Source)) {
-            return $cmd.Source
+        if ($null -ne $cmd) {
+            $resolved = $null
+            if (-Not [string]::IsNullOrWhiteSpace($cmd.Source)) {
+                $resolved = $cmd.Source
+            } elseif ($cmd.PSObject.Properties.Name -contains "Path" -and -Not [string]::IsNullOrWhiteSpace($cmd.Path)) {
+                $resolved = $cmd.Path
+            } elseif ($cmd.PSObject.Properties.Name -contains "Definition" -and -Not [string]::IsNullOrWhiteSpace($cmd.Definition)) {
+                $resolved = $cmd.Definition
+            }
+
+            if (-Not [string]::IsNullOrWhiteSpace($resolved) -and (Test-Path $resolved)) {
+                return (Resolve-Path $resolved).Path
+            }
         }
     }
 
@@ -53,6 +64,18 @@ function Resolve-ToolPath {
     exit 1
 }
 
+function Ensure-ToolPath {
+    param(
+        [string]$ToolLabel,
+        [string]$ToolPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ToolPath) -or -Not (Test-Path $ToolPath)) {
+        Write-Host "Error: resolved path for $ToolLabel is invalid: '$ToolPath'" -ForegroundColor Red
+        exit 1
+    }
+}
+
 if (-Not $NoRun) {
     Write-Host "Stopping existing QEMU processes..." -ForegroundColor Yellow
     Stop-Process -Name qemu-system-x86_64 -Force -ErrorAction SilentlyContinue
@@ -61,6 +84,8 @@ if (-Not $NoRun) {
 # 1. コンパイラとリンカのパス（LLVM）
 $clang = Resolve-ToolPath -ToolLabel "clang" -CandidatePaths @("C:\Program Files\LLVM\bin\clang.exe") -CommandNames @("clang", "clang.exe")
 $lld_link = Resolve-ToolPath -ToolLabel "lld-link" -CandidatePaths @("C:\Program Files\LLVM\bin\lld-link.exe") -CommandNames @("lld-link", "lld-link.exe")
+Ensure-ToolPath -ToolLabel "clang" -ToolPath $clang
+Ensure-ToolPath -ToolLabel "lld-link" -ToolPath $lld_link
 
 # OVFMF.fd (UEFI BIOS ROM) は本来QEMU付属のものか、EDK2のビルド済みイメージが必要
 # ここではQEMUパッケージなどに一部付属している想定（もしくは警告無視）で起動テストします
@@ -90,6 +115,7 @@ Write-Host "Compiling kernel.c -> kernel.elf..." -ForegroundColor Cyan
 
 # 4. カーネル本体とフォントのコンパイルとリンク (ELF形式)
 $ld_lld = Resolve-ToolPath -ToolLabel "ld.lld" -CandidatePaths @("C:\Program Files\LLVM\bin\ld.lld.exe") -CommandNames @("ld.lld", "ld.lld.exe")
+Ensure-ToolPath -ToolLabel "ld.lld" -ToolPath $ld_lld
 $commonKernelIncludes = @(
     "-I", "boot",
     "-I", "kernel",
@@ -224,6 +250,10 @@ if ($LASTEXITCODE -ne 0) { Write-Host "Kernel Compile Error!" -ForegroundColor R
 if ($LASTEXITCODE -ne 0) { Write-Host "Kernel Link Error!" -ForegroundColor Red; exit 1 }
 
 Write-Host "Build Success! -> main.efi & kernel.elf" -ForegroundColor Green
+if ($NoRun) {
+    Write-Host "Build completed. (NoRun mode: QEMU launch skipped)" -ForegroundColor Green
+    exit 0
+}
 
 # 5. QEMU用のディスク構造の準備
 if (Test-Path "disk") {
@@ -254,14 +284,10 @@ catch {
     exit 1
 }
 
-if ($NoRun) {
-    Write-Host "Build completed. (NoRun mode: QEMU launch skipped)" -ForegroundColor Green
-    exit 0
-}
-
 Write-Host "Starting QEMU..." -ForegroundColor Cyan
 
 $qemu = Resolve-ToolPath -ToolLabel "qemu-system-x86_64" -CandidatePaths @("C:\Program Files\qemu\qemu-system-x86_64.exe") -CommandNames @("qemu-system-x86_64", "qemu-system-x86_64.exe")
+Ensure-ToolPath -ToolLabel "qemu-system-x86_64" -ToolPath $qemu
 
 # 5. QEMUの実行
 # ※Windows上での素のQEMUはデフォルトでレガシーBIOSなので、OVMF (UEFIファーム) を指定する必要がある。
