@@ -3,6 +3,7 @@
 #include "memory.hpp"
 #include "timer.hpp"
 #include "arch/x86_64/interrupt_handler.hpp"
+#include "arch/x86_64/interrupt.hpp"
 #include "boot_info.h"
 #include "shell/context.hpp"
 #include "shell/text.hpp"
@@ -49,7 +50,7 @@ bool ExecuteHelpCommand() {
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
     console->PrintLine("help: misc  history clearhistory inputstat about");
-    console->PrintLine("help: cfg   repeat layout ime(on/off/toggle/stat/save/import/export/resetlearn) set alias syscall xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll xhcihidstat xhciauto xhciautostart mouseabs usbports");
+    console->PrintLine("help: cfg   repeat layout ime(on/off/toggle/stat/save/import/export/resetlearn) set alias syscall ring3 xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll xhcihidstat xhciauto xhciautostart mouseabs usbports");
     return true;
 }
 
@@ -505,6 +506,20 @@ bool ExecuteSyscallCommand(const char* rest) {
     }
 
     console->PrintLine("usage: syscall [stat|tick|version|write <text>|invalid|trap tick|trap version|trap write <text>|trap invalid|trap badptr]");
+    return true;
+}
+
+bool ExecuteRing3Command(const char* rest) {
+    if (rest[0] != '\0' && !StrEqual(rest, "stat")) {
+        console->PrintLine("usage: ring3 [stat]");
+        return true;
+    }
+    console->Print("ring3.segments=");
+    console->PrintLine(IsUserModeSegmentsReady() ? "ready" : "not-ready");
+    console->Print("ring3.tss.rsp0=0x");
+    console->PrintHex(GetKernelTSSStack(), 16);
+    console->Print("\n");
+    console->PrintLine("ring3.next=user hello stub (WIP)");
     return true;
 }
 
