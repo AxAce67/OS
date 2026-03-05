@@ -11,67 +11,13 @@ param(
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
 
-function Resolve-ToolPath {
-    param(
-        [string]$ToolLabel,
-        [string[]]$CandidatePaths,
-        [string[]]$CommandNames
-    )
-
-    foreach ($p in $CandidatePaths) {
-        if (-Not [string]::IsNullOrWhiteSpace($p) -and (Test-Path $p)) {
-            return (Resolve-Path $p).Path
-        }
-    }
-    foreach ($name in $CommandNames) {
-        if ([string]::IsNullOrWhiteSpace($name)) {
-            continue
-        }
-        $cmd = Get-Command $name -ErrorAction SilentlyContinue
-        if ($null -ne $cmd) {
-            $resolved = $null
-            if (-Not [string]::IsNullOrWhiteSpace($cmd.Source)) {
-                $resolved = $cmd.Source
-            } elseif ($cmd.PSObject.Properties.Name -contains "Path" -and -Not [string]::IsNullOrWhiteSpace($cmd.Path)) {
-                $resolved = $cmd.Path
-            } elseif ($cmd.PSObject.Properties.Name -contains "Definition" -and -Not [string]::IsNullOrWhiteSpace($cmd.Definition)) {
-                $resolved = $cmd.Definition
-            }
-
-            if (-Not [string]::IsNullOrWhiteSpace($resolved) -and (Test-Path $resolved)) {
-                return (Resolve-Path $resolved).Path
-            }
-        }
-    }
-
-    Write-Host "Error: $ToolLabel not found." -ForegroundColor Red
-    if ($CandidatePaths.Count -gt 0) {
-        Write-Host "Checked candidate paths:" -ForegroundColor Yellow
-        foreach ($p in $CandidatePaths) {
-            if (-Not [string]::IsNullOrWhiteSpace($p)) {
-                Write-Host "  - $p" -ForegroundColor Yellow
-            }
-        }
-    }
-    if ($CommandNames.Count -gt 0) {
-        Write-Host "Checked command names:" -ForegroundColor Yellow
-        foreach ($n in $CommandNames) {
-            if (-Not [string]::IsNullOrWhiteSpace($n)) {
-                Write-Host "  - $n" -ForegroundColor Yellow
-            }
-        }
-    }
-    exit 1
-}
-
-function Ensure-ToolPath {
+function Ensure-ToolExists {
     param(
         [string]$ToolLabel,
         [string]$ToolPath
     )
-
     if ([string]::IsNullOrWhiteSpace($ToolPath) -or -Not (Test-Path $ToolPath)) {
-        Write-Host "Error: resolved path for $ToolLabel is invalid: '$ToolPath'" -ForegroundColor Red
+        Write-Host "Error: $ToolLabel not found at '$ToolPath'" -ForegroundColor Red
         exit 1
     }
 }
@@ -82,10 +28,10 @@ if (-Not $NoRun) {
 }
 
 # 1. コンパイラとリンカのパス（LLVM）
-$clang = Resolve-ToolPath -ToolLabel "clang" -CandidatePaths @("C:\Program Files\LLVM\bin\clang.exe") -CommandNames @("clang", "clang.exe")
-$lld_link = Resolve-ToolPath -ToolLabel "lld-link" -CandidatePaths @("C:\Program Files\LLVM\bin\lld-link.exe") -CommandNames @("lld-link", "lld-link.exe")
-Ensure-ToolPath -ToolLabel "clang" -ToolPath $clang
-Ensure-ToolPath -ToolLabel "lld-link" -ToolPath $lld_link
+$clangPath = "C:\Program Files\LLVM\bin\clang.exe"
+$lldLinkPath = "C:\Program Files\LLVM\bin\lld-link.exe"
+Ensure-ToolExists -ToolLabel "clang" -ToolPath $clangPath
+Ensure-ToolExists -ToolLabel "lld-link" -ToolPath $lldLinkPath
 
 # OVFMF.fd (UEFI BIOS ROM) は本来QEMU付属のものか、EDK2のビルド済みイメージが必要
 # ここではQEMUパッケージなどに一部付属している想定（もしくは警告無視）で起動テストします
@@ -94,7 +40,7 @@ Write-Host "Compiling main.c -> main.efi..." -ForegroundColor Cyan
 
 # 2. Clangによるコンパイル (オブジェクトファイル生成)
 # ターゲット: Windows環境のx86_64ターゲットを指定。UEFIは標準ライブラリを持たない(-ffreestanding)
-& $clang -target x86_64-pc-win32-coff -mno-red-zone -fno-stack-protector -fshort-wchar -Wall -I boot -c boot/main.c -o main.o
+& $clangPath -target x86_64-pc-win32-coff -mno-red-zone -fno-stack-protector -fshort-wchar -Wall -I boot -c boot/main.c -o main.o
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Compile Error!" -ForegroundColor Red
@@ -104,7 +50,7 @@ if ($LASTEXITCODE -ne 0) {
 # 3. LLD-LINKによるリンク (UEFIアプリケーション .efi を生成)
 # /subsystem:efi_application が EFI_APPLICATION の意味
 # /entry:efi_main がエントリポイント指定
-& $lld_link /subsystem:efi_application /entry:efi_main /out:main.efi main.o
+& $lldLinkPath /subsystem:efi_application /entry:efi_main /out:main.efi main.o
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Link Error!" -ForegroundColor Red
@@ -114,8 +60,8 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Compiling kernel.c -> kernel.elf..." -ForegroundColor Cyan
 
 # 4. カーネル本体とフォントのコンパイルとリンク (ELF形式)
-$ld_lld = Resolve-ToolPath -ToolLabel "ld.lld" -CandidatePaths @("C:\Program Files\LLVM\bin\ld.lld.exe") -CommandNames @("ld.lld", "ld.lld.exe")
-Ensure-ToolPath -ToolLabel "ld.lld" -ToolPath $ld_lld
+$ldLldPath = "C:\Program Files\LLVM\bin\ld.lld.exe"
+Ensure-ToolExists -ToolLabel "ld.lld" -ToolPath $ldLldPath
 $commonKernelIncludes = @(
     "-I", "boot",
     "-I", "kernel",
@@ -124,129 +70,129 @@ $commonKernelIncludes = @(
     "-I", "kernel/graphics"
 )
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fshort-wchar -Wall @commonKernelIncludes -c kernel/graphics/font.c -o font.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fshort-wchar -Wall @commonKernelIncludes -c kernel/graphics/font.c -o font.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Font Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/graphics/console.cpp -o console.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/graphics/console.cpp -o console.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Console Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/graphics/mouse.cpp -o mouse.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/graphics/mouse.cpp -o mouse.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Mouse Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/interrupt.cpp -o interrupt.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/interrupt.cpp -o interrupt.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Interrupt Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/pic.cpp -o pic.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/pic.cpp -o pic.o
 if ($LASTEXITCODE -ne 0) { Write-Host "PIC Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/ps2.cpp -o ps2.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/ps2.cpp -o ps2.o
 if ($LASTEXITCODE -ne 0) { Write-Host "PS2 Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/pci.cpp -o pci.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/pci.cpp -o pci.o
 if ($LASTEXITCODE -ne 0) { Write-Host "PCI Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/usb/xhci.cpp -o xhci.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/usb/xhci.cpp -o xhci.o
 if ($LASTEXITCODE -ne 0) { Write-Host "xHCI Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/commands.cpp -o shell_commands.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/commands.cpp -o shell_commands.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Shell Commands Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/text.cpp -o shell_text.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/text.cpp -o shell_text.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Shell Text Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/cmd_dispatch.cpp -o shell_cmd_dispatch.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/cmd_dispatch.cpp -o shell_cmd_dispatch.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Shell Dispatch Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/cmd_core.cpp -o shell_cmd_core.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/cmd_core.cpp -o shell_cmd_core.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Shell Core Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/cmd_fs.cpp -o shell_cmd_fs.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/cmd_fs.cpp -o shell_cmd_fs.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Shell FS Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/cmd_xhci.cpp -o shell_cmd_xhci.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/cmd_xhci.cpp -o shell_cmd_xhci.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Shell xHCI Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/tab_completion.cpp -o shell_tab_completion.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/shell/tab_completion.cpp -o shell_tab_completion.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Shell TabCompletion Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/key_event.cpp -o input_key_event.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/key_event.cpp -o input_key_event.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input KeyEvent Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/key_layout.cpp -o input_key_layout.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/key_layout.cpp -o input_key_layout.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input KeyLayout Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/hid_keyboard.cpp -o input_hid_keyboard.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/hid_keyboard.cpp -o input_hid_keyboard.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input HID Keyboard Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/history.cpp -o input_history.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/history.cpp -o input_history.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input History Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/line_ops.cpp -o input_line_ops.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/line_ops.cpp -o input_line_ops.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input LineOps Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/selection.cpp -o input_selection.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/selection.cpp -o input_selection.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input Selection Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/line_render.cpp -o input_line_render.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/line_render.cpp -o input_line_render.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input LineRender Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/line_editor.cpp -o input_line_editor.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/line_editor.cpp -o input_line_editor.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input LineEditor Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/ime_logic.cpp -o input_ime_logic.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/ime_logic.cpp -o input_ime_logic.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input IME Logic Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/ime_engine.cpp -o input_ime_engine.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/ime_engine.cpp -o input_ime_engine.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input IME Engine Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/ime_session.cpp -o input_ime_session.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/ime_session.cpp -o input_ime_session.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input IME Session Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/key_flow.cpp -o input_key_flow.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/key_flow.cpp -o input_key_flow.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input KeyFlow Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/key_handler.cpp -o input_key_handler.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/key_handler.cpp -o input_key_handler.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input KeyHandler Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/key_handler_exec.cpp -o input_key_handler_exec.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/key_handler_exec.cpp -o input_key_handler_exec.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input KeyHandler Exec Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/runtime_input_flow.cpp -o input_runtime_input_flow.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/runtime_input_flow.cpp -o input_runtime_input_flow.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input Runtime Flow Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/input_runtime_bridge.cpp -o input_runtime_bridge.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/input/input_runtime_bridge.cpp -o input_runtime_bridge.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Input Runtime Bridge Compile Error!" -ForegroundColor Red; exit 1 }
 
 # 割り込みハンドラはSSEレジスタを使わないように -mgeneral-regs-only を指定する
-& $clang -target x86_64-elf -mno-red-zone -mgeneral-regs-only -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/interrupt_handler.cpp -o interrupt_handler.o
+& $clangPath -target x86_64-elf -mno-red-zone -mgeneral-regs-only -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/interrupt_handler.cpp -o interrupt_handler.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Interrupt Handler Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/memory/memory.cpp -o memory.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/memory/memory.cpp -o memory.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Memory Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/paging.cpp -o paging.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/paging.cpp -o paging.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Paging Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/apic.cpp -o apic.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/apic.cpp -o apic.o
 if ($LASTEXITCODE -ne 0) { Write-Host "APIC Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/timer.cpp -o timer.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/timer.cpp -o timer.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Timer Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/graphics/window.cpp -o window.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/graphics/window.cpp -o window.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Window Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/graphics/layer.cpp -o layer.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/graphics/layer.cpp -o layer.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Layer Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/ui/system_monitor.cpp -o ui_system_monitor.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/ui/system_monitor.cpp -o ui_system_monitor.o
 if ($LASTEXITCODE -ne 0) { Write-Host "UI System Monitor Compile Error!" -ForegroundColor Red; exit 1 }
 
-& $clang -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/kernel.cpp -o kernel.o
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/kernel.cpp -o kernel.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Kernel Compile Error!" -ForegroundColor Red; exit 1 }
 
 # ELFファイルとしてリンク
-& $ld_lld -m elf_x86_64 -z norelro --image-base 0x100000 --entry KernelMain -o kernel.elf kernel.o console.o mouse.o interrupt.o pic.o ps2.o pci.o xhci.o shell_commands.o shell_text.o shell_cmd_dispatch.o shell_cmd_core.o shell_cmd_fs.o shell_cmd_xhci.o shell_tab_completion.o input_key_event.o input_key_layout.o input_hid_keyboard.o input_history.o input_line_ops.o input_selection.o input_line_render.o input_line_editor.o input_ime_logic.o input_ime_engine.o input_ime_session.o input_key_flow.o input_key_handler.o input_key_handler_exec.o input_runtime_input_flow.o input_runtime_bridge.o interrupt_handler.o font.o memory.o paging.o apic.o timer.o window.o layer.o ui_system_monitor.o
+& $ldLldPath -m elf_x86_64 -z norelro --image-base 0x100000 --entry KernelMain -o kernel.elf kernel.o console.o mouse.o interrupt.o pic.o ps2.o pci.o xhci.o shell_commands.o shell_text.o shell_cmd_dispatch.o shell_cmd_core.o shell_cmd_fs.o shell_cmd_xhci.o shell_tab_completion.o input_key_event.o input_key_layout.o input_hid_keyboard.o input_history.o input_line_ops.o input_selection.o input_line_render.o input_line_editor.o input_ime_logic.o input_ime_engine.o input_ime_session.o input_key_flow.o input_key_handler.o input_key_handler_exec.o input_runtime_input_flow.o input_runtime_bridge.o interrupt_handler.o font.o memory.o paging.o apic.o timer.o window.o layer.o ui_system_monitor.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Kernel Link Error!" -ForegroundColor Red; exit 1 }
 
 Write-Host "Build Success! -> main.efi & kernel.elf" -ForegroundColor Green
@@ -286,8 +232,8 @@ catch {
 
 Write-Host "Starting QEMU..." -ForegroundColor Cyan
 
-$qemu = Resolve-ToolPath -ToolLabel "qemu-system-x86_64" -CandidatePaths @("C:\Program Files\qemu\qemu-system-x86_64.exe") -CommandNames @("qemu-system-x86_64", "qemu-system-x86_64.exe")
-Ensure-ToolPath -ToolLabel "qemu-system-x86_64" -ToolPath $qemu
+$qemuPath = "C:\Program Files\qemu\qemu-system-x86_64.exe"
+Ensure-ToolExists -ToolLabel "qemu-system-x86_64" -ToolPath $qemuPath
 
 # 5. QEMUの実行
 # ※Windows上での素のQEMUはデフォルトでレガシーBIOSなので、OVMF (UEFIファーム) を指定する必要がある。
@@ -370,7 +316,7 @@ if ($Smoke) {
     )
 
     Write-Host "Running smoke boot check..." -ForegroundColor Cyan
-    $qemuProc = Start-Process -FilePath $qemu `
+    $qemuProc = Start-Process -FilePath $qemuPath `
                               -ArgumentList $qemuSmokeArgs `
                               -WorkingDirectory $projectRoot `
                               -RedirectStandardOutput $smokeStdoutPath `
@@ -406,4 +352,4 @@ if ($Smoke) {
     exit 1
 }
 
-& $qemu @qemuArgs
+& $qemuPath @qemuArgs
