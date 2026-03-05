@@ -521,14 +521,30 @@ bool ExecuteRing3Command(const char* rest) {
     } else if (StrEqual(rest, "run")) {
         if (usermode::RunRing3Hello()) {
             console->PrintLine("ring3.run=ok");
+            const int64_t ret = usermode::GetLastRing3SyscallReturn();
+            console->Print("ring3.last_sysret=");
+            console->PrintDec(ret);
+            console->Print("\n");
         } else {
             console->PrintLine("ring3.run=failed");
+        }
+    } else if (StrEqual(rest, "runfault")) {
+        if (usermode::RunRing3BadPtrTest()) {
+            console->PrintLine("ring3.runfault=ok");
+            const int64_t ret = usermode::GetLastRing3SyscallReturn();
+            console->Print("ring3.last_sysret=");
+            console->PrintDec(ret);
+            console->Print(" (");
+            console->Print(syscall::ErrorName(ret));
+            console->Print(")\n");
+        } else {
+            console->PrintLine("ring3.runfault=failed");
         }
     } else if (StrEqual(rest, "reset")) {
         usermode::ResetRing3Stack();
         console->PrintLine("ring3.reset=ok");
     } else if (rest[0] != '\0' && !StrEqual(rest, "stat")) {
-        console->PrintLine("usage: ring3 [stat|prep|run|reset]");
+        console->PrintLine("usage: ring3 [stat|prep|run|runfault|reset]");
         return true;
     }
 

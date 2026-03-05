@@ -15,5 +15,7 @@ bool PrepareRing3Stack(uint64_t pages = 1);
 void ResetRing3Stack();
 Ring3PrepState GetRing3PrepState();
 bool RunRing3Hello();
+bool RunRing3BadPtrTest();
+int64_t GetLastRing3SyscallReturn();
 
 }  // namespace usermode

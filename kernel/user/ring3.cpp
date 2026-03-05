@@ -8,6 +8,7 @@ namespace usermode {
 namespace {
 
 Ring3PrepState g_state = {};
+volatile int64_t g_last_ring3_syscall_ret = 0;
 
 extern "C" __attribute__((noinline)) void Ring3HelloEntry() {
     static const char kMessage[] = "[ring3] hello via int80\n";
@@ -21,6 +22,28 @@ extern "C" __attribute__((noinline)) void Ring3HelloEntry() {
           "d"(0ULL),
           "c"(0ULL)
         : "r8", "r9", "r10", "r11", "memory");
+    g_last_ring3_syscall_ret = static_cast<int64_t>(ret);
+
+    ret = static_cast<uint64_t>(syscall::Number::kExitToKernel);
+    __asm__ volatile(
+        "int $0x80"
+        : "+a"(ret)
+        : "D"(0ULL), "S"(0ULL), "d"(0ULL), "c"(0ULL)
+        : "r8", "r9", "r10", "r11", "memory");
+
+    for (;;) {
+        __asm__ volatile("pause");
+    }
+}
+
+extern "C" __attribute__((noinline)) void Ring3BadPtrEntry() {
+    uint64_t ret = static_cast<uint64_t>(syscall::Number::kWriteText);
+    __asm__ volatile(
+        "int $0x80"
+        : "+a"(ret)
+        : "D"(0x8ULL), "S"(32ULL), "d"(0ULL), "c"(0ULL)
+        : "r8", "r9", "r10", "r11", "memory");
+    g_last_ring3_syscall_ret = static_cast<int64_t>(ret);
 
     ret = static_cast<uint64_t>(syscall::Number::kExitToKernel);
     __asm__ volatile(
@@ -81,6 +104,21 @@ bool RunRing3Hello() {
     uint64_t user_rsp = g_state.stack_top - 16;
     RunUserModeFunction(reinterpret_cast<uint64_t>(&Ring3HelloEntry), user_rsp);
     return true;
+}
+
+bool RunRing3BadPtrTest() {
+    if (!g_state.ready) {
+        if (!PrepareRing3Stack(1)) {
+            return false;
+        }
+    }
+    uint64_t user_rsp = g_state.stack_top - 16;
+    RunUserModeFunction(reinterpret_cast<uint64_t>(&Ring3BadPtrEntry), user_rsp);
+    return true;
+}
+
+int64_t GetLastRing3SyscallReturn() {
+    return g_last_ring3_syscall_ret;
 }
 
 }  // namespace usermode
