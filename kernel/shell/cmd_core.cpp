@@ -33,6 +33,8 @@ extern uint8_t g_keyboard_last_raw;
 extern uint8_t g_keyboard_last_key;
 extern bool g_keyboard_last_extended;
 extern bool g_keyboard_last_released;
+extern uint64_t g_clip_rx_bytes;
+extern uint64_t g_clip_rx_lines;
 
 ShellPair* EnsurePair(ShellPair* pairs, int count, const char* key);
 void PrintPairs(const char* label, ShellPair* pairs, int count);
@@ -560,6 +562,10 @@ bool ExecuteInputStatCommand() {
     console->PrintDec(CountImeLearningEntries());
     console->Print(" hid.kbd=");
     console->Print(g_xhci_hid_decode_keyboard ? "on" : "off");
+    console->Print(" clip.rx.bytes=");
+    console->PrintDec(static_cast<int64_t>(g_clip_rx_bytes));
+    console->Print(" clip.rx.lines=");
+    console->PrintDec(static_cast<int64_t>(g_clip_rx_lines));
     console->Print("\n");
     return true;
 }

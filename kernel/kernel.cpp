@@ -683,6 +683,8 @@ char g_host_clipboard[128];
 bool g_host_clipboard_ready = false;
 char g_serial_clip_line[192];
 int g_serial_clip_line_len = 0;
+uint64_t g_clip_rx_bytes = 0;
+uint64_t g_clip_rx_lines = 0;
 char ToLowerAscii(char c);
 const BootFileEntry* FindBootFileByName(const char* name);
 void ToLowerAsciiString(const char* src, char* dst, int dst_len);
@@ -998,7 +1000,7 @@ constexpr uint16_t kCom1Base = 0x3F8;
 void InitHostClipSerialCom1() {
     Out8(kCom1Base + 1, 0x00); // Disable interrupts
     Out8(kCom1Base + 3, 0x80); // DLAB
-    Out8(kCom1Base + 0, 0x01); // 115200 divisor low
+    Out8(kCom1Base + 0, 0x0C); // 9600 divisor low
     Out8(kCom1Base + 1, 0x00); // divisor high
     Out8(kCom1Base + 3, 0x03); // 8N1
     Out8(kCom1Base + 2, 0xC7); // FIFO
@@ -1033,6 +1035,7 @@ void ApplyHostClipLine(const char* line) {
     }
     g_host_clipboard[w] = '\0';
     g_host_clipboard_ready = (w > 0);
+    ++g_clip_rx_lines;
 }
 
 void PollHostClipSerialCom1() {
@@ -1040,6 +1043,7 @@ void PollHostClipSerialCom1() {
     while (Com1HasByte() && guard < 256) {
         ++guard;
         const char c = static_cast<char>(In8(kCom1Base));
+        ++g_clip_rx_bytes;
         if (c == '\r') {
             continue;
         }
