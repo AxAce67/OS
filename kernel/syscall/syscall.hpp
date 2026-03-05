@@ -8,6 +8,7 @@ enum class Number : uint64_t {
     kWriteText = 1,
     kCurrentTick = 2,
     kAbiVersion = 3,
+    kExitToKernel = 4,
 };
 
 constexpr int64_t kErrNoSys = -38;

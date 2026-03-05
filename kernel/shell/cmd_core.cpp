@@ -518,11 +518,17 @@ bool ExecuteRing3Command(const char* rest) {
         } else {
             console->PrintLine("ring3.prep=failed");
         }
+    } else if (StrEqual(rest, "run")) {
+        if (usermode::RunRing3Hello()) {
+            console->PrintLine("ring3.run=ok");
+        } else {
+            console->PrintLine("ring3.run=failed");
+        }
     } else if (StrEqual(rest, "reset")) {
         usermode::ResetRing3Stack();
         console->PrintLine("ring3.reset=ok");
     } else if (rest[0] != '\0' && !StrEqual(rest, "stat")) {
-        console->PrintLine("usage: ring3 [stat|prep|reset]");
+        console->PrintLine("usage: ring3 [stat|prep|run|reset]");
         return true;
     }
 

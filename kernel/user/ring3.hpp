@@ -14,5 +14,6 @@ struct Ring3PrepState {
 bool PrepareRing3Stack(uint64_t pages = 1);
 void ResetRing3Stack();
 Ring3PrepState GetRing3PrepState();
+bool RunRing3Hello();
 
 }  // namespace usermode

@@ -80,6 +80,8 @@ int64_t DispatchFromTrap(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t
             return static_cast<int64_t>(CurrentTick());
         case Number::kAbiVersion:
             return static_cast<int64_t>(kAbiVersion);
+        case Number::kExitToKernel:
+            return 0;
         default:
             return kErrNoSys;
     }

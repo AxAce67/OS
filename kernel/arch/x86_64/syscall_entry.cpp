@@ -25,13 +25,32 @@ struct SyscallTrapFrame {
     uint64_t rflags;
 } __attribute__((packed));
 
+extern "C" volatile uint64_t g_ring3_saved_rsp = 0;
+extern "C" volatile uint64_t g_ring3_resume_rip = 0;
+extern "C" volatile uint8_t g_ring3_active = 0;
+
+constexpr uint16_t kKernelCodeSelector = 0x08;
+constexpr uint16_t kUserCodeSelector = 0x23;
+constexpr uint16_t kUserDataSelector = 0x1B;
+
 extern "C" void HandleSyscallTrap(SyscallTrapFrame* frame) {
     if (frame == nullptr) {
         return;
     }
+    const uint64_t number = frame->rax;
     const bool from_user = (frame->cs & 0x3) == 0x3;
-    frame->rax = static_cast<uint64_t>(
-        syscall::DispatchFromTrap(frame->rax, frame->rdi, frame->rsi, frame->rdx, frame->rcx, from_user));
+    const int64_t ret =
+        syscall::DispatchFromTrap(number, frame->rdi, frame->rsi, frame->rdx, frame->rcx, from_user);
+
+    if (from_user &&
+        number == static_cast<uint64_t>(syscall::Number::kExitToKernel) &&
+        g_ring3_active != 0 &&
+        g_ring3_resume_rip != 0) {
+        frame->rip = g_ring3_resume_rip;
+        frame->cs = kKernelCodeSelector;
+        frame->rflags |= (1ULL << 9);
+    }
+    frame->rax = static_cast<uint64_t>(ret);
 }
 
 }  // namespace
@@ -82,4 +101,29 @@ int64_t InvokeSyscallInt80(uint64_t number, uint64_t arg0, uint64_t arg1, uint64
         : "D"(arg0), "S"(arg1), "d"(arg2), "c"(arg3)
         : "r8", "r9", "r10", "r11", "memory");
     return static_cast<int64_t>(ret);
+}
+
+int RunUserModeFunction(uint64_t entry_rip, uint64_t user_rsp) {
+    __asm__ volatile(
+        "movq %%rsp, g_ring3_saved_rsp(%%rip)\n"
+        "lea 1f(%%rip), %%rax\n"
+        "movq %%rax, g_ring3_resume_rip(%%rip)\n"
+        "movb $1, g_ring3_active(%%rip)\n"
+        "pushq %[user_ss]\n"
+        "pushq %[user_rsp]\n"
+        "pushfq\n"
+        "orq $0x200, (%%rsp)\n"
+        "pushq %[user_cs]\n"
+        "pushq %[entry]\n"
+        "iretq\n"
+        "1:\n"
+        "movb $0, g_ring3_active(%%rip)\n"
+        "movq g_ring3_saved_rsp(%%rip), %%rsp\n"
+        :
+        : [entry] "r"(entry_rip),
+          [user_rsp] "r"(user_rsp),
+          [user_cs] "i"(kUserCodeSelector),
+          [user_ss] "i"(kUserDataSelector)
+        : "rax", "memory");
+    return 0;
 }
