@@ -9,6 +9,9 @@
 #include "ps2.hpp"
 #include "input/message.hpp"
 #include "event_queue.hpp"
+#include "arch/x86_64/syscall_entry.hpp"
+
+extern "C" void IntHandlerSyscallEntry();
 
 // kernel.cpp で定義しているコンソールとマウスカーソルの参照
 extern Console* console;
@@ -164,6 +167,12 @@ void InitializeInterruptHandlers() {
                            1 * 8,
                            14,
                            0);
+
+    // Software interrupt syscall入口 (int 0x80)
+    SetInterruptDescriptor(&idt[0x80], (uint64_t)IntHandlerSyscallEntry,
+                           1 * 8,
+                           14,
+                           3);
 }
 
 void EnqueueAbsolutePointerEvent(int32_t x, int32_t y, int32_t wheel, uint8_t buttons) {

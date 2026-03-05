@@ -182,6 +182,9 @@ if ($LASTEXITCODE -ne 0) { Write-Host "APIC Compile Error!" -ForegroundColor Red
 & $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/timer.cpp -o timer.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Timer Compile Error!" -ForegroundColor Red; exit 1 }
 
+& $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/arch/x86_64/syscall_entry.cpp -o syscall_entry.o
+if ($LASTEXITCODE -ne 0) { Write-Host "Syscall Entry Compile Error!" -ForegroundColor Red; exit 1 }
+
 & $clangPath -target x86_64-elf -mno-red-zone -fno-stack-protector -fno-exceptions -fno-rtti -std=c++17 -Wall @commonKernelIncludes -c kernel/graphics/window.cpp -o window.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Window Compile Error!" -ForegroundColor Red; exit 1 }
 
@@ -195,7 +198,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "UI System Monitor Compile Error!" -Foregr
 if ($LASTEXITCODE -ne 0) { Write-Host "Kernel Compile Error!" -ForegroundColor Red; exit 1 }
 
 # ELFファイルとしてリンク
-& $ldLldPath -m elf_x86_64 -z norelro --image-base 0x100000 --entry KernelMain -o kernel.elf kernel.o console.o mouse.o interrupt.o pic.o ps2.o pci.o xhci.o shell_commands.o shell_text.o shell_cmd_dispatch.o shell_cmd_core.o shell_cmd_fs.o shell_cmd_xhci.o shell_tab_completion.o syscall_core.o input_key_event.o input_key_layout.o input_hid_keyboard.o input_history.o input_line_ops.o input_selection.o input_line_render.o input_line_editor.o input_ime_logic.o input_ime_engine.o input_ime_session.o input_key_flow.o input_key_handler.o input_key_handler_exec.o input_runtime_input_flow.o input_runtime_bridge.o interrupt_handler.o font.o memory.o paging.o apic.o timer.o window.o layer.o ui_system_monitor.o
+& $ldLldPath -m elf_x86_64 -z norelro --image-base 0x100000 --entry KernelMain -o kernel.elf kernel.o console.o mouse.o interrupt.o pic.o ps2.o pci.o xhci.o shell_commands.o shell_text.o shell_cmd_dispatch.o shell_cmd_core.o shell_cmd_fs.o shell_cmd_xhci.o shell_tab_completion.o syscall_core.o input_key_event.o input_key_layout.o input_hid_keyboard.o input_history.o input_line_ops.o input_selection.o input_line_render.o input_line_editor.o input_ime_logic.o input_ime_engine.o input_ime_session.o input_key_flow.o input_key_handler.o input_key_handler_exec.o input_runtime_input_flow.o input_runtime_bridge.o interrupt_handler.o font.o memory.o paging.o apic.o timer.o syscall_entry.o window.o layer.o ui_system_monitor.o
 if ($LASTEXITCODE -ne 0) { Write-Host "Kernel Link Error!" -ForegroundColor Red; exit 1 }
 
 Write-Host "Build Success! -> main.efi & kernel.elf" -ForegroundColor Green

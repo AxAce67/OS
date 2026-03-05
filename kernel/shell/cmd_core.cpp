@@ -6,6 +6,7 @@
 #include "boot_info.h"
 #include "shell/context.hpp"
 #include "shell/text.hpp"
+#include "arch/x86_64/syscall_entry.hpp"
 #include "syscall/syscall.hpp"
 
 extern Console* console;
@@ -404,7 +405,7 @@ bool ExecuteInputStatCommand() {
 
 bool ExecuteSyscallCommand(const char* rest) {
     if (rest[0] == '\0' || StrEqual(rest, "stat")) {
-        console->PrintLine("syscall abi=1 methods=write,tick,version");
+        console->PrintLine("syscall abi=1 methods=write,tick,version trap=int80");
         return true;
     }
 
@@ -448,7 +449,47 @@ bool ExecuteSyscallCommand(const char* rest) {
         return true;
     }
 
-    console->PrintLine("usage: syscall [stat|tick|version|write <text>|invalid]");
+    if (StrEqual(rest, "trap tick")) {
+        const int64_t ret = InvokeSyscallInt80(static_cast<uint64_t>(syscall::Number::kCurrentTick), 0, 0, 0, 0);
+        console->Print("syscall trap tick -> ");
+        console->PrintDec(ret);
+        console->Print("\n");
+        return true;
+    }
+
+    if (StrEqual(rest, "trap version")) {
+        const int64_t ret = InvokeSyscallInt80(static_cast<uint64_t>(syscall::Number::kAbiVersion), 0, 0, 0, 0);
+        console->Print("syscall trap version -> ");
+        console->PrintDec(ret);
+        console->Print("\n");
+        return true;
+    }
+
+    if (StrStartsWith(rest, "trap write ")) {
+        const char* text = rest + 11;
+        const int64_t ret = InvokeSyscallInt80(
+            static_cast<uint64_t>(syscall::Number::kWriteText),
+            reinterpret_cast<uint64_t>(text),
+            static_cast<uint64_t>(StrLength(text)),
+            0,
+            0);
+        console->Print("\nsyscall trap write -> ");
+        console->PrintDec(ret);
+        console->Print("\n");
+        return true;
+    }
+
+    if (StrEqual(rest, "trap invalid")) {
+        const int64_t ret = InvokeSyscallInt80(0xFFFF, 0, 0, 0, 0);
+        console->Print("syscall trap invalid -> ");
+        console->PrintDec(ret);
+        console->Print(" (");
+        console->Print(syscall::ErrorName(ret));
+        console->Print(")\n");
+        return true;
+    }
+
+    console->PrintLine("usage: syscall [stat|tick|version|write <text>|invalid|trap tick|trap version|trap write <text>|trap invalid]");
     return true;
 }
 
