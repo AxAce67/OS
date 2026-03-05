@@ -15,3 +15,5 @@ inline void SetCR3(uint64_t cr3) {
 void InitializePaging();
 void PrepareUserModeMappings();
 bool AreUserModeMappingsReady();
+bool MapIdentityRangeUser(uint64_t start_addr, uint64_t size);
+void UnmapIdentityRangeUser(uint64_t start_addr, uint64_t size);

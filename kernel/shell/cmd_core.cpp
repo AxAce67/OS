@@ -548,7 +548,8 @@ bool ExecuteRing3Command(const char* rest) {
         return true;
     }
 
-    const auto state = usermode::GetRing3PrepState();
+    usermode::Ring3PrepState state{};
+    usermode::GetRing3PrepState(&state);
     console->Print("ring3.segments=");
     console->PrintLine(IsUserModeSegmentsReady() ? "ready" : "not-ready");
     console->Print("ring3.tss.rsp0=0x");
@@ -559,6 +560,15 @@ bool ExecuteRing3Command(const char* rest) {
     console->Print("ring3.stack.ready=");
     console->PrintLine(state.ready ? "yes" : "no");
     if (state.ready) {
+        console->Print("ring3.code.base=0x");
+        console->PrintHex(state.code_base, 16);
+        console->Print("\n");
+        console->Print("ring3.code.top=0x");
+        console->PrintHex(state.code_top, 16);
+        console->Print("\n");
+        console->Print("ring3.code.pages=");
+        console->PrintDec(static_cast<int64_t>(state.code_pages));
+        console->Print("\n");
         console->Print("ring3.stack.base=0x");
         console->PrintHex(state.stack_base, 16);
         console->Print("\n");
