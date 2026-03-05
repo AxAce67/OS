@@ -28,37 +28,64 @@ function New-Ring3SampleBinary {
     )
     $msgText = "[ring3-file] hello from runfile`n"
     $msgBytes = [System.Text.Encoding]::ASCII.GetBytes($msgText)
-    $image = New-Object System.Collections.Generic.List[byte]
-
-    # mov rax, 1 (write)
-    $image.AddRange([byte[]](0x48,0xB8,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00))
-    # lea rdi, [rip + disp32]  (message at offset 61, next ip after lea is 17 => disp=44)
-    $image.AddRange([byte[]](0x48,0x8D,0x3D,0x2C,0x00,0x00,0x00))
-    # mov rsi, msg_len
     $msgLen = [uint64]$msgBytes.Length
-    $image.AddRange([byte[]](0x48,0xBE))
-    $image.AddRange([System.BitConverter]::GetBytes($msgLen))
-    # xor rdx,rdx ; xor rcx,rcx ; int 0x80
-    $image.AddRange([byte[]](0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80))
-    # mov rax, 4 (exit-to-kernel)
-    $image.AddRange([byte[]](0x48,0xB8,0x04,0x00,0x00,0x00,0x00,0x00,0x00,0x00))
-    # xor rdi,rdi ; xor rsi,rsi ; xor rdx,rdx ; xor rcx,rcx ; int 0x80 ; jmp $
-    $image.AddRange([byte[]](0x48,0x31,0xFF,0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE))
-    $image.AddRange($msgBytes)
 
-    $header = New-Object System.Collections.Generic.List[byte]
-    $header.AddRange([System.Text.Encoding]::ASCII.GetBytes("R3BIN01"))
-    $header.Add(0x00)
-    $header.AddRange([System.BitConverter]::GetBytes([uint32]1))   # version
-    $header.AddRange([System.BitConverter]::GetBytes([uint32]0))   # entry_offset
-    $header.AddRange([System.BitConverter]::GetBytes([uint32]28))  # image_offset
-    $header.AddRange([System.BitConverter]::GetBytes([uint32]$image.Count))
-    $header.AddRange([System.BitConverter]::GetBytes([uint32]1))   # stack_pages
+    # 互換性のため BinaryWriter でバイト列を構築する
+    $imgMs = New-Object System.IO.MemoryStream
+    $imgBw = New-Object System.IO.BinaryWriter($imgMs)
+    try {
+        # mov rax, 1 (write)
+        $imgBw.Write([byte[]](0x48,0xB8,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00))
+        # lea rdi, [rip + disp32]  (message at offset 61, next ip after lea is 17 => disp=44)
+        $imgBw.Write([byte[]](0x48,0x8D,0x3D,0x2C,0x00,0x00,0x00))
+        # mov rsi, msg_len
+        $imgBw.Write([byte[]](0x48,0xBE))
+        $imgBw.Write([System.BitConverter]::GetBytes($msgLen))
+        # xor rdx,rdx ; xor rcx,rcx ; int 0x80
+        $imgBw.Write([byte[]](0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80))
+        # mov rax, 4 (exit-to-kernel)
+        $imgBw.Write([byte[]](0x48,0xB8,0x04,0x00,0x00,0x00,0x00,0x00,0x00,0x00))
+        # xor rdi,rdi ; xor rsi,rsi ; xor rdx,rdx ; xor rcx,rcx ; int 0x80 ; jmp $
+        $imgBw.Write([byte[]](0x48,0x31,0xFF,0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE))
+        $imgBw.Write($msgBytes)
+        $imgBw.Flush()
+        $imageBytes = $imgMs.ToArray()
+    }
+    finally {
+        $imgBw.Dispose()
+        $imgMs.Dispose()
+    }
 
-    $bytes = New-Object System.Collections.Generic.List[byte]
-    $bytes.AddRange($header)
-    $bytes.AddRange($image)
-    [System.IO.File]::WriteAllBytes($OutputPath, $bytes.ToArray())
+    $hdrMs = New-Object System.IO.MemoryStream
+    $hdrBw = New-Object System.IO.BinaryWriter($hdrMs)
+    try {
+        $hdrBw.Write([System.Text.Encoding]::ASCII.GetBytes("R3BIN01"))
+        $hdrBw.Write([byte]0x00)
+        $hdrBw.Write([uint32]1)  # version
+        $hdrBw.Write([uint32]0)  # entry_offset
+        $hdrBw.Write([uint32]28) # image_offset
+        $hdrBw.Write([uint32]$imageBytes.Length)
+        $hdrBw.Write([uint32]1)  # stack_pages
+        $hdrBw.Flush()
+        $headerBytes = $hdrMs.ToArray()
+    }
+    finally {
+        $hdrBw.Dispose()
+        $hdrMs.Dispose()
+    }
+
+    $outDir = Split-Path -Parent $OutputPath
+    if (-not [string]::IsNullOrWhiteSpace($outDir) -and -not (Test-Path $outDir)) {
+        New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+    }
+    $fs = [System.IO.File]::Open($OutputPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+    try {
+        $fs.Write($headerBytes, 0, $headerBytes.Length)
+        $fs.Write($imageBytes, 0, $imageBytes.Length)
+    }
+    finally {
+        $fs.Dispose()
+    }
 }
 
 if (-Not $NoRun) {
@@ -276,6 +303,7 @@ try {
 }
 catch {
     Write-Host "Error: failed to copy build artifacts into disk/." -ForegroundColor Red
+    Write-Host ("Detail: " + $_.Exception.Message) -ForegroundColor Red
     exit 1
 }
 
