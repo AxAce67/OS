@@ -2777,29 +2777,53 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RestorePromptAndInput(snapshot, saved_cursor);
     };
     auto MaybeRunIdleAutoScheduledProcess = [&]() -> bool {
-        proc::Info info{};
-        if (!scheduler::GetNextAutoScheduledProcess(&info)) {
+        constexpr int kIdleAutoScheduleBurstLimit = 4;
+
+        proc::Info first_info{};
+        if (!scheduler::GetNextAutoScheduledProcess(&first_info)) {
             return false;
         }
         AppendAsyncShellOutput([&]() {
             console->PrintLine("[autosched]");
-            console->Print("runnext: pid=");
-            console->PrintDec(static_cast<int64_t>(info.pid));
-            console->Print(" path=");
-            console->PrintLine(info.path);
-            int64_t wait_status = 0;
-            if (!proc::RunProcessByPid(info.pid, FindBootFileByPath, &wait_status)) {
-                console->Print("runnext: failed: ");
-                console->Print(info.path);
-                console->Print(" (");
-                console->Print(usermode::GetLastRing3Error());
-                console->Print(")\n");
-                return;
+            int ran = 0;
+            proc::Info info{};
+            info.used = first_info.used;
+            info.pid = first_info.pid;
+            info.state = first_info.state;
+            info.argc = first_info.argc;
+            info.exit_code = first_info.exit_code;
+            info.start_tick = first_info.start_tick;
+            info.end_tick = first_info.end_tick;
+            CopyString(info.path, first_info.path, static_cast<int>(sizeof(info.path)));
+            while (true) {
+                console->Print("runnext: pid=");
+                console->PrintDec(static_cast<int64_t>(info.pid));
+                console->Print(" path=");
+                console->PrintLine(info.path);
+                int64_t wait_status = 0;
+                if (!proc::RunProcessByPid(info.pid, FindBootFileByPath, &wait_status)) {
+                    console->Print("runnext: failed: ");
+                    console->Print(info.path);
+                    console->Print(" (");
+                    console->Print(usermode::GetLastRing3Error());
+                    console->Print(")\n");
+                } else {
+                    console->Print("runnext: waitpid -> ");
+                    console->PrintDec(static_cast<int64_t>(info.pid));
+                    console->Print(" status=");
+                    console->PrintDec(wait_status);
+                    console->Print("\n");
+                }
+                ++ran;
+                if (ran >= kIdleAutoScheduleBurstLimit) {
+                    break;
+                }
+                if (!scheduler::GetNextAutoScheduledProcess(&info)) {
+                    break;
+                }
             }
-            console->Print("runnext: waitpid -> ");
-            console->PrintDec(static_cast<int64_t>(info.pid));
-            console->Print(" status=");
-            console->PrintDec(wait_status);
+            console->Print("autosched: ran=");
+            console->PrintDec(ran);
             console->Print("\n");
         });
         return true;
