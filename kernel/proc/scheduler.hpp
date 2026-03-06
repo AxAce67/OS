@@ -28,6 +28,7 @@ const char* PolicyName();
 bool IsAutoScheduleEnabled();
 void SetAutoScheduleEnabled(bool enabled);
 Snapshot GetSnapshot();
+void ResetSnapshot();
 bool RunProcessWithResult(uint32_t pid, proc::BootFileLookup lookup, RunResult* out_result);
 bool RunPid(proc::BootFileLookup lookup, uint32_t pid, RunResult* out_result);
 bool RunNextRunnableProcess(proc::BootFileLookup lookup, RunResult* out_result);

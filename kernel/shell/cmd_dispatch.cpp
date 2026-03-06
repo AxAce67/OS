@@ -43,6 +43,7 @@ bool HandleRunPass(const char*, const char*, const char*, int*) { return Execute
 bool HandleResumeAll(const char*, const char*, const char*, int*) { return ExecuteResumeAllCommand(); }
 bool HandleProcs(const char*, const char*, const char*, int*) { return ExecuteProcsCommand(); }
 bool HandleProcQueue(const char*, const char*, const char*, int*) { return ExecuteProcQueueCommand(); }
+bool HandleSchedReset(const char*, const char*, const char*, int*) { return ExecuteSchedResetCommand(); }
 bool HandleLs(const char*, const char*, const char* rest, int*) { return ExecuteLsCommand(rest); }
 bool HandleStat(const char*, const char* command, const char*, int* pos_ptr) { return ExecuteStatCommand(command, pos_ptr); }
 bool HandleCat(const char*, const char* command, const char*, int* pos_ptr) { return ExecuteCatCommand(command, pos_ptr); }
@@ -86,6 +87,7 @@ const ShellCommandEntry kShellCommandTable[] = {
     {"resumeall", HandleResumeAll},
     {"procs", HandleProcs},
     {"procq", HandleProcQueue},
+    {"schedreset", HandleSchedReset},
     {"ls", HandleLs},
     {"stat", HandleStat},
     {"cat", HandleCat},

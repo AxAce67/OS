@@ -108,6 +108,17 @@ Snapshot GetSnapshot() {
     return snapshot;
 }
 
+void ResetSnapshot() {
+    g_last_autosched_tick = 0;
+    g_autosched_tick_count = 0;
+    g_autosched_run_count = 0;
+    g_autosched_yield_count = 0;
+    g_tick_burst_remaining = 0;
+    g_last_run_pid = 0;
+    g_last_run_state = proc::State::kFree;
+    g_last_wait_status = 0;
+}
+
 bool RunProcessWithResult(uint32_t pid, proc::BootFileLookup lookup, RunResult* out_result) {
     proc::Info info{};
     if (!proc::GetProcessInfo(pid, &info)) {

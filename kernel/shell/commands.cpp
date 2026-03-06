@@ -44,6 +44,7 @@ const char* const kBuiltInCommands[] = {
     "resumeall",
     "procs",
     "procq",
+    "schedreset",
     "xhciinfo",
     "xhciregs",
     "xhcistop",

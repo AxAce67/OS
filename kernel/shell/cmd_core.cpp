@@ -299,8 +299,8 @@ void PrintRunResultLine(const char* prefix, const scheduler::RunResult& result) 
 }
 
 bool ExecuteHelpCommand() {
-    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec autosched runpid runnext runpass runall resumeall procs procq");
-    console->PrintLine("help: proc  runnext=1 runnable, runpass/runall=ready pass, resumeall=yielded pass, procs=state, procq=queues");
+    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec autosched runpid runnext runpass runall resumeall procs procq schedreset");
+    console->PrintLine("help: proc  runnext=1 runnable, runpass/runall=ready pass, resumeall=yielded pass, procs=state, procq=queues, schedreset=diag");
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
     console->PrintLine("help: misc  history clearhistory inputstat about");
@@ -1527,6 +1527,12 @@ bool ExecuteProcQueueCommand() {
         console->PrintDec(static_cast<int64_t>(snapshot.yielded_pids[i]));
     }
     console->Print("\n");
+    return true;
+}
+
+bool ExecuteSchedResetCommand() {
+    scheduler::ResetSnapshot();
+    console->PrintLine("schedreset: ok");
     return true;
 }
 

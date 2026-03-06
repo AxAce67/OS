@@ -35,6 +35,7 @@ bool ExecuteRing3Command(const char* rest);
 bool ExecuteExecCommand(const char* command, int* pos_ptr);
 bool ExecuteProcsCommand();
 bool ExecuteProcQueueCommand();
+bool ExecuteSchedResetCommand();
 bool ExecuteRunNextCommand();
 bool ExecuteRunAllCommand();
 bool ExecuteResumeAllCommand();
