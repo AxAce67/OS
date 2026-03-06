@@ -1468,6 +1468,12 @@ bool ExecuteProcQueueCommand() {
     }
     console->Print("procq.valid=");
     console->PrintLine(snapshot.valid ? "1" : "0");
+    console->Print("procq.current=");
+    console->PrintDec(static_cast<int64_t>(snapshot.current_pid));
+    console->Print("\n");
+    console->Print("procq.runnable.front=");
+    console->PrintDec(static_cast<int64_t>(snapshot.runnable_front_pid));
+    console->Print("\n");
     console->Print("procq.runnable.count=");
     console->PrintDec(snapshot.runnable_count);
     console->Print("\n");
@@ -1478,6 +1484,9 @@ bool ExecuteProcQueueCommand() {
         }
         console->PrintDec(static_cast<int64_t>(snapshot.runnable_pids[i]));
     }
+    console->Print("\n");
+    console->Print("procq.yielded.front=");
+    console->PrintDec(static_cast<int64_t>(snapshot.yielded_front_pid));
     console->Print("\n");
     console->Print("procq.yielded.count=");
     console->PrintDec(snapshot.yielded_count);

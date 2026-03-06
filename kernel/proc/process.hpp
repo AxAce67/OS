@@ -39,8 +39,11 @@ struct Summary {
 
 struct QueueSnapshot {
     bool valid;
+    uint32_t current_pid;
+    uint32_t runnable_front_pid;
     int runnable_count;
     uint32_t runnable_pids[16];
+    uint32_t yielded_front_pid;
     int yielded_count;
     uint32_t yielded_pids[16];
 };

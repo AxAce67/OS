@@ -923,11 +923,26 @@ bool GetQueueSnapshot(QueueSnapshot* out_snapshot) {
         return false;
     }
     out_snapshot->valid = ValidateQueueStateInternal();
+    out_snapshot->current_pid = g_current_pid;
+    out_snapshot->runnable_front_pid = 0;
+    out_snapshot->yielded_front_pid = 0;
     out_snapshot->runnable_count = g_runnable_count;
     out_snapshot->yielded_count = g_yielded_count;
     for (int i = 0; i < kMaxProcesses; ++i) {
         out_snapshot->runnable_pids[i] = 0;
         out_snapshot->yielded_pids[i] = 0;
+    }
+    if (g_runnable_count > 0) {
+        const int slot = g_runnable_queue[0];
+        if (IsValidSlotIndex(slot) && g_processes[slot].info.used) {
+            out_snapshot->runnable_front_pid = g_processes[slot].info.pid;
+        }
+    }
+    if (g_yielded_count > 0) {
+        const int slot = g_yielded_queue[0];
+        if (IsValidSlotIndex(slot) && g_processes[slot].info.used) {
+            out_snapshot->yielded_front_pid = g_processes[slot].info.pid;
+        }
     }
     for (int i = 0; i < g_runnable_count && i < kMaxProcesses; ++i) {
         const int slot = g_runnable_queue[i];
