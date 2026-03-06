@@ -70,6 +70,10 @@ bool RunProcessAndCollectResult(const proc::Info& info,
 
 }  // namespace
 
+const char* PolicyName() {
+    return "round-robin";
+}
+
 bool IsAutoScheduleEnabled() {
     return g_auto_schedule_enabled;
 }

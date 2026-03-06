@@ -29,6 +29,7 @@ struct ProcessEntry {
 ProcessEntry g_processes[kMaxProcesses];
 uint32_t g_next_pid = 1;
 int g_next_slot = 0;
+int g_next_runnable_slot = 0;
 uint32_t g_current_pid = 0;
 bool g_initialized = false;
 
@@ -582,7 +583,7 @@ bool FindNextRunnableProcess(Info* out_info) {
         return false;
     }
     for (int n = 0; n < kMaxProcesses; ++n) {
-        const int idx = (g_next_slot - 1 - n + kMaxProcesses) % kMaxProcesses;
+        const int idx = (g_next_runnable_slot + n) % kMaxProcesses;
         if (!g_processes[idx].info.used) {
             continue;
         }
@@ -600,6 +601,7 @@ bool FindNextRunnableProcess(Info* out_info) {
         out_info->start_tick = g_processes[idx].info.start_tick;
         out_info->end_tick = g_processes[idx].info.end_tick;
         CopyString(out_info->path, g_processes[idx].info.path, sizeof(out_info->path));
+        g_next_runnable_slot = (idx + 1) % kMaxProcesses;
         return true;
     }
     return false;

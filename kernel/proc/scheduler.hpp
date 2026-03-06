@@ -12,6 +12,7 @@ struct RunResult {
     bool ok;
 };
 
+const char* PolicyName();
 bool IsAutoScheduleEnabled();
 void SetAutoScheduleEnabled(bool enabled);
 bool RunProcessWithResult(uint32_t pid, proc::BootFileLookup lookup, RunResult* out_result);

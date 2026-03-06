@@ -1378,6 +1378,8 @@ bool ExecuteRunAllCommand() {
 bool ExecuteProcsCommand() {
     console->Print("procs.autosched=");
     console->PrintLine(scheduler::IsAutoScheduleEnabled() ? "on" : "off");
+    console->Print("procs.policy=");
+    console->PrintLine(scheduler::PolicyName());
     console->PrintLine("pid state   argc yld rsp exit    start end   path");
     bool any = false;
     int total = 0;
