@@ -358,6 +358,22 @@ Ring3ReturnReason GetLastRing3ReturnReason() {
     return ::GetLastRing3ReturnReason();
 }
 
+bool FinalizeLastRing3Run() {
+    const Ring3ReturnReason reason = ::GetLastRing3ReturnReason();
+    if (reason == Ring3ReturnReason::kYield) {
+        g_last_ring3_syscall_ret = 0;
+        g_last_ring3_error = "yield";
+        return true;
+    }
+    if (reason == Ring3ReturnReason::kExit) {
+        g_last_ring3_syscall_ret = GetLastRing3ExitCode();
+        g_last_ring3_error = "ok";
+        return true;
+    }
+    g_last_ring3_error = "resume.none";
+    return false;
+}
+
 bool RunRing3BinaryFromBuffer(const uint8_t* data, uint64_t size) {
     return RunRing3BinaryFromBufferWithArgs(data, size, nullptr, 0);
 }
@@ -409,15 +425,7 @@ bool RunRing3BinaryFromBufferWithContext(const uint8_t* data, uint64_t size,
         return false;
     }
     RunUserModeFunctionWithArgs(entry, user_rsp, user_argc, user_argv_ptr, user_envp_ptr);
-    const Ring3ReturnReason reason = ::GetLastRing3ReturnReason();
-    if (reason == Ring3ReturnReason::kYield) {
-        g_last_ring3_syscall_ret = 0;
-        g_last_ring3_error = "yield";
-        return true;
-    }
-    g_last_ring3_syscall_ret = GetLastRing3ExitCode();
-    g_last_ring3_error = "ok";
-    return true;
+    return FinalizeLastRing3Run();
 }
 
 const char* const* GetCurrentExecEnvp() {

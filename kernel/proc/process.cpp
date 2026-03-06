@@ -352,9 +352,10 @@ bool ResumeProcess(uint32_t pid) {
         return false;
     }
     ResumeUserModeFrame(&entry->saved_frame);
-    CompleteProcessRun(entry, true);
+    const bool ok = usermode::FinalizeLastRing3Run();
+    CompleteProcessRun(entry, ok);
     ClearCurrentProcess();
-    return true;
+    return ok;
 }
 
 bool RunProcessByPid(uint32_t pid, BootFileLookup lookup, int64_t* out_wait_status) {

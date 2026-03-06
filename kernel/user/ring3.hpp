@@ -34,6 +34,7 @@ bool SetCurrentExecEnv(const char* key, const char* value);
 bool UnsetCurrentExecEnv(const char* key);
 int64_t GetLastRing3SyscallReturn();
 Ring3ReturnReason GetLastRing3ReturnReason();
+bool FinalizeLastRing3Run();
 const char* GetLastRing3Error();
 
 }  // namespace usermode
