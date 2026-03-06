@@ -19,6 +19,7 @@ struct Info {
     bool used;
     uint32_t pid;
     State state;
+    int argc;
     int64_t exit_code;
     uint64_t start_tick;
     uint64_t end_tick;

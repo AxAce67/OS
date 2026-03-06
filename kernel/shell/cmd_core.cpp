@@ -1351,17 +1351,27 @@ bool ExecuteRunAllCommand() {
 }
 
 bool ExecuteProcsCommand() {
-    console->PrintLine("pid state   exit    start end   path");
+    console->Print("procs.autosched=");
+    console->PrintLine(g_auto_schedule_enabled ? "on" : "off");
+    console->PrintLine("pid state   argc exit    start end   path");
     bool any = false;
+    int total = 0;
+    int ready = 0;
     for (int n = 0; n < 16; ++n) {
         proc::Info info{};
         if (!proc::GetProcessInfoByRecentIndex(n, &info) || !info.used) {
             continue;
         }
         any = true;
+        ++total;
+        if (info.state == proc::State::kReady) {
+            ++ready;
+        }
         console->PrintDec(static_cast<int64_t>(info.pid));
         console->Print(" ");
         console->Print(proc::StateName(info.state));
+        console->Print(" ");
+        console->PrintDec(static_cast<int64_t>(info.argc));
         console->Print(" ");
         console->PrintDec(info.exit_code);
         console->Print(" ");
@@ -1373,6 +1383,12 @@ bool ExecuteProcsCommand() {
     }
     if (!any) {
         console->PrintLine("(no processes)");
+    } else {
+        console->Print("procs.total=");
+        console->PrintDec(total);
+        console->Print(" ready=");
+        console->PrintDec(ready);
+        console->Print("\n");
     }
     return true;
 }

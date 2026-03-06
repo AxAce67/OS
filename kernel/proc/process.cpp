@@ -37,6 +37,7 @@ void InitIfNeeded() {
         g_processes[i].info.used = false;
         g_processes[i].info.pid = 0;
         g_processes[i].info.state = State::kFree;
+        g_processes[i].info.argc = 0;
         g_processes[i].info.exit_code = 0;
         g_processes[i].info.start_tick = 0;
         g_processes[i].info.end_tick = 0;
@@ -234,6 +235,7 @@ bool CreateProcess(const char* path,
     entry->info.used = true;
     entry->info.pid = g_next_pid++;
     entry->info.state = State::kReady;
+    entry->info.argc = argc;
     entry->info.exit_code = 0;
     entry->info.start_tick = 0;
     entry->info.end_tick = 0;
@@ -303,6 +305,7 @@ bool RunNextReadyProcess(BootFileLookup lookup, Info* out_info, int64_t* out_wai
         out_info->used = info.used;
         out_info->pid = info.pid;
         out_info->state = info.state;
+        out_info->argc = info.argc;
         out_info->exit_code = info.exit_code;
         out_info->start_tick = info.start_tick;
         out_info->end_tick = info.end_tick;
@@ -407,6 +410,7 @@ bool GetProcessInfo(uint32_t pid, Info* out_info) {
     out_info->used = entry->info.used;
     out_info->pid = entry->info.pid;
     out_info->state = entry->info.state;
+    out_info->argc = entry->info.argc;
     out_info->exit_code = entry->info.exit_code;
     out_info->start_tick = entry->info.start_tick;
     out_info->end_tick = entry->info.end_tick;
@@ -426,6 +430,7 @@ bool GetProcessInfoByRecentIndex(int recent_index, Info* out_info) {
     out_info->used = g_processes[idx].info.used;
     out_info->pid = g_processes[idx].info.pid;
     out_info->state = g_processes[idx].info.state;
+    out_info->argc = g_processes[idx].info.argc;
     out_info->exit_code = g_processes[idx].info.exit_code;
     out_info->start_tick = g_processes[idx].info.start_tick;
     out_info->end_tick = g_processes[idx].info.end_tick;
@@ -446,6 +451,7 @@ bool FindNextReadyProcess(Info* out_info) {
         out_info->used = g_processes[idx].info.used;
         out_info->pid = g_processes[idx].info.pid;
         out_info->state = g_processes[idx].info.state;
+        out_info->argc = g_processes[idx].info.argc;
         out_info->exit_code = g_processes[idx].info.exit_code;
         out_info->start_tick = g_processes[idx].info.start_tick;
         out_info->end_tick = g_processes[idx].info.end_tick;
