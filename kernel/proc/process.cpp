@@ -2,6 +2,7 @@
 
 #include "arch/x86_64/timer.hpp"
 #include "shell/text.hpp"
+#include "user/ring3.hpp"
 
 namespace proc {
 namespace {
@@ -191,6 +192,30 @@ bool CreateProcess(const char* path, const char* const* envp, int envc, uint32_t
         *out_pid = entry->info.pid;
     }
     return true;
+}
+
+bool ExecuteProcess(uint32_t pid, const uint8_t* image, uint64_t image_size,
+                    const char* const* argv, int argc) {
+    ProcessEntry* entry = FindEntryByPid(pid);
+    if (entry == nullptr || image == nullptr) {
+        return false;
+    }
+    if (!MarkProcessRunning(pid)) {
+        return false;
+    }
+    if (!SetCurrentProcess(pid)) {
+        MarkProcessFailed(pid, -1);
+        return false;
+    }
+    const bool ok = usermode::RunRing3BinaryFromBufferWithContext(
+        image, image_size, argv, argc, entry->env_ptrs, entry->envc);
+    if (ok) {
+        MarkProcessExited(pid, usermode::GetLastRing3SyscallReturn());
+    } else {
+        MarkProcessFailed(pid, -1);
+    }
+    ClearCurrentProcess();
+    return ok;
 }
 
 bool MarkProcessRunning(uint32_t pid) {

@@ -365,27 +365,7 @@ bool RunRing3BinaryFromBufferWithArgs(const uint8_t* data, uint64_t size, const 
 bool RunRing3BinaryFromBufferWithArgsEnv(const uint8_t* data, uint64_t size,
                                          const char* const* argv, int argc,
                                          const char* const* envp, int envc) {
-    return RunRing3BinaryFromBufferWithPid(data, size, 0, argv, argc, envp, envc);
-}
-
-bool RunRing3BinaryFromBufferWithPid(const uint8_t* data, uint64_t size,
-                                     uint32_t pid,
-                                     const char* const* argv, int argc,
-                                     const char* const* envp, int envc) {
-    if (!proc::SetCurrentProcess(pid)) {
-        g_last_ring3_error = "proc.pid";
-        return false;
-    }
-    const bool ok = RunRing3BinaryFromBufferWithContext(data, size, argv, argc, envp, envc);
-    if (pid != 0) {
-        if (ok) {
-            proc::MarkProcessExited(pid, GetLastRing3ExitCode());
-        } else {
-            proc::MarkProcessFailed(pid, -1);
-        }
-    }
-    proc::ClearCurrentProcess();
-    return ok;
+    return RunRing3BinaryFromBufferWithContext(data, size, argv, argc, envp, envc);
 }
 
 bool RunRing3BinaryFromBufferWithContext(const uint8_t* data, uint64_t size,

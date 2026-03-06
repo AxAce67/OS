@@ -1202,12 +1202,11 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
         proc::MarkProcessFailed(pid, -1);
         return true;
     }
-    proc::MarkProcessRunning(pid);
     console->Print("exec: pid=");
     console->PrintDec(static_cast<int64_t>(pid));
     console->Print(" path=");
     console->PrintLine(path);
-    if (usermode::RunRing3BinaryFromBufferWithPid(file->data, file->size, pid, arg_ptrs, argc, env_ptrs, envc)) {
+    if (proc::ExecuteProcess(pid, file->data, file->size, arg_ptrs, argc)) {
         int64_t wait_status = 0;
         const int64_t wait_ret = proc::WaitPid(pid, &wait_status, false);
         console->Print("exec: waitpid -> ");
