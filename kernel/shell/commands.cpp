@@ -39,6 +39,7 @@ const char* const kBuiltInCommands[] = {
     "autosched",
     "runpid",
     "runnext",
+    "runpass",
     "runall",
     "procs",
     "xhciinfo",

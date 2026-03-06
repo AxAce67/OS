@@ -305,7 +305,8 @@ bool ParseEnvFileBuffer(const uint8_t* data, uint64_t size,
 }  // namespace
 
 bool ExecuteHelpCommand() {
-    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec autosched runpid runnext runall procs");
+    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec autosched runpid runnext runpass runall procs");
+    console->PrintLine("help: proc  runnext=1 runnable, runpass/runall=1 scheduler pass, runpid=<pid>, procs=state");
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
     console->PrintLine("help: misc  history clearhistory inputstat about");
