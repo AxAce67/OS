@@ -1,5 +1,7 @@
 #pragma once
 
+#include "proc/scheduler.hpp"
+
 bool ExecuteHelpCommand();
 bool ExecuteAboutCommand();
 bool ExecutePwdCommand();
@@ -37,3 +39,6 @@ bool ExecuteRunAllCommand();
 bool ExecuteResumeAllCommand();
 bool ExecuteRunPidCommand(const char* rest);
 bool ExecuteAutoSchedCommand(const char* rest);
+
+void PrintRunResultStart(const char* prefix, const scheduler::RunResult& result);
+void PrintRunResultLine(const char* prefix, const scheduler::RunResult& result);

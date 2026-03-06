@@ -55,31 +55,6 @@ namespace {
 constexpr int kExecMaxEnv = 24;
 constexpr int kRunAllPassLimit = 16;
 
-void PrintRunResultLine(const char* prefix, const scheduler::RunResult& result) {
-    if (!result.ok) {
-        console->Print(prefix);
-        console->Print("failed: ");
-        console->Print(result.queued_info.path);
-        console->Print(" (");
-        console->Print(usermode::GetLastRing3Error());
-        console->Print(")\n");
-        return;
-    }
-    if (result.final_info.state == proc::State::kYielded) {
-        console->Print(prefix);
-        console->Print("yielded -> ");
-        console->PrintDec(static_cast<int64_t>(result.final_info.pid));
-        console->Print("\n");
-        return;
-    }
-    console->Print(prefix);
-    console->Print("waitpid -> ");
-    console->PrintDec(static_cast<int64_t>(result.final_info.pid));
-    console->Print(" status=");
-    console->PrintDec(result.wait_status);
-    console->Print("\n");
-}
-
 bool AppendExecEnv(char out[][128], const char** out_ptrs, int max_count, int* io_count,
                    const char* key, const char* value) {
     if (out == nullptr || out_ptrs == nullptr || io_count == nullptr || key == nullptr || value == nullptr) {
@@ -289,6 +264,39 @@ bool ParseEnvFileBuffer(const uint8_t* data, uint64_t size,
     return true;
 }
 }  // namespace
+
+void PrintRunResultStart(const char* prefix, const scheduler::RunResult& result) {
+    console->Print(prefix);
+    console->Print("pid=");
+    console->PrintDec(static_cast<int64_t>(result.queued_info.pid));
+    console->Print(" path=");
+    console->PrintLine(result.queued_info.path);
+}
+
+void PrintRunResultLine(const char* prefix, const scheduler::RunResult& result) {
+    if (!result.ok) {
+        console->Print(prefix);
+        console->Print("failed: ");
+        console->Print(result.queued_info.path);
+        console->Print(" (");
+        console->Print(usermode::GetLastRing3Error());
+        console->Print(")\n");
+        return;
+    }
+    if (result.final_info.state == proc::State::kYielded) {
+        console->Print(prefix);
+        console->Print("yielded -> ");
+        console->PrintDec(static_cast<int64_t>(result.final_info.pid));
+        console->Print("\n");
+        return;
+    }
+    console->Print(prefix);
+    console->Print("waitpid -> ");
+    console->PrintDec(static_cast<int64_t>(result.final_info.pid));
+    console->Print(" status=");
+    console->PrintDec(result.wait_status);
+    console->Print("\n");
+}
 
 bool ExecuteHelpCommand() {
     console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec autosched runpid runnext runpass runall resumeall procs");
@@ -1294,10 +1302,7 @@ bool ExecuteRunNextCommand() {
         console->PrintLine("runnext: no runnable process");
         return true;
     }
-    console->Print("runnext: pid=");
-    console->PrintDec(static_cast<int64_t>(result.queued_info.pid));
-    console->Print(" path=");
-    console->PrintLine(result.queued_info.path);
+    PrintRunResultStart("runnext: ", result);
     PrintRunResultLine("runnext: ", result);
     return true;
 }
@@ -1334,10 +1339,7 @@ bool ExecuteRunPidCommand(const char* rest) {
         PrintRunResultLine("runpid: ", result);
         return true;
     }
-    console->Print("runpid: pid=");
-    console->PrintDec(static_cast<int64_t>(result.queued_info.pid));
-    console->Print(" path=");
-    console->PrintLine(result.queued_info.path);
+    PrintRunResultStart("runpid: ", result);
     PrintRunResultLine("runpid: ", result);
     return true;
 }
@@ -1373,10 +1375,7 @@ bool ExecuteRunAllCommand() {
         if (!scheduler::RunNextReadyProcess(FindBootFileByPath, &result)) {
             break;
         }
-        console->Print("runall: pid=");
-        console->PrintDec(static_cast<int64_t>(result.queued_info.pid));
-        console->Print(" path=");
-        console->PrintLine(result.queued_info.path);
+        PrintRunResultStart("runall: ", result);
         PrintRunResultLine("runall: ", result);
         ++ran;
     }
@@ -1395,10 +1394,7 @@ bool ExecuteResumeAllCommand() {
     const int ran = scheduler::RunAllYieldedProcesses(FindBootFileByPath, results, kRunAllPassLimit);
     for (int i = 0; i < ran; ++i) {
         const scheduler::RunResult& result = results[i];
-        console->Print("resumeall: pid=");
-        console->PrintDec(static_cast<int64_t>(result.queued_info.pid));
-        console->Print(" path=");
-        console->PrintLine(result.queued_info.path);
+        PrintRunResultStart("resumeall: ", result);
         PrintRunResultLine("resumeall: ", result);
     }
     console->Print("resumeall: ran=");

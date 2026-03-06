@@ -2787,27 +2787,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             console->PrintLine("[autosched]");
             for (int i = 0; i < ran; ++i) {
                 const scheduler::RunResult& result = results[i];
-                console->Print("runnext: pid=");
-                console->PrintDec(static_cast<int64_t>(result.queued_info.pid));
-                console->Print(" path=");
-                console->PrintLine(result.queued_info.path);
-                if (!result.ok) {
-                    console->Print("runnext: failed: ");
-                    console->Print(result.queued_info.path);
-                    console->Print(" (");
-                    console->Print(usermode::GetLastRing3Error());
-                    console->Print(")\n");
-                } else if (result.final_info.state == proc::State::kYielded) {
-                    console->Print("runnext: yielded -> ");
-                    console->PrintDec(static_cast<int64_t>(result.final_info.pid));
-                    console->Print("\n");
-                } else {
-                    console->Print("runnext: waitpid -> ");
-                    console->PrintDec(static_cast<int64_t>(result.final_info.pid));
-                    console->Print(" status=");
-                    console->PrintDec(result.wait_status);
-                    console->Print("\n");
-                }
+                PrintRunResultStart("runnext: ", result);
+                PrintRunResultLine("runnext: ", result);
             }
             console->Print("autosched: ran=");
             console->PrintDec(ran);
