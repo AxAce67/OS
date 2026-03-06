@@ -42,6 +42,19 @@ bool IsRunnableState(State state) {
     return state == State::kReady || state == State::kYielded;
 }
 
+bool QueueContainsSlot(const int* queue, int count, int slot_index) {
+    if (queue == nullptr || slot_index < 0 || slot_index >= kMaxProcesses ||
+        count < 0 || count > kMaxProcesses) {
+        return false;
+    }
+    for (int i = 0; i < count; ++i) {
+        if (queue[i] == slot_index) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void ResetQueue(int* queue, int* count) {
     if (queue == nullptr || count == nullptr) {
         return;
@@ -174,6 +187,76 @@ void CopyInfoFromEntry(Info* out_info, const ProcessEntry* entry) {
     out_info->start_tick = entry->info.start_tick;
     out_info->end_tick = entry->info.end_tick;
     CopyString(out_info->path, entry->info.path, sizeof(out_info->path));
+}
+
+bool ValidateQueueStateInternal() {
+    if (g_runnable_count < 0 || g_runnable_count > kMaxProcesses ||
+        g_yielded_count < 0 || g_yielded_count > kMaxProcesses) {
+        return false;
+    }
+
+    bool seen_runnable[kMaxProcesses];
+    bool seen_yielded[kMaxProcesses];
+    for (int i = 0; i < kMaxProcesses; ++i) {
+        seen_runnable[i] = false;
+        seen_yielded[i] = false;
+    }
+
+    for (int i = 0; i < g_runnable_count; ++i) {
+        const int slot = g_runnable_queue[i];
+        if (!IsValidSlotIndex(slot) || seen_runnable[slot]) {
+            return false;
+        }
+        const ProcessEntry& entry = g_processes[slot];
+        if (!entry.info.used || !IsRunnableState(entry.info.state) || !entry.in_runnable_queue) {
+            return false;
+        }
+        seen_runnable[slot] = true;
+    }
+    for (int i = g_runnable_count; i < kMaxProcesses; ++i) {
+        if (g_runnable_queue[i] != -1) {
+            return false;
+        }
+    }
+
+    for (int i = 0; i < g_yielded_count; ++i) {
+        const int slot = g_yielded_queue[i];
+        if (!IsValidSlotIndex(slot) || seen_yielded[slot]) {
+            return false;
+        }
+        const ProcessEntry& entry = g_processes[slot];
+        if (!entry.info.used || entry.info.state != State::kYielded || !entry.in_yielded_queue) {
+            return false;
+        }
+        if (!QueueContainsSlot(g_runnable_queue, g_runnable_count, slot)) {
+            return false;
+        }
+        seen_yielded[slot] = true;
+    }
+    for (int i = g_yielded_count; i < kMaxProcesses; ++i) {
+        if (g_yielded_queue[i] != -1) {
+            return false;
+        }
+    }
+
+    for (int i = 0; i < kMaxProcesses; ++i) {
+        const ProcessEntry& entry = g_processes[i];
+        const bool should_be_runnable = entry.info.used && IsRunnableState(entry.info.state);
+        const bool should_be_yielded = entry.info.used && entry.info.state == State::kYielded;
+        if (seen_runnable[i] != should_be_runnable) {
+            return false;
+        }
+        if (seen_yielded[i] != should_be_yielded) {
+            return false;
+        }
+        if (entry.in_runnable_queue != seen_runnable[i]) {
+            return false;
+        }
+        if (entry.in_yielded_queue != seen_yielded[i]) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void InitIfNeeded() {
@@ -839,6 +922,7 @@ bool GetQueueSnapshot(QueueSnapshot* out_snapshot) {
     if (out_snapshot == nullptr) {
         return false;
     }
+    out_snapshot->valid = ValidateQueueStateInternal();
     out_snapshot->runnable_count = g_runnable_count;
     out_snapshot->yielded_count = g_yielded_count;
     for (int i = 0; i < kMaxProcesses; ++i) {
@@ -860,6 +944,11 @@ bool GetQueueSnapshot(QueueSnapshot* out_snapshot) {
         out_snapshot->yielded_pids[i] = g_processes[slot].info.pid;
     }
     return true;
+}
+
+bool ValidateQueueState() {
+    InitIfNeeded();
+    return ValidateQueueStateInternal();
 }
 
 const char* StateName(State state) {

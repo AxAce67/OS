@@ -38,6 +38,7 @@ struct Summary {
 };
 
 struct QueueSnapshot {
+    bool valid;
     int runnable_count;
     uint32_t runnable_pids[16];
     int yielded_count;
@@ -68,6 +69,7 @@ void AdvanceYieldedProcessCursor();
 bool FindNextYieldedProcess(Info* out_info);
 Summary GetProcessSummary();
 bool GetQueueSnapshot(QueueSnapshot* out_snapshot);
+bool ValidateQueueState();
 const char* StateName(State state);
 
 bool SetCurrentProcess(uint32_t pid);

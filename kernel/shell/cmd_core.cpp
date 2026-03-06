@@ -1466,6 +1466,8 @@ bool ExecuteProcQueueCommand() {
         console->PrintLine("procq: unavailable");
         return true;
     }
+    console->Print("procq.valid=");
+    console->PrintLine(snapshot.valid ? "1" : "0");
     console->Print("procq.runnable.count=");
     console->PrintDec(snapshot.runnable_count);
     console->Print("\n");
