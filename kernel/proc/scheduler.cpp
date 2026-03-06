@@ -22,6 +22,17 @@ void SetAutoScheduleEnabled(bool enabled) {
     }
 }
 
+bool AdvanceProcessForWait(uint32_t pid) {
+    proc::Info info{};
+    if (!proc::GetProcessInfo(pid, &info)) {
+        return false;
+    }
+    if (info.state != proc::State::kYielded) {
+        return false;
+    }
+    return proc::RunProcessByPid(pid, nullptr, nullptr);
+}
+
 bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info) {
     if (!g_auto_schedule_enabled) {
         return false;

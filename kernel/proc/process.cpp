@@ -1,6 +1,7 @@
 #include "proc/process.hpp"
 
 #include "arch/x86_64/timer.hpp"
+#include "proc/scheduler.hpp"
 #include "shell/text.hpp"
 #include "user/ring3.hpp"
 
@@ -531,7 +532,7 @@ int64_t WaitPid(uint32_t pid, int64_t* out_exit_code, bool nohang) {
             return static_cast<int64_t>(pid);
         }
         if (CanAdvanceWithoutLookup(entry)) {
-            RunProcessByPid(pid, nullptr, nullptr);
+            scheduler::AdvanceProcessForWait(pid);
             continue;
         }
         CpuPause();
