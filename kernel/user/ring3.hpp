@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "arch/x86_64/syscall_entry.hpp"
 
 namespace usermode {
 
@@ -32,6 +33,7 @@ int GetCurrentExecEnvc();
 bool SetCurrentExecEnv(const char* key, const char* value);
 bool UnsetCurrentExecEnv(const char* key);
 int64_t GetLastRing3SyscallReturn();
+Ring3ReturnReason GetLastRing3ReturnReason();
 const char* GetLastRing3Error();
 
 }  // namespace usermode

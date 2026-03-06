@@ -30,6 +30,7 @@ extern "C" volatile uint64_t g_ring3_resume_rip = 0;
 extern "C" volatile uint8_t g_ring3_active = 0;
 extern "C" volatile uint8_t g_ring3_return_requested = 0;
 extern "C" volatile int64_t g_ring3_last_exit_code = 0;
+extern "C" volatile uint8_t g_ring3_last_return_reason = 0;
 
 constexpr uint16_t kUserCodeSelector = 0x23;
 constexpr uint16_t kUserDataSelector = 0x1B;
@@ -44,11 +45,16 @@ extern "C" void HandleSyscallTrap(SyscallTrapFrame* frame) {
         syscall::DispatchFromTrap(number, frame->rdi, frame->rsi, frame->rdx, frame->rcx, from_user);
 
     if (from_user &&
-        number == static_cast<uint64_t>(syscall::Number::kExitToKernel) &&
         g_ring3_active != 0 &&
         g_ring3_resume_rip != 0) {
-        g_ring3_last_exit_code = static_cast<int64_t>(frame->rdi);
-        g_ring3_return_requested = 1;
+        if (number == static_cast<uint64_t>(syscall::Number::kExitToKernel)) {
+            g_ring3_last_exit_code = static_cast<int64_t>(frame->rdi);
+            g_ring3_last_return_reason = static_cast<uint8_t>(Ring3ReturnReason::kExit);
+            g_ring3_return_requested = 1;
+        } else if (number == static_cast<uint64_t>(syscall::Number::kYield)) {
+            g_ring3_last_return_reason = static_cast<uint8_t>(Ring3ReturnReason::kYield);
+            g_ring3_return_requested = 1;
+        }
     }
     frame->rax = static_cast<uint64_t>(ret);
 }
@@ -116,6 +122,7 @@ int RunUserModeFunction(uint64_t entry_rip, uint64_t user_rsp) {
 }
 
 int RunUserModeFunctionWithArgs(uint64_t entry_rip, uint64_t user_rsp, uint64_t arg0, uint64_t arg1, uint64_t arg2) {
+    g_ring3_last_return_reason = static_cast<uint8_t>(Ring3ReturnReason::kNone);
     __asm__ volatile(
         "movq %%rsp, g_ring3_saved_rsp(%%rip)\n"
         "lea 1f(%%rip), %%rax\n"
@@ -145,4 +152,8 @@ int RunUserModeFunctionWithArgs(uint64_t entry_rip, uint64_t user_rsp, uint64_t 
 
 int64_t GetLastRing3ExitCode() {
     return g_ring3_last_exit_code;
+}
+
+Ring3ReturnReason GetLastRing3ReturnReason() {
+    return static_cast<Ring3ReturnReason>(g_ring3_last_return_reason);
 }
