@@ -2777,10 +2777,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RestorePromptAndInput(snapshot, saved_cursor);
     };
     auto MaybeRunIdleAutoScheduledProcess = [&]() -> bool {
-        constexpr int kIdleAutoScheduleBurstLimit = 4;
-
         proc::Info first_info{};
-        if (!scheduler::GetNextAutoScheduledProcess(&first_info)) {
+        const uint64_t now_tick = CurrentTick();
+        if (!scheduler::DequeueAutoScheduledProcessForTick(now_tick, &first_info)) {
             return false;
         }
         AppendAsyncShellOutput([&]() {
@@ -2815,10 +2814,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     console->Print("\n");
                 }
                 ++ran;
-                if (ran >= kIdleAutoScheduleBurstLimit) {
-                    break;
-                }
-                if (!scheduler::GetNextAutoScheduledProcess(&info)) {
+                if (!scheduler::DequeueAutoScheduledProcessForTick(now_tick, &info)) {
                     break;
                 }
             }
@@ -2828,17 +2824,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         });
         return true;
     };
-    uint64_t last_autosched_tick = CurrentTick();
     auto MaybeRunTickAutoScheduledProcess = [&]() -> bool {
-        if (!scheduler::IsAutoScheduleEnabled()) {
-            last_autosched_tick = CurrentTick();
-            return false;
-        }
-        const uint64_t now_tick = CurrentTick();
-        if (now_tick == last_autosched_tick) {
-            return false;
-        }
-        last_autosched_tick = now_tick;
         return MaybeRunIdleAutoScheduledProcess();
     };
 

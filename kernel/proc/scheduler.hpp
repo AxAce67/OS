@@ -7,6 +7,6 @@ namespace scheduler {
 
 bool IsAutoScheduleEnabled();
 void SetAutoScheduleEnabled(bool enabled);
-bool GetNextAutoScheduledProcess(proc::Info* out_info);
+bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info);
 
 }  // namespace scheduler
