@@ -38,6 +38,22 @@ bool IsRunnableState(State state) {
     return state == State::kReady || state == State::kYielded;
 }
 
+void CopyInfoFromEntry(Info* out_info, const ProcessEntry* entry) {
+    if (out_info == nullptr || entry == nullptr) {
+        return;
+    }
+    out_info->used = entry->info.used;
+    out_info->pid = entry->info.pid;
+    out_info->state = entry->info.state;
+    out_info->argc = entry->info.argc;
+    out_info->yield_count = entry->info.yield_count;
+    out_info->resume_count = entry->info.resume_count;
+    out_info->exit_code = entry->info.exit_code;
+    out_info->start_tick = entry->info.start_tick;
+    out_info->end_tick = entry->info.end_tick;
+    CopyString(out_info->path, entry->info.path, sizeof(out_info->path));
+}
+
 void InitIfNeeded() {
     if (g_initialized) {
         return;
@@ -582,7 +598,7 @@ bool GetProcessInfoByRecentIndex(int recent_index, Info* out_info) {
     return true;
 }
 
-bool FindNextRunnableProcess(Info* out_info) {
+bool PeekNextRunnableProcess(Info* out_info) {
     InitIfNeeded();
     if (out_info == nullptr) {
         return false;
@@ -595,23 +611,25 @@ bool FindNextRunnableProcess(Info* out_info) {
         if (!IsRunnableState(g_processes[idx].info.state)) {
             continue;
         }
-        out_info->used = g_processes[idx].info.used;
-        out_info->pid = g_processes[idx].info.pid;
-        out_info->state = g_processes[idx].info.state;
-        out_info->argc = g_processes[idx].info.argc;
-        out_info->yield_count = g_processes[idx].info.yield_count;
-        out_info->resume_count = g_processes[idx].info.resume_count;
-        out_info->exit_code = g_processes[idx].info.exit_code;
-        out_info->start_tick = g_processes[idx].info.start_tick;
-        out_info->end_tick = g_processes[idx].info.end_tick;
-        CopyString(out_info->path, g_processes[idx].info.path, sizeof(out_info->path));
-        g_next_runnable_slot = (idx + 1) % kMaxProcesses;
+        CopyInfoFromEntry(out_info, &g_processes[idx]);
         return true;
     }
     return false;
 }
 
-bool FindNextYieldedProcess(Info* out_info) {
+void AdvanceRunnableProcessCursor() {
+    g_next_runnable_slot = (g_next_runnable_slot + 1) % kMaxProcesses;
+}
+
+bool FindNextRunnableProcess(Info* out_info) {
+    if (!PeekNextRunnableProcess(out_info)) {
+        return false;
+    }
+    AdvanceRunnableProcessCursor();
+    return true;
+}
+
+bool PeekNextYieldedProcess(Info* out_info) {
     InitIfNeeded();
     if (out_info == nullptr) {
         return false;
@@ -624,20 +642,22 @@ bool FindNextYieldedProcess(Info* out_info) {
         if (g_processes[idx].info.state != State::kYielded) {
             continue;
         }
-        out_info->used = g_processes[idx].info.used;
-        out_info->pid = g_processes[idx].info.pid;
-        out_info->state = g_processes[idx].info.state;
-        out_info->argc = g_processes[idx].info.argc;
-        out_info->yield_count = g_processes[idx].info.yield_count;
-        out_info->resume_count = g_processes[idx].info.resume_count;
-        out_info->exit_code = g_processes[idx].info.exit_code;
-        out_info->start_tick = g_processes[idx].info.start_tick;
-        out_info->end_tick = g_processes[idx].info.end_tick;
-        CopyString(out_info->path, g_processes[idx].info.path, sizeof(out_info->path));
-        g_next_yielded_slot = (idx + 1) % kMaxProcesses;
+        CopyInfoFromEntry(out_info, &g_processes[idx]);
         return true;
     }
     return false;
+}
+
+void AdvanceYieldedProcessCursor() {
+    g_next_yielded_slot = (g_next_yielded_slot + 1) % kMaxProcesses;
+}
+
+bool FindNextYieldedProcess(Info* out_info) {
+    if (!PeekNextYieldedProcess(out_info)) {
+        return false;
+    }
+    AdvanceYieldedProcessCursor();
+    return true;
 }
 
 Summary GetProcessSummary() {
