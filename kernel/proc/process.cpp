@@ -431,19 +431,6 @@ bool RunNextReadyProcess(BootFileLookup lookup, Info* out_info, int64_t* out_wai
     return RunProcessByPid(info.pid, lookup, out_wait_status);
 }
 
-int RunAllReadyProcesses(BootFileLookup lookup) {
-    int ran = 0;
-    while (true) {
-        Info info{};
-        int64_t wait_status = 0;
-        if (!RunNextReadyProcess(lookup, &info, &wait_status)) {
-            break;
-        }
-        ++ran;
-    }
-    return ran;
-}
-
 bool IsProcessReady(uint32_t pid) {
     const ProcessEntry* entry = FindEntryByPidConst(pid);
     return entry != nullptr && (entry->info.state == State::kReady || entry->info.state == State::kYielded);

@@ -37,7 +37,6 @@ bool CreateProcess(const char* path,
 bool ExecuteProcess(uint32_t pid, const uint8_t* image, uint64_t image_size);
 bool RunProcessByPid(uint32_t pid, BootFileLookup lookup, int64_t* out_wait_status);
 bool RunNextReadyProcess(BootFileLookup lookup, Info* out_info, int64_t* out_wait_status);
-int RunAllReadyProcesses(BootFileLookup lookup);
 bool IsProcessReady(uint32_t pid);
 bool SaveCurrentProcessUserFrame(const Ring3SyscallFrame* frame);
 bool MarkProcessRunning(uint32_t pid);
