@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "arch/x86_64/syscall_entry.hpp"
 #include "boot_info.h"
 
 namespace proc {
@@ -11,6 +12,7 @@ enum class State : uint8_t {
     kFree = 0,
     kReady,
     kRunning,
+    kYielded,
     kExited,
     kFailed,
 };
@@ -35,7 +37,9 @@ bool RunProcessByPid(uint32_t pid, BootFileLookup lookup, int64_t* out_wait_stat
 bool RunNextReadyProcess(BootFileLookup lookup, Info* out_info, int64_t* out_wait_status);
 int RunAllReadyProcesses(BootFileLookup lookup);
 bool IsProcessReady(uint32_t pid);
+bool SaveCurrentProcessUserFrame(const Ring3SyscallFrame* frame);
 bool MarkProcessRunning(uint32_t pid);
+bool MarkProcessYielded(uint32_t pid);
 bool MarkProcessExited(uint32_t pid, int64_t exit_code);
 bool MarkProcessFailed(uint32_t pid, int64_t exit_code);
 int64_t WaitPid(uint32_t pid, int64_t* out_exit_code, bool nohang);

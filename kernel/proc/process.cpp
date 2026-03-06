@@ -15,6 +15,8 @@ constexpr int kMaxExecEnvEntryLen = 128;
 
 struct ProcessEntry {
     Info info;
+    bool has_saved_frame;
+    Ring3SyscallFrame saved_frame;
     int argc;
     char arg_entries[kMaxExecArgs][kMaxExecArgLen];
     const char* arg_ptrs[kMaxExecArgs];
@@ -42,6 +44,7 @@ void InitIfNeeded() {
         g_processes[i].info.start_tick = 0;
         g_processes[i].info.end_tick = 0;
         g_processes[i].info.path[0] = '\0';
+        g_processes[i].has_saved_frame = false;
         g_processes[i].argc = 0;
         for (int j = 0; j < kMaxExecArgs; ++j) {
             g_processes[i].arg_entries[j][0] = '\0';
@@ -223,6 +226,74 @@ void CpuPause() {
     __asm__ volatile("pause");
 }
 
+void CopySavedFrame(Ring3SyscallFrame* dst, const Ring3SyscallFrame* src) {
+    if (dst == nullptr || src == nullptr) {
+        return;
+    }
+    dst->r15 = src->r15;
+    dst->r14 = src->r14;
+    dst->r13 = src->r13;
+    dst->r12 = src->r12;
+    dst->r11 = src->r11;
+    dst->r10 = src->r10;
+    dst->r9 = src->r9;
+    dst->r8 = src->r8;
+    dst->rbp = src->rbp;
+    dst->rdi = src->rdi;
+    dst->rsi = src->rsi;
+    dst->rdx = src->rdx;
+    dst->rcx = src->rcx;
+    dst->rbx = src->rbx;
+    dst->rax = src->rax;
+    dst->rip = src->rip;
+    dst->cs = src->cs;
+    dst->rflags = src->rflags;
+    dst->rsp = src->rsp;
+    dst->ss = src->ss;
+}
+
+void ClearSavedFrame(ProcessEntry* entry) {
+    if (entry == nullptr) {
+        return;
+    }
+    entry->has_saved_frame = false;
+    entry->saved_frame.rax = 0;
+    entry->saved_frame.rbx = 0;
+    entry->saved_frame.rcx = 0;
+    entry->saved_frame.rdx = 0;
+    entry->saved_frame.rsi = 0;
+    entry->saved_frame.rdi = 0;
+    entry->saved_frame.rbp = 0;
+    entry->saved_frame.r8 = 0;
+    entry->saved_frame.r9 = 0;
+    entry->saved_frame.r10 = 0;
+    entry->saved_frame.r11 = 0;
+    entry->saved_frame.r12 = 0;
+    entry->saved_frame.r13 = 0;
+    entry->saved_frame.r14 = 0;
+    entry->saved_frame.r15 = 0;
+    entry->saved_frame.rip = 0;
+    entry->saved_frame.cs = 0;
+    entry->saved_frame.rflags = 0;
+    entry->saved_frame.rsp = 0;
+    entry->saved_frame.ss = 0;
+}
+
+bool CompleteProcessRun(ProcessEntry* entry, bool ok) {
+    if (entry == nullptr) {
+        return false;
+    }
+    const Ring3ReturnReason reason = usermode::GetLastRing3ReturnReason();
+    if (reason == Ring3ReturnReason::kYield) {
+        return MarkProcessYielded(entry->info.pid);
+    }
+    ClearSavedFrame(entry);
+    if (ok) {
+        return MarkProcessExited(entry->info.pid, usermode::GetLastRing3SyscallReturn());
+    }
+    return MarkProcessFailed(entry->info.pid, -1);
+}
+
 }  // namespace
 
 bool CreateProcess(const char* path,
@@ -240,6 +311,7 @@ bool CreateProcess(const char* path,
     entry->info.start_tick = 0;
     entry->info.end_tick = 0;
     CopyString(entry->info.path, path != nullptr ? path : "", sizeof(entry->info.path));
+    ClearSavedFrame(entry);
     LoadArgs(entry, argv, argc);
     LoadEnv(entry, envp, envc);
     if (out_pid != nullptr) {
@@ -262,28 +334,61 @@ bool ExecuteProcess(uint32_t pid, const uint8_t* image, uint64_t image_size) {
     }
     const bool ok = usermode::RunRing3BinaryFromBufferWithContext(
         image, image_size, entry->arg_ptrs, entry->argc, entry->env_ptrs, entry->envc);
-    if (ok) {
-        MarkProcessExited(pid, usermode::GetLastRing3SyscallReturn());
-    } else {
-        MarkProcessFailed(pid, -1);
-    }
+    CompleteProcessRun(entry, ok);
     ClearCurrentProcess();
     return ok;
 }
 
+bool ResumeProcess(uint32_t pid) {
+    ProcessEntry* entry = FindEntryByPid(pid);
+    if (entry == nullptr || entry->info.state != State::kYielded || !entry->has_saved_frame) {
+        return false;
+    }
+    if (!MarkProcessRunning(pid)) {
+        return false;
+    }
+    if (!SetCurrentProcess(pid)) {
+        MarkProcessFailed(pid, -1);
+        return false;
+    }
+    ResumeUserModeFrame(&entry->saved_frame);
+    CompleteProcessRun(entry, true);
+    ClearCurrentProcess();
+    return true;
+}
+
 bool RunProcessByPid(uint32_t pid, BootFileLookup lookup, int64_t* out_wait_status) {
     const ProcessEntry* entry = FindEntryByPidConst(pid);
-    if (entry == nullptr || entry->info.state != State::kReady || lookup == nullptr) {
+    if (entry == nullptr) {
         return false;
     }
-    const BootFileEntry* file = lookup("/", entry->info.path);
-    if (file == nullptr) {
-        MarkProcessFailed(pid, -1);
+    if (entry->info.state == State::kReady) {
+        if (lookup == nullptr) {
+            return false;
+        }
+        const BootFileEntry* file = lookup("/", entry->info.path);
+        if (file == nullptr) {
+            MarkProcessFailed(pid, -1);
+            return false;
+        }
+        if (!ExecuteProcess(pid, file->data, file->size)) {
+            MarkProcessFailed(pid, -1);
+            return false;
+        }
+    } else if (entry->info.state == State::kYielded) {
+        if (!ResumeProcess(pid)) {
+            MarkProcessFailed(pid, -1);
+            return false;
+        }
+    } else {
         return false;
     }
-    if (!ExecuteProcess(pid, file->data, file->size)) {
-        MarkProcessFailed(pid, -1);
-        return false;
+    entry = FindEntryByPidConst(pid);
+    if (entry != nullptr && entry->info.state == State::kYielded) {
+        if (out_wait_status != nullptr) {
+            *out_wait_status = 0;
+        }
+        return true;
     }
     int64_t wait_status = 0;
     const int64_t wait_ret = WaitPid(pid, &wait_status, false);
@@ -329,7 +434,17 @@ int RunAllReadyProcesses(BootFileLookup lookup) {
 
 bool IsProcessReady(uint32_t pid) {
     const ProcessEntry* entry = FindEntryByPidConst(pid);
-    return entry != nullptr && entry->info.state == State::kReady;
+    return entry != nullptr && (entry->info.state == State::kReady || entry->info.state == State::kYielded);
+}
+
+bool SaveCurrentProcessUserFrame(const Ring3SyscallFrame* frame) {
+    ProcessEntry* entry = GetCurrentEntry();
+    if (entry == nullptr || frame == nullptr) {
+        return false;
+    }
+    CopySavedFrame(&entry->saved_frame, frame);
+    entry->has_saved_frame = true;
+    return true;
 }
 
 bool MarkProcessRunning(uint32_t pid) {
@@ -345,6 +460,16 @@ bool MarkProcessRunning(uint32_t pid) {
     return true;
 }
 
+bool MarkProcessYielded(uint32_t pid) {
+    ProcessEntry* entry = FindEntryByPid(pid);
+    if (entry == nullptr) {
+        return false;
+    }
+    entry->info.state = State::kYielded;
+    entry->info.end_tick = 0;
+    return true;
+}
+
 bool MarkProcessExited(uint32_t pid, int64_t exit_code) {
     ProcessEntry* entry = FindEntryByPid(pid);
     if (entry == nullptr) {
@@ -352,6 +477,7 @@ bool MarkProcessExited(uint32_t pid, int64_t exit_code) {
     }
     entry->info.state = State::kExited;
     entry->info.exit_code = exit_code;
+    ClearSavedFrame(entry);
     if (entry->info.start_tick == 0) {
         entry->info.start_tick = CurrentTick();
     }
@@ -366,6 +492,7 @@ bool MarkProcessFailed(uint32_t pid, int64_t exit_code) {
     }
     entry->info.state = State::kFailed;
     entry->info.exit_code = exit_code;
+    ClearSavedFrame(entry);
     entry->info.end_tick = CurrentTick();
     return true;
 }
@@ -467,6 +594,8 @@ const char* StateName(State state) {
             return "ready";
         case State::kRunning:
             return "running";
+        case State::kYielded:
+            return "yielded";
         case State::kExited:
             return "exited";
         case State::kFailed:
