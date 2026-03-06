@@ -222,6 +222,10 @@ bool IsWaitCompleteState(State state) {
     return state == State::kExited || state == State::kFailed;
 }
 
+bool CanAdvanceWithoutLookup(const ProcessEntry* entry) {
+    return entry != nullptr && entry->info.state == State::kYielded && entry->has_saved_frame;
+}
+
 void CpuPause() {
     __asm__ volatile("pause");
 }
@@ -525,6 +529,10 @@ int64_t WaitPid(uint32_t pid, int64_t* out_exit_code, bool nohang) {
                 *out_exit_code = entry->info.exit_code;
             }
             return static_cast<int64_t>(pid);
+        }
+        if (CanAdvanceWithoutLookup(entry)) {
+            RunProcessByPid(pid, nullptr, nullptr);
+            continue;
         }
         CpuPause();
     }
