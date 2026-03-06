@@ -111,9 +111,10 @@ int RunAllReadyProcesses(proc::BootFileLookup lookup, RunResult* out_results, in
     int ran = 0;
     while (ran < max_results) {
         proc::Info info{};
-        if (!proc::FindNextRunnableProcess(&info)) {
+        if (!proc::PeekNextRunnableProcess(&info)) {
             break;
         }
+        proc::AdvanceRunnableProcessCursor();
         RunProcessAndCollectResult(info, lookup, &out_results[ran]);
         ++ran;
     }
@@ -127,9 +128,10 @@ int RunAllYieldedProcesses(proc::BootFileLookup lookup, RunResult* out_results, 
     int ran = 0;
     while (ran < max_results) {
         proc::Info info{};
-        if (!proc::FindNextYieldedProcess(&info)) {
+        if (!proc::PeekNextYieldedProcess(&info)) {
             break;
         }
+        proc::AdvanceYieldedProcessCursor();
         RunProcessAndCollectResult(info, lookup, &out_results[ran]);
         ++ran;
         if (out_results[ran - 1].final_info.state == proc::State::kYielded) {
@@ -150,9 +152,10 @@ bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info)
     if (g_tick_burst_remaining <= 0) {
         return false;
     }
-    if (!proc::FindNextRunnableProcess(out_info)) {
+    if (!proc::PeekNextRunnableProcess(out_info)) {
         return false;
     }
+    proc::AdvanceRunnableProcessCursor();
     --g_tick_burst_remaining;
     return true;
 }
