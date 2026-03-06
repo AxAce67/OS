@@ -34,5 +34,6 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr);
 bool ExecuteProcsCommand();
 bool ExecuteRunNextCommand();
 bool ExecuteRunAllCommand();
+bool ExecuteResumeAllCommand();
 bool ExecuteRunPidCommand(const char* rest);
 bool ExecuteAutoSchedCommand(const char* rest);

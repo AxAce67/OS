@@ -40,6 +40,7 @@ bool HandleRunPid(const char*, const char*, const char* rest, int*) { return Exe
 bool HandleRunNext(const char*, const char*, const char*, int*) { return ExecuteRunNextCommand(); }
 bool HandleRunAll(const char*, const char*, const char*, int*) { return ExecuteRunAllCommand(); }
 bool HandleRunPass(const char*, const char*, const char*, int*) { return ExecuteRunAllCommand(); }
+bool HandleResumeAll(const char*, const char*, const char*, int*) { return ExecuteResumeAllCommand(); }
 bool HandleProcs(const char*, const char*, const char*, int*) { return ExecuteProcsCommand(); }
 bool HandleLs(const char*, const char*, const char* rest, int*) { return ExecuteLsCommand(rest); }
 bool HandleStat(const char*, const char* command, const char*, int* pos_ptr) { return ExecuteStatCommand(command, pos_ptr); }
@@ -81,6 +82,7 @@ const ShellCommandEntry kShellCommandTable[] = {
     {"runnext", HandleRunNext},
     {"runpass", HandleRunPass},
     {"runall", HandleRunAll},
+    {"resumeall", HandleResumeAll},
     {"procs", HandleProcs},
     {"ls", HandleLs},
     {"stat", HandleStat},

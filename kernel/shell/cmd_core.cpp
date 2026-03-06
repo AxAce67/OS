@@ -55,19 +55,6 @@ namespace {
 constexpr int kExecMaxEnv = 24;
 constexpr int kRunAllPassLimit = 16;
 
-bool HasYieldedProcess() {
-    for (int i = 0; i < 16; ++i) {
-        proc::Info info{};
-        if (!proc::GetProcessInfoByRecentIndex(i, &info) || !info.used) {
-            continue;
-        }
-        if (info.state == proc::State::kYielded) {
-            return true;
-        }
-    }
-    return false;
-}
-
 void PrintRunResultLine(const char* prefix, const scheduler::RunResult& result) {
     if (!result.ok) {
         console->Print(prefix);
@@ -318,8 +305,8 @@ bool ParseEnvFileBuffer(const uint8_t* data, uint64_t size,
 }  // namespace
 
 bool ExecuteHelpCommand() {
-    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec autosched runpid runnext runpass runall procs");
-    console->PrintLine("help: proc  runnext=1 runnable, runpass/runall=1 scheduler pass, runpid=<pid>, procs=state");
+    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec autosched runpid runnext runpass runall resumeall procs");
+    console->PrintLine("help: proc  runnext=1 runnable, runpass/runall=ready pass, resumeall=yielded pass, runpid=<pid>, procs=state");
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
     console->PrintLine("help: misc  history clearhistory inputstat about");
@@ -1380,6 +1367,9 @@ bool ExecuteRunAllCommand() {
         if (!proc::FindNextRunnableProcess(&info)) {
             break;
         }
+        if (info.state == proc::State::kYielded) {
+            break;
+        }
         scheduler::RunResult result{};
         if (!scheduler::RunProcessWithResult(info.pid, FindBootFileByPath, &result)) {
             console->Print("runall: pid=");
@@ -1399,11 +1389,63 @@ bool ExecuteRunAllCommand() {
         if (result.final_info.state == proc::State::kYielded) {
             break;
         }
-        if (HasYieldedProcess()) {
+    }
+    console->Print("runall: ran=");
+    console->PrintDec(ran);
+    console->Print("\n");
+    return true;
+}
+
+bool ExecuteResumeAllCommand() {
+    int ran = 0;
+    while (ran < kRunAllPassLimit) {
+        proc::Info selected{};
+        bool found = false;
+        for (int i = 0; i < 16; ++i) {
+            proc::Info info{};
+            if (!proc::GetProcessInfoByRecentIndex(i, &info) || !info.used) {
+                continue;
+            }
+            if (info.state != proc::State::kYielded) {
+                continue;
+            }
+            selected.used = info.used;
+            selected.pid = info.pid;
+            selected.state = info.state;
+            selected.argc = info.argc;
+            selected.yield_count = info.yield_count;
+            selected.resume_count = info.resume_count;
+            selected.exit_code = info.exit_code;
+            selected.start_tick = info.start_tick;
+            selected.end_tick = info.end_tick;
+            CopyString(selected.path, info.path, sizeof(selected.path));
+            found = true;
+            break;
+        }
+        if (!found) {
+            break;
+        }
+        scheduler::RunResult result{};
+        if (!scheduler::RunProcessWithResult(selected.pid, FindBootFileByPath, &result)) {
+            console->Print("resumeall: pid=");
+            console->PrintDec(static_cast<int64_t>(selected.pid));
+            console->Print(" path=");
+            console->PrintLine(selected.path);
+            PrintRunResultLine("resumeall: ", result);
+            ++ran;
+            continue;
+        }
+        console->Print("resumeall: pid=");
+        console->PrintDec(static_cast<int64_t>(result.queued_info.pid));
+        console->Print(" path=");
+        console->PrintLine(result.queued_info.path);
+        PrintRunResultLine("resumeall: ", result);
+        ++ran;
+        if (result.final_info.state == proc::State::kYielded) {
             break;
         }
     }
-    console->Print("runall: ran=");
+    console->Print("resumeall: ran=");
     console->PrintDec(ran);
     console->Print("\n");
     return true;

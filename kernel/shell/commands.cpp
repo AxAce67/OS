@@ -41,6 +41,7 @@ const char* const kBuiltInCommands[] = {
     "runnext",
     "runpass",
     "runall",
+    "resumeall",
     "procs",
     "xhciinfo",
     "xhciregs",
