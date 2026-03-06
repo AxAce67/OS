@@ -2088,33 +2088,6 @@ void ExecuteCommand(const char* command) {
     console->PrintLine(command);
 }
 
-bool MaybeRunIdleAutoScheduledProcess() {
-    proc::Info info{};
-    if (!scheduler::GetNextAutoScheduledProcess(&info)) {
-        return false;
-    }
-    console->PrintLine("[autosched]");
-    console->Print("runnext: pid=");
-    console->PrintDec(static_cast<int64_t>(info.pid));
-    console->Print(" path=");
-    console->PrintLine(info.path);
-    int64_t wait_status = 0;
-    if (!proc::RunProcessByPid(info.pid, FindBootFileByPath, &wait_status)) {
-        console->Print("runnext: failed: ");
-        console->Print(info.path);
-        console->Print(" (");
-        console->Print(usermode::GetLastRing3Error());
-        console->Print(")\n");
-        return true;
-    }
-    console->Print("runnext: waitpid -> ");
-    console->PrintDec(static_cast<int64_t>(info.pid));
-    console->Print(" status=");
-    console->PrintDec(wait_status);
-    console->Print("\n");
-    return true;
-}
-
 void PrintHistory(const CommandHistory& history) {
     for (int i = 0; i < history.Count(); ++i) {
         const char* entry = history.Entry(i);
@@ -2745,6 +2718,36 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             RenderInputLine();
             RefreshInputLine();
         }
+    };
+    auto MaybeRunIdleAutoScheduledProcess = [&]() -> bool {
+        proc::Info info{};
+        if (!scheduler::GetNextAutoScheduledProcess(&info)) {
+            return false;
+        }
+        EnsureLiveConsole();
+        console->Print("\n");
+        console->PrintLine("[autosched]");
+        console->Print("runnext: pid=");
+        console->PrintDec(static_cast<int64_t>(info.pid));
+        console->Print(" path=");
+        console->PrintLine(info.path);
+        int64_t wait_status = 0;
+        if (!proc::RunProcessByPid(info.pid, FindBootFileByPath, &wait_status)) {
+            console->Print("runnext: failed: ");
+            console->Print(info.path);
+            console->Print(" (");
+            console->Print(usermode::GetLastRing3Error());
+            console->Print(")\n");
+        } else {
+            console->Print("runnext: waitpid -> ");
+            console->PrintDec(static_cast<int64_t>(info.pid));
+            console->Print(" status=");
+            console->PrintDec(wait_status);
+            console->Print("\n");
+        }
+        RepaintPromptAndInput();
+        RefreshConsole();
+        return true;
     };
 
     auto DeleteSelection = [&]() -> bool {
