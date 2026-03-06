@@ -75,6 +75,14 @@ void SetAutoScheduleEnabled(bool enabled) {
     }
 }
 
+bool RunProcessWithResult(uint32_t pid, proc::BootFileLookup lookup, RunResult* out_result) {
+    proc::Info info{};
+    if (!proc::GetProcessInfo(pid, &info)) {
+        return false;
+    }
+    return RunProcessAndCollectResult(info, lookup, out_result);
+}
+
 bool AdvanceProcessForWait(uint32_t pid, RunResult* out_result) {
     proc::Info info{};
     if (!proc::GetProcessInfo(pid, &info)) {

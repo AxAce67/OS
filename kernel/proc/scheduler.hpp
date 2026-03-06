@@ -14,6 +14,7 @@ struct RunResult {
 
 bool IsAutoScheduleEnabled();
 void SetAutoScheduleEnabled(bool enabled);
+bool RunProcessWithResult(uint32_t pid, proc::BootFileLookup lookup, RunResult* out_result);
 bool AdvanceProcessForWait(uint32_t pid, RunResult* out_result);
 bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info);
 int RunAutoScheduledTick(uint64_t now_tick,

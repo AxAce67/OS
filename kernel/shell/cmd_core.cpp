@@ -54,32 +54,42 @@ int ExportImeLearningToBuffer(char* out, int out_len);
 namespace {
 constexpr int kExecMaxEnv = 24;
 
+void PrintRunResultLine(const char* prefix, const scheduler::RunResult& result) {
+    if (!result.ok) {
+        console->Print(prefix);
+        console->Print("failed: ");
+        console->Print(result.queued_info.path);
+        console->Print(" (");
+        console->Print(usermode::GetLastRing3Error());
+        console->Print(")\n");
+        return;
+    }
+    if (result.final_info.state == proc::State::kYielded) {
+        console->Print(prefix);
+        console->Print("yielded -> ");
+        console->PrintDec(static_cast<int64_t>(result.final_info.pid));
+        console->Print("\n");
+        return;
+    }
+    console->Print(prefix);
+    console->Print("waitpid -> ");
+    console->PrintDec(static_cast<int64_t>(result.final_info.pid));
+    console->Print(" status=");
+    console->PrintDec(result.wait_status);
+    console->Print("\n");
+}
+
 bool RunReadyProcessByInfo(const proc::Info& info) {
     console->Print("runnext: pid=");
     console->PrintDec(static_cast<int64_t>(info.pid));
     console->Print(" path=");
     console->PrintLine(info.path);
-    int64_t wait_status = 0;
-    if (!proc::RunProcessByPid(info.pid, FindBootFileByPath, &wait_status)) {
-        console->Print("runnext: failed: ");
-        console->Print(info.path);
-        console->Print(" (");
-        console->Print(usermode::GetLastRing3Error());
-        console->Print(")\n");
+    scheduler::RunResult result{};
+    if (!scheduler::RunProcessWithResult(info.pid, FindBootFileByPath, &result)) {
+        PrintRunResultLine("runnext: ", result);
         return false;
     }
-    proc::Info final_info{};
-    if (proc::GetProcessInfo(info.pid, &final_info) && final_info.state == proc::State::kYielded) {
-        console->Print("runnext: yielded -> ");
-        console->PrintDec(static_cast<int64_t>(info.pid));
-        console->Print("\n");
-        return true;
-    }
-    console->Print("runnext: waitpid -> ");
-    console->PrintDec(static_cast<int64_t>(info.pid));
-    console->Print(" status=");
-    console->PrintDec(wait_status);
-    console->Print("\n");
+    PrintRunResultLine("runnext: ", result);
     return true;
 }
 
@@ -1266,23 +1276,15 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
         console->PrintLine("exec: queued");
         return true;
     }
-    int64_t wait_status = 0;
-    if (proc::RunProcessByPid(pid, FindBootFileByPath, &wait_status)) {
-        proc::Info final_info{};
-        if (proc::GetProcessInfo(pid, &final_info) && final_info.state == proc::State::kYielded) {
-            console->Print("exec: yielded -> ");
-            console->PrintDec(static_cast<int64_t>(pid));
-            console->Print("\n");
+    scheduler::RunResult result{};
+    if (scheduler::RunProcessWithResult(pid, FindBootFileByPath, &result)) {
+        PrintRunResultLine("exec: ", result);
+        if (result.final_info.state == proc::State::kYielded) {
             return true;
         }
-        console->Print("exec: waitpid -> ");
-        console->PrintDec(static_cast<int64_t>(pid));
-        console->Print(" status=");
-        console->PrintDec(wait_status);
-        console->Print("\n");
         console->Print("exec: ok: ");
         console->PrintLine(resolved_path);
-        const int64_t ret = wait_status;
+        const int64_t ret = result.wait_status;
         console->Print("exec.ret=");
         console->PrintDec(ret);
         if (ret < 0) {
@@ -1292,11 +1294,7 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
         }
         console->Print("\n");
     } else {
-        console->Print("exec: failed: ");
-        console->Print(resolved_path);
-        console->Print(" (");
-        console->Print(usermode::GetLastRing3Error());
-        console->Print(")\n");
+        PrintRunResultLine("exec: ", result);
         proc::MarkProcessFailed(pid, -1);
     }
     return true;
