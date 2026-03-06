@@ -1378,6 +1378,9 @@ bool ExecuteRunAllCommand() {
         PrintRunResultStart("runall: ", result);
         PrintRunResultLine("runall: ", result);
         ++ran;
+        if (result.final_info.state == proc::State::kYielded) {
+            break;
+        }
     }
     console->Print("runall: ran=");
     console->PrintDec(ran);
@@ -1390,12 +1393,18 @@ bool ExecuteResumeAllCommand() {
     console->Print("resumeall: target.yielded=");
     console->PrintDec(summary.yielded);
     console->Print("\n");
-    scheduler::RunResult results[kRunAllPassLimit]{};
-    const int ran = scheduler::RunAllYieldedProcesses(FindBootFileByPath, results, kRunAllPassLimit);
-    for (int i = 0; i < ran; ++i) {
-        const scheduler::RunResult& result = results[i];
+    int ran = 0;
+    while (ran < kRunAllPassLimit) {
+        scheduler::RunResult result{};
+        if (!scheduler::RunAllYieldedProcesses(FindBootFileByPath, &result, 1)) {
+            break;
+        }
         PrintRunResultStart("resumeall: ", result);
         PrintRunResultLine("resumeall: ", result);
+        ++ran;
+        if (result.final_info.state == proc::State::kYielded) {
+            break;
+        }
     }
     console->Print("resumeall: ran=");
     console->PrintDec(ran);
