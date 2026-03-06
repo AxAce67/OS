@@ -53,16 +53,36 @@ int RunAutoScheduledTick(uint64_t now_tick,
         if (!DequeueAutoScheduledProcessForTick(now_tick, &info)) {
             break;
         }
-        out_results[ran].info.used = info.used;
-        out_results[ran].info.pid = info.pid;
-        out_results[ran].info.state = info.state;
-        out_results[ran].info.argc = info.argc;
-        out_results[ran].info.exit_code = info.exit_code;
-        out_results[ran].info.start_tick = info.start_tick;
-        out_results[ran].info.end_tick = info.end_tick;
-        CopyString(out_results[ran].info.path, info.path, sizeof(out_results[ran].info.path));
+        out_results[ran].queued_info.used = info.used;
+        out_results[ran].queued_info.pid = info.pid;
+        out_results[ran].queued_info.state = info.state;
+        out_results[ran].queued_info.argc = info.argc;
+        out_results[ran].queued_info.exit_code = info.exit_code;
+        out_results[ran].queued_info.start_tick = info.start_tick;
+        out_results[ran].queued_info.end_tick = info.end_tick;
+        CopyString(out_results[ran].queued_info.path, info.path, sizeof(out_results[ran].queued_info.path));
+        out_results[ran].final_info.used = false;
+        out_results[ran].final_info.pid = info.pid;
+        out_results[ran].final_info.state = proc::State::kFree;
+        out_results[ran].final_info.argc = 0;
+        out_results[ran].final_info.exit_code = 0;
+        out_results[ran].final_info.start_tick = 0;
+        out_results[ran].final_info.end_tick = 0;
+        out_results[ran].final_info.path[0] = '\0';
         out_results[ran].wait_status = 0;
         out_results[ran].ok = proc::RunProcessByPid(info.pid, lookup, &out_results[ran].wait_status);
+        if (!proc::GetProcessInfo(info.pid, &out_results[ran].final_info)) {
+            out_results[ran].final_info.used = out_results[ran].queued_info.used;
+            out_results[ran].final_info.pid = out_results[ran].queued_info.pid;
+            out_results[ran].final_info.state = out_results[ran].queued_info.state;
+            out_results[ran].final_info.argc = out_results[ran].queued_info.argc;
+            out_results[ran].final_info.exit_code = out_results[ran].queued_info.exit_code;
+            out_results[ran].final_info.start_tick = out_results[ran].queued_info.start_tick;
+            out_results[ran].final_info.end_tick = out_results[ran].queued_info.end_tick;
+            CopyString(out_results[ran].final_info.path,
+                       out_results[ran].queued_info.path,
+                       sizeof(out_results[ran].final_info.path));
+        }
         ++ran;
     }
     return ran;

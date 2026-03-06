@@ -6,7 +6,8 @@
 namespace scheduler {
 
 struct TickRunResult {
-    proc::Info info;
+    proc::Info queued_info;
+    proc::Info final_info;
     int64_t wait_status;
     bool ok;
 };
