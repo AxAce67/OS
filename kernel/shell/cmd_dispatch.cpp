@@ -35,6 +35,7 @@ bool HandleAlias(const char*, const char* command, const char*, int* pos_ptr) { 
 bool HandleSyscall(const char*, const char*, const char* rest, int*) { return ExecuteSyscallCommand(rest); }
 bool HandleRing3(const char*, const char*, const char* rest, int*) { return ExecuteRing3Command(rest); }
 bool HandleExec(const char*, const char* command, const char*, int* pos_ptr) { return ExecuteExecCommand(command, pos_ptr); }
+bool HandleRunNext(const char*, const char*, const char*, int*) { return ExecuteRunNextCommand(); }
 bool HandleProcs(const char*, const char*, const char*, int*) { return ExecuteProcsCommand(); }
 bool HandleLs(const char*, const char*, const char* rest, int*) { return ExecuteLsCommand(rest); }
 bool HandleStat(const char*, const char* command, const char*, int* pos_ptr) { return ExecuteStatCommand(command, pos_ptr); }
@@ -71,6 +72,7 @@ const ShellCommandEntry kShellCommandTable[] = {
     {"syscall", HandleSyscall},
     {"ring3", HandleRing3},
     {"exec", HandleExec},
+    {"runnext", HandleRunNext},
     {"procs", HandleProcs},
     {"ls", HandleLs},
     {"stat", HandleStat},

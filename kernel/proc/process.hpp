@@ -25,11 +25,13 @@ struct Info {
 bool CreateProcess(const char* path, const char* const* envp, int envc, uint32_t* out_pid);
 bool ExecuteProcess(uint32_t pid, const uint8_t* image, uint64_t image_size,
                     const char* const* argv, int argc);
+bool IsProcessReady(uint32_t pid);
 bool MarkProcessRunning(uint32_t pid);
 bool MarkProcessExited(uint32_t pid, int64_t exit_code);
 bool MarkProcessFailed(uint32_t pid, int64_t exit_code);
 int64_t WaitPid(uint32_t pid, int64_t* out_exit_code, bool nohang);
 bool GetProcessInfoByRecentIndex(int recent_index, Info* out_info);
+bool FindNextReadyProcess(Info* out_info);
 const char* StateName(State state);
 
 bool SetCurrentProcess(uint32_t pid);

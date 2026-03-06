@@ -264,7 +264,7 @@ bool ParseEnvFileBuffer(const uint8_t* data, uint64_t size,
 }  // namespace
 
 bool ExecuteHelpCommand() {
-    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec procs");
+    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec runnext procs");
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
     console->PrintLine("help: misc  history clearhistory inputstat about");
@@ -1062,6 +1062,7 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
     char args[16][64];
     const char* arg_ptrs[16];
     int argc = 0;
+    bool nowait = false;
     char env_opt_keys[kExecMaxEnv][32];
     char env_opt_values[kExecMaxEnv][96];
     int env_opt_count = 0;
@@ -1092,6 +1093,10 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
                 return true;
             }
             ++env_opt_count;
+            continue;
+        }
+        if (StrEqual(tok, "--nowait")) {
+            nowait = true;
             continue;
         }
         if (StrEqual(tok, "--unsetenv")) {
@@ -1155,7 +1160,7 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
     }
     if (path[0] == '\0') {
         console->PrintLine("exec: path required");
-        console->PrintLine("usage: exec [--unsetenv KEY ...] [--env-file PATH ...] [--env KEY=VALUE ...] <bootfs-path> [args...]");
+        console->PrintLine("usage: exec [--nowait] [--unsetenv KEY ...] [--env-file PATH ...] [--env KEY=VALUE ...] <bootfs-path> [args...]");
         return true;
     }
 
@@ -1206,6 +1211,10 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
     console->PrintDec(static_cast<int64_t>(pid));
     console->Print(" path=");
     console->PrintLine(path);
+    if (nowait) {
+        console->PrintLine("exec: queued");
+        return true;
+    }
     if (proc::ExecuteProcess(pid, file->data, file->size, arg_ptrs, argc)) {
         int64_t wait_status = 0;
         const int64_t wait_ret = proc::WaitPid(pid, &wait_status, false);
@@ -1233,6 +1242,42 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
         console->Print(")\n");
         proc::MarkProcessFailed(pid, -1);
     }
+    return true;
+}
+
+bool ExecuteRunNextCommand() {
+    proc::Info info{};
+    if (!proc::FindNextReadyProcess(&info)) {
+        console->PrintLine("runnext: no ready process");
+        return true;
+    }
+    const BootFileEntry* file = FindBootFileByPath("/", info.path);
+    if (file == nullptr) {
+        console->Print("runnext: image missing: ");
+        console->PrintLine(info.path);
+        proc::MarkProcessFailed(info.pid, -1);
+        return true;
+    }
+    console->Print("runnext: pid=");
+    console->PrintDec(static_cast<int64_t>(info.pid));
+    console->Print(" path=");
+    console->PrintLine(info.path);
+    if (!proc::ExecuteProcess(info.pid, file->data, file->size, nullptr, 0)) {
+        console->Print("runnext: failed: ");
+        console->Print(info.path);
+        console->Print(" (");
+        console->Print(usermode::GetLastRing3Error());
+        console->Print(")\n");
+        proc::MarkProcessFailed(info.pid, -1);
+        return true;
+    }
+    int64_t wait_status = 0;
+    const int64_t wait_ret = proc::WaitPid(info.pid, &wait_status, false);
+    console->Print("runnext: waitpid -> ");
+    console->PrintDec(wait_ret);
+    console->Print(" status=");
+    console->PrintDec(wait_status);
+    console->Print("\n");
     return true;
 }
 

@@ -205,7 +205,7 @@ bool CreateProcess(const char* path, const char* const* envp, int envc, uint32_t
 bool ExecuteProcess(uint32_t pid, const uint8_t* image, uint64_t image_size,
                     const char* const* argv, int argc) {
     ProcessEntry* entry = FindEntryByPid(pid);
-    if (entry == nullptr || image == nullptr) {
+    if (entry == nullptr || image == nullptr || entry->info.state != State::kReady) {
         return false;
     }
     if (!MarkProcessRunning(pid)) {
@@ -224,6 +224,11 @@ bool ExecuteProcess(uint32_t pid, const uint8_t* image, uint64_t image_size,
     }
     ClearCurrentProcess();
     return ok;
+}
+
+bool IsProcessReady(uint32_t pid) {
+    const ProcessEntry* entry = FindEntryByPidConst(pid);
+    return entry != nullptr && entry->info.state == State::kReady;
 }
 
 bool MarkProcessRunning(uint32_t pid) {
@@ -313,6 +318,28 @@ bool GetProcessInfoByRecentIndex(int recent_index, Info* out_info) {
     out_info->end_tick = g_processes[idx].info.end_tick;
     CopyString(out_info->path, g_processes[idx].info.path, sizeof(out_info->path));
     return true;
+}
+
+bool FindNextReadyProcess(Info* out_info) {
+    InitIfNeeded();
+    if (out_info == nullptr) {
+        return false;
+    }
+    for (int n = 0; n < kMaxProcesses; ++n) {
+        const int idx = (g_next_slot - 1 - n + kMaxProcesses) % kMaxProcesses;
+        if (!g_processes[idx].info.used || g_processes[idx].info.state != State::kReady) {
+            continue;
+        }
+        out_info->used = g_processes[idx].info.used;
+        out_info->pid = g_processes[idx].info.pid;
+        out_info->state = g_processes[idx].info.state;
+        out_info->exit_code = g_processes[idx].info.exit_code;
+        out_info->start_tick = g_processes[idx].info.start_tick;
+        out_info->end_tick = g_processes[idx].info.end_tick;
+        CopyString(out_info->path, g_processes[idx].info.path, sizeof(out_info->path));
+        return true;
+    }
+    return false;
 }
 
 const char* StateName(State state) {
