@@ -10,6 +10,7 @@ uint64_t g_autosched_tick_count = 0;
 uint64_t g_autosched_run_count = 0;
 uint64_t g_autosched_yield_count = 0;
 int g_tick_burst_remaining = 0;
+bool g_autosched_rearm_pending = false;
 uint32_t g_last_run_pid = 0;
 proc::State g_last_run_state = proc::State::kFree;
 int64_t g_last_wait_status = 0;
@@ -88,9 +89,13 @@ bool IsAutoScheduleEnabled() {
 }
 
 void SetAutoScheduleEnabled(bool enabled) {
+    const bool was_enabled = g_auto_schedule_enabled;
     g_auto_schedule_enabled = enabled;
     if (!enabled) {
         g_tick_burst_remaining = 0;
+        g_autosched_rearm_pending = false;
+    } else if (!was_enabled) {
+        g_autosched_rearm_pending = true;
     }
 }
 
@@ -114,6 +119,7 @@ void ResetSnapshot() {
     g_autosched_run_count = 0;
     g_autosched_yield_count = 0;
     g_tick_burst_remaining = 0;
+    g_autosched_rearm_pending = g_auto_schedule_enabled;
     g_last_run_pid = 0;
     g_last_run_state = proc::State::kFree;
     g_last_wait_status = 0;
@@ -217,10 +223,11 @@ bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info)
     if (!g_auto_schedule_enabled) {
         return false;
     }
-    if (now_tick != g_last_autosched_tick) {
+    if (g_autosched_rearm_pending || now_tick != g_last_autosched_tick) {
         g_last_autosched_tick = now_tick;
         ++g_autosched_tick_count;
         g_tick_burst_remaining = kAutoScheduleBurstLimit;
+        g_autosched_rearm_pending = false;
     }
     if (g_tick_burst_remaining <= 0) {
         return false;
