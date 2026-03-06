@@ -93,6 +93,20 @@ bool RunProcessWithResult(uint32_t pid, proc::BootFileLookup lookup, RunResult* 
     return RunProcessAndCollectResult(info, lookup, out_result);
 }
 
+bool RunPid(proc::BootFileLookup lookup, uint32_t pid, RunResult* out_result) {
+    if (lookup == nullptr || out_result == nullptr) {
+        return false;
+    }
+    proc::Info info{};
+    if (!proc::GetProcessInfo(pid, &info)) {
+        return false;
+    }
+    if (info.state != proc::State::kReady && info.state != proc::State::kYielded) {
+        return false;
+    }
+    return RunProcessAndCollectResult(info, lookup, out_result);
+}
+
 bool RunNextRunnableProcess(proc::BootFileLookup lookup, RunResult* out_result) {
     if (lookup == nullptr || out_result == nullptr) {
         return false;

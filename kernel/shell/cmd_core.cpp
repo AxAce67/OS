@@ -80,20 +80,6 @@ void PrintRunResultLine(const char* prefix, const scheduler::RunResult& result) 
     console->Print("\n");
 }
 
-bool RunReadyProcessByInfo(const proc::Info& info) {
-    console->Print("runnext: pid=");
-    console->PrintDec(static_cast<int64_t>(info.pid));
-    console->Print(" path=");
-    console->PrintLine(info.path);
-    scheduler::RunResult result{};
-    if (!scheduler::RunProcessWithResult(info.pid, FindBootFileByPath, &result)) {
-        PrintRunResultLine("runnext: ", result);
-        return false;
-    }
-    PrintRunResultLine("runnext: ", result);
-    return true;
-}
-
 bool AppendExecEnv(char out[][128], const char** out_ptrs, int max_count, int* io_count,
                    const char* key, const char* value) {
     if (out == nullptr || out_ptrs == nullptr || io_count == nullptr || key == nullptr || value == nullptr) {
@@ -1340,7 +1326,19 @@ bool ExecuteRunPidCommand(const char* rest) {
         console->Print("\n");
         return true;
     }
-    RunReadyProcessByInfo(info);
+    scheduler::RunResult result{};
+    if (!scheduler::RunPid(FindBootFileByPath, pid, &result)) {
+        console->Print("runpid: pid=");
+        console->PrintDec(static_cast<int64_t>(pid));
+        console->Print("\n");
+        PrintRunResultLine("runpid: ", result);
+        return true;
+    }
+    console->Print("runpid: pid=");
+    console->PrintDec(static_cast<int64_t>(result.queued_info.pid));
+    console->Print(" path=");
+    console->PrintLine(result.queued_info.path);
+    PrintRunResultLine("runpid: ", result);
     return true;
 }
 
