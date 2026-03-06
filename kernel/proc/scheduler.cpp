@@ -100,6 +100,22 @@ bool AdvanceProcessForWait(uint32_t pid, RunResult* out_result) {
     return RunProcessAndCollectResult(info, nullptr, out_result);
 }
 
+int RunAllReadyProcesses(proc::BootFileLookup lookup, RunResult* out_results, int max_results) {
+    if (lookup == nullptr || out_results == nullptr || max_results <= 0) {
+        return 0;
+    }
+    int ran = 0;
+    while (ran < max_results) {
+        proc::Info info{};
+        if (!proc::FindNextReadyProcess(&info)) {
+            break;
+        }
+        RunProcessAndCollectResult(info, lookup, &out_results[ran]);
+        ++ran;
+    }
+    return ran;
+}
+
 bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info) {
     if (!g_auto_schedule_enabled) {
         return false;
