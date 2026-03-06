@@ -174,6 +174,14 @@ ProcessEntry* GetCurrentEntry() {
     return FindEntryByPid(g_current_pid);
 }
 
+bool IsWaitCompleteState(State state) {
+    return state == State::kExited || state == State::kFailed;
+}
+
+void CpuPause() {
+    __asm__ volatile("pause");
+}
+
 }  // namespace
 
 bool CreateProcess(const char* path, const char* const* envp, int envc, uint32_t* out_pid) {
@@ -257,11 +265,14 @@ bool MarkProcessFailed(uint32_t pid, int64_t exit_code) {
 }
 
 int64_t WaitPid(uint32_t pid, int64_t* out_exit_code, bool nohang) {
+    if (pid == 0 || pid == g_current_pid) {
+        return -1;
+    }
     const ProcessEntry* entry = FindEntryByPidConst(pid);
     if (entry == nullptr) {
         return -1;
     }
-    if (entry->info.state == State::kExited || entry->info.state == State::kFailed) {
+    if (IsWaitCompleteState(entry->info.state)) {
         if (out_exit_code != nullptr) {
             *out_exit_code = entry->info.exit_code;
         }
@@ -270,7 +281,19 @@ int64_t WaitPid(uint32_t pid, int64_t* out_exit_code, bool nohang) {
     if (nohang) {
         return 0;
     }
-    return -2;
+    while (true) {
+        entry = FindEntryByPidConst(pid);
+        if (entry == nullptr) {
+            return -1;
+        }
+        if (IsWaitCompleteState(entry->info.state)) {
+            if (out_exit_code != nullptr) {
+                *out_exit_code = entry->info.exit_code;
+            }
+            return static_cast<int64_t>(pid);
+        }
+        CpuPause();
+    }
 }
 
 bool GetProcessInfoByRecentIndex(int recent_index, Info* out_info) {

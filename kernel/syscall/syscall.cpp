@@ -256,9 +256,6 @@ int64_t HandleWaitPid(uint64_t arg0, uint64_t arg1, uint64_t arg2, bool from_use
     if (ret == -1) {
         return kErrInvalid;
     }
-    if (ret == -2) {
-        return kErrBusy;
-    }
     if (ret > 0 && arg1 != 0) {
         *reinterpret_cast<int64_t*>(arg1) = exit_code;
     }
@@ -302,8 +299,6 @@ const char* ErrorName(int64_t code) {
             return "EFAULT";
         case kErrInvalid:
             return "EINVAL";
-        case kErrBusy:
-            return "EBUSY";
         default:
             return "EUNKNOWN";
     }
