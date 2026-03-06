@@ -1420,18 +1420,12 @@ bool ExecuteProcsCommand() {
     console->PrintLine(scheduler::PolicyName());
     console->PrintLine("pid state   argc yld rsp exit    start end   path");
     bool any = false;
-    int total = 0;
-    int ready = 0;
     for (int n = 0; n < 16; ++n) {
         proc::Info info{};
         if (!proc::GetProcessInfoByRecentIndex(n, &info) || !info.used) {
             continue;
         }
         any = true;
-        ++total;
-        if (info.state == proc::State::kReady || info.state == proc::State::kYielded) {
-            ++ready;
-        }
         console->PrintDec(static_cast<int64_t>(info.pid));
         console->Print(" ");
         console->Print(proc::StateName(info.state));
@@ -1453,10 +1447,11 @@ bool ExecuteProcsCommand() {
     if (!any) {
         console->PrintLine("(no processes)");
     } else {
+        const proc::Summary summary = proc::GetProcessSummary();
         console->Print("procs.total=");
-        console->PrintDec(total);
-        console->Print(" ready=");
-        console->PrintDec(ready);
+        console->PrintDec(summary.total);
+        console->Print(" runnable=");
+        console->PrintDec(summary.runnable);
         console->Print("\n");
     }
     return true;

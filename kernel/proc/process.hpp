@@ -30,6 +30,11 @@ struct Info {
     char path[96];
 };
 
+struct Summary {
+    int total;
+    int runnable;
+};
+
 bool CreateProcess(const char* path,
                    const char* const* argv, int argc,
                    const char* const* envp, int envc,
@@ -47,6 +52,7 @@ int64_t WaitPid(uint32_t pid, int64_t* out_exit_code, bool nohang);
 bool GetProcessInfo(uint32_t pid, Info* out_info);
 bool GetProcessInfoByRecentIndex(int recent_index, Info* out_info);
 bool FindNextRunnableProcess(Info* out_info);
+Summary GetProcessSummary();
 const char* StateName(State state);
 
 bool SetCurrentProcess(uint32_t pid);

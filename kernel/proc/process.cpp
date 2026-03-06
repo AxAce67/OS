@@ -610,6 +610,23 @@ bool FindNextRunnableProcess(Info* out_info) {
     return false;
 }
 
+Summary GetProcessSummary() {
+    InitIfNeeded();
+    Summary summary{};
+    summary.total = 0;
+    summary.runnable = 0;
+    for (int i = 0; i < kMaxProcesses; ++i) {
+        if (!g_processes[i].info.used) {
+            continue;
+        }
+        ++summary.total;
+        if (IsRunnableState(g_processes[i].info.state)) {
+            ++summary.runnable;
+        }
+    }
+    return summary;
+}
+
 const char* StateName(State state) {
     switch (state) {
         case State::kReady:
