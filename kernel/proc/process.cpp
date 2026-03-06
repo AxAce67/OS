@@ -344,6 +344,21 @@ int64_t WaitPid(uint32_t pid, int64_t* out_exit_code, bool nohang) {
     }
 }
 
+bool GetProcessInfo(uint32_t pid, Info* out_info) {
+    const ProcessEntry* entry = FindEntryByPidConst(pid);
+    if (entry == nullptr || out_info == nullptr) {
+        return false;
+    }
+    out_info->used = entry->info.used;
+    out_info->pid = entry->info.pid;
+    out_info->state = entry->info.state;
+    out_info->exit_code = entry->info.exit_code;
+    out_info->start_tick = entry->info.start_tick;
+    out_info->end_tick = entry->info.end_tick;
+    CopyString(out_info->path, entry->info.path, sizeof(out_info->path));
+    return true;
+}
+
 bool GetProcessInfoByRecentIndex(int recent_index, Info* out_info) {
     InitIfNeeded();
     if (recent_index < 0 || recent_index >= kMaxProcesses || out_info == nullptr) {

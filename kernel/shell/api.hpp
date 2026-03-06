@@ -34,3 +34,4 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr);
 bool ExecuteProcsCommand();
 bool ExecuteRunNextCommand();
 bool ExecuteRunAllCommand();
+bool ExecuteRunPidCommand(const char* rest);

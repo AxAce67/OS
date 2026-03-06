@@ -295,7 +295,7 @@ bool ParseEnvFileBuffer(const uint8_t* data, uint64_t size,
 }  // namespace
 
 bool ExecuteHelpCommand() {
-    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec runnext runall procs");
+    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec runpid runnext runall procs");
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
     console->PrintLine("help: misc  history clearhistory inputstat about");
@@ -1285,6 +1285,34 @@ bool ExecuteRunNextCommand() {
     proc::Info info{};
     if (!proc::FindNextReadyProcess(&info)) {
         console->PrintLine("runnext: no ready process");
+        return true;
+    }
+    RunReadyProcessByInfo(info);
+    return true;
+}
+
+bool ExecuteRunPidCommand(const char* rest) {
+    if (rest == nullptr || rest[0] == '\0') {
+        console->PrintLine("usage: runpid <pid>");
+        return true;
+    }
+    uint32_t pid = 0;
+    for (int i = 0; rest[i] != '\0'; ++i) {
+        if (rest[i] < '0' || rest[i] > '9') {
+            console->PrintLine("runpid: pid must be decimal");
+            return true;
+        }
+        pid = pid * 10u + static_cast<uint32_t>(rest[i] - '0');
+    }
+    proc::Info info{};
+    if (!proc::GetProcessInfo(pid, &info) || !info.used) {
+        console->PrintLine("runpid: pid not found");
+        return true;
+    }
+    if (info.state != proc::State::kReady) {
+        console->Print("runpid: pid not ready: ");
+        console->PrintDec(static_cast<int64_t>(pid));
+        console->Print("\n");
         return true;
     }
     RunReadyProcessByInfo(info);

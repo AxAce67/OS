@@ -32,6 +32,7 @@ bool MarkProcessRunning(uint32_t pid);
 bool MarkProcessExited(uint32_t pid, int64_t exit_code);
 bool MarkProcessFailed(uint32_t pid, int64_t exit_code);
 int64_t WaitPid(uint32_t pid, int64_t* out_exit_code, bool nohang);
+bool GetProcessInfo(uint32_t pid, Info* out_info);
 bool GetProcessInfoByRecentIndex(int recent_index, Info* out_info);
 bool FindNextReadyProcess(Info* out_info);
 const char* StateName(State state);
