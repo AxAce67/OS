@@ -651,7 +651,7 @@ bool ExecuteInputStatCommand() {
 
 bool ExecuteSyscallCommand(const char* rest) {
     if (rest[0] == '\0' || StrEqual(rest, "stat")) {
-        console->PrintLine("syscall abi=1 methods=write,tick,version,getenv,setenv,unsetenv trap=int80");
+        console->PrintLine("syscall abi=1 methods=write,tick,version,getenv,setenv,unsetenv,waitpid,yield trap=int80");
         return true;
     }
 
@@ -833,6 +833,14 @@ bool ExecuteSyscallCommand(const char* rest) {
         return true;
     }
 
+    if (StrEqual(rest, "yield")) {
+        const int64_t ret = syscall::Dispatch(static_cast<uint64_t>(syscall::Number::kYield), 0, 0, 0, 0);
+        console->Print("syscall yield -> ");
+        console->PrintDec(ret);
+        console->Print("\n");
+        return true;
+    }
+
     if (StrEqual(rest, "trap tick")) {
         const int64_t ret = InvokeSyscallInt80(static_cast<uint64_t>(syscall::Number::kCurrentTick), 0, 0, 0, 0);
         console->Print("syscall trap tick -> ");
@@ -844,6 +852,14 @@ bool ExecuteSyscallCommand(const char* rest) {
     if (StrEqual(rest, "trap version")) {
         const int64_t ret = InvokeSyscallInt80(static_cast<uint64_t>(syscall::Number::kAbiVersion), 0, 0, 0, 0);
         console->Print("syscall trap version -> ");
+        console->PrintDec(ret);
+        console->Print("\n");
+        return true;
+    }
+
+    if (StrEqual(rest, "trap yield")) {
+        const int64_t ret = InvokeSyscallInt80(static_cast<uint64_t>(syscall::Number::kYield), 0, 0, 0, 0);
+        console->Print("syscall trap yield -> ");
         console->PrintDec(ret);
         console->Print("\n");
         return true;
@@ -978,7 +994,7 @@ bool ExecuteSyscallCommand(const char* rest) {
         return true;
     }
 
-    console->PrintLine("usage: syscall [stat|tick|version|write <text>|getenv <key>|setenv <k> <v>|unsetenv <k>|waitpid <pid> [nohang]|invalid|trap tick|trap version|trap write <text>|trap getenv <k>|trap setenv <k> <v>|trap unsetenv <k>|trap invalid|trap badptr]");
+    console->PrintLine("usage: syscall [stat|tick|version|write <text>|getenv <key>|setenv <k> <v>|unsetenv <k>|waitpid <pid> [nohang]|yield|invalid|trap tick|trap version|trap write <text>|trap getenv <k>|trap setenv <k> <v>|trap unsetenv <k>|trap yield|trap invalid|trap badptr]");
     return true;
 }
 

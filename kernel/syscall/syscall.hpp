@@ -13,6 +13,7 @@ enum class Number : uint64_t {
     kSetEnv = 6,
     kUnsetEnv = 7,
     kWaitPid = 8,
+    kYield = 9,
 };
 
 constexpr int64_t kErrNoSys = -38;

@@ -262,6 +262,10 @@ int64_t HandleWaitPid(uint64_t arg0, uint64_t arg1, uint64_t arg2, bool from_use
     return ret;
 }
 
+int64_t HandleYield() {
+    return 0;
+}
+
 }  // namespace
 
 int64_t Dispatch(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3) {
@@ -286,6 +290,8 @@ int64_t DispatchFromTrap(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t
             return HandleUnsetEnv(arg0, arg1, from_user);
         case Number::kWaitPid:
             return HandleWaitPid(arg0, arg1, arg2, from_user);
+        case Number::kYield:
+            return HandleYield();
         default:
             return kErrNoSys;
     }
