@@ -599,7 +599,7 @@ bool CreateProcess(const char* path,
     RemoveYieldedSlot(slot_index);
     entry->info.used = true;
     entry->info.pid = g_next_pid++;
-    entry->info.state = State::kReady;
+    entry->info.state = State::kFree;
     entry->info.argc = argc;
     entry->info.yield_count = 0;
     entry->info.resume_count = 0;
@@ -612,7 +612,10 @@ bool CreateProcess(const char* path,
     LoadEnv(entry, envp, envc);
     entry->in_runnable_queue = false;
     entry->in_yielded_queue = false;
-    SyncSlotQueues(slot_index);
+    if (!TransitionProcessState(entry, State::kReady, 0)) {
+        entry->info.used = false;
+        return false;
+    }
     if (out_pid != nullptr) {
         *out_pid = entry->info.pid;
     }
