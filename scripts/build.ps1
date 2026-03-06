@@ -12,7 +12,7 @@ param(
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
 
-function Ensure-ToolExists {
+function Test-ToolExists {
     param(
         [string]$ToolLabel,
         [string]$ToolPath
@@ -42,7 +42,8 @@ function Write-HostClipboardSnapshot {
             $code = [int][char]$ch
             if ($code -ge 32 -and $code -le 126) {
                 [void]$sb.Append($ch)
-            } else {
+            }
+            else {
                 [void]$sb.Append("?")
             }
         }
@@ -65,13 +66,13 @@ function New-Ring3SampleBinary {
     $msgText = "[ring3-file] hello from runfile`n"
     $msgBytes = [System.Text.Encoding]::ASCII.GetBytes($msgText)
     $msgLen = [uint64]$msgBytes.Length
-    $imgPart1 = [byte[]](0x48,0xB8,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00) # mov rax,1
-    $imgPart2 = [byte[]](0x48,0x8D,0x3D,0x2C,0x00,0x00,0x00)                 # lea rdi,[rip+44]
-    $imgPart3 = [byte[]](0x48,0xBE)                                           # mov rsi,imm64
+    $imgPart1 = [byte[]](0x48, 0xB8, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00) # mov rax,1
+    $imgPart2 = [byte[]](0x48, 0x8D, 0x3D, 0x2C, 0x00, 0x00, 0x00)                 # lea rdi,[rip+44]
+    $imgPart3 = [byte[]](0x48, 0xBE)                                           # mov rsi,imm64
     $imgPart4 = [System.BitConverter]::GetBytes($msgLen)
-    $imgPart5 = [byte[]](0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80)           # xor/xor/int80
-    $imgPart6 = [byte[]](0x48,0xB8,0x04,0x00,0x00,0x00,0x00,0x00,0x00,0x00) # mov rax,4
-    $imgPart7 = [byte[]](0x48,0x31,0xFF,0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE)
+    $imgPart5 = [byte[]](0x48, 0x31, 0xD2, 0x48, 0x31, 0xC9, 0xCD, 0x80)           # xor/xor/int80
+    $imgPart6 = [byte[]](0x48, 0xB8, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00) # mov rax,4
+    $imgPart7 = [byte[]](0x48, 0x31, 0xFF, 0x48, 0x31, 0xF6, 0x48, 0x31, 0xD2, 0x48, 0x31, 0xC9, 0xCD, 0x80, 0xEB, 0xFE)
 
     $imageLen = $imgPart1.Length + $imgPart2.Length + $imgPart3.Length + $imgPart4.Length + $imgPart5.Length + $imgPart6.Length + $imgPart7.Length + $msgBytes.Length
     $imageBytes = New-Object byte[] $imageLen
@@ -117,8 +118,8 @@ if (-Not $NoRun) {
 # 1. コンパイラとリンカのパス（LLVM）
 $clangPath = "C:\Program Files\LLVM\bin\clang.exe"
 $lldLinkPath = "C:\Program Files\LLVM\bin\lld-link.exe"
-Ensure-ToolExists -ToolLabel "clang" -ToolPath $clangPath
-Ensure-ToolExists -ToolLabel "lld-link" -ToolPath $lldLinkPath
+Test-ToolExists -ToolLabel "clang" -ToolPath $clangPath
+Test-ToolExists -ToolLabel "lld-link" -ToolPath $lldLinkPath
 
 # OVFMF.fd (UEFI BIOS ROM) は本来QEMU付属のものか、EDK2のビルド済みイメージが必要
 # ここではQEMUパッケージなどに一部付属している想定（もしくは警告無視）で起動テストします
@@ -148,7 +149,7 @@ Write-Host "Compiling kernel.c -> kernel.elf..." -ForegroundColor Cyan
 
 # 4. カーネル本体とフォントのコンパイルとリンク (ELF形式)
 $ldLldPath = "C:\Program Files\LLVM\bin\ld.lld.exe"
-Ensure-ToolExists -ToolLabel "ld.lld" -ToolPath $ldLldPath
+Test-ToolExists -ToolLabel "ld.lld" -ToolPath $ldLldPath
 $commonKernelIncludes = @(
     "-I", "boot",
     "-I", "kernel",
@@ -341,7 +342,7 @@ catch {
 Write-Host "Starting QEMU..." -ForegroundColor Cyan
 
 $qemuPath = "C:\Program Files\qemu\qemu-system-x86_64.exe"
-Ensure-ToolExists -ToolLabel "qemu-system-x86_64" -ToolPath $qemuPath
+Test-ToolExists -ToolLabel "qemu-system-x86_64" -ToolPath $qemuPath
 
 # 5. QEMUの実行
 # ※Windows上での素のQEMUはデフォルトでレガシーBIOSなので、OVMF (UEFIファーム) を指定する必要がある。
@@ -428,11 +429,11 @@ if ($Smoke) {
 
     Write-Host "Running smoke boot check..." -ForegroundColor Cyan
     $qemuProc = Start-Process -FilePath $qemuPath `
-                              -ArgumentList $qemuSmokeArgs `
-                              -WorkingDirectory $projectRoot `
-                              -RedirectStandardOutput $smokeStdoutPath `
-                              -RedirectStandardError $smokeStderrPath `
-                              -PassThru
+        -ArgumentList $qemuSmokeArgs `
+        -WorkingDirectory $projectRoot `
+        -RedirectStandardOutput $smokeStdoutPath `
+        -RedirectStandardError $smokeStderrPath `
+        -PassThru
     Start-Sleep -Seconds 12
 
     if (-Not $qemuProc.HasExited) {
@@ -473,11 +474,11 @@ if (-not $NoClipBridge) {
             if (Test-Path $bridgeOut) { Remove-Item $bridgeOut -Force -ErrorAction SilentlyContinue }
             if (Test-Path $bridgeErr) { Remove-Item $bridgeErr -Force -ErrorAction SilentlyContinue }
             $bridgeProc = Start-Process -FilePath "powershell.exe" `
-                                       -ArgumentList @("-Sta", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $bridgeScript, "-TargetHost", "127.0.0.1", "-Port", "4545") `
-                                       -WorkingDirectory $projectRoot `
-                                       -RedirectStandardOutput $bridgeOut `
-                                       -RedirectStandardError $bridgeErr `
-                                       -PassThru
+                -ArgumentList @("-Sta", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $bridgeScript, "-TargetHost", "127.0.0.1", "-Port", "4545") `
+                -WorkingDirectory $projectRoot `
+                -RedirectStandardOutput $bridgeOut `
+                -RedirectStandardError $bridgeErr `
+                -PassThru
             Write-Host "Clipboard bridge started (COM1 tcp:4545)." -ForegroundColor DarkCyan
         }
         catch {
@@ -490,13 +491,13 @@ if (-not $NoClipBridge) {
 $qemuProc = $null
 try {
     $qemuProc = Start-Process -FilePath $qemuPath `
-                              -ArgumentList $qemuArgs `
-                              -WorkingDirectory $projectRoot `
-                              -PassThru
+        -ArgumentList $qemuArgs `
+        -WorkingDirectory $projectRoot `
+        -PassThru
     Wait-Process -Id $qemuProc.Id
 }
 finally {
-    if ($bridgeProc -ne $null -and -not $bridgeProc.HasExited) {
+    if ($null -ne $bridgeProc -and -not $bridgeProc.HasExited) {
         Stop-Process -Id $bridgeProc.Id -Force -ErrorAction SilentlyContinue
     }
 }
