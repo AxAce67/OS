@@ -1343,15 +1343,7 @@ void MaybeRunAutoScheduledProcess() {
 }
 
 bool ExecuteRunAllCommand() {
-    int ran = 0;
-    while (true) {
-        proc::Info info{};
-        if (!proc::FindNextReadyProcess(&info)) {
-            break;
-        }
-        RunReadyProcessByInfo(info);
-        ++ran;
-    }
+    const int ran = proc::RunAllReadyProcesses(FindBootFileByPath);
     console->Print("runall: ran=");
     console->PrintDec(ran);
     console->Print("\n");
