@@ -22,9 +22,11 @@ struct Info {
     char path[96];
 };
 
-bool CreateProcess(const char* path, const char* const* envp, int envc, uint32_t* out_pid);
-bool ExecuteProcess(uint32_t pid, const uint8_t* image, uint64_t image_size,
-                    const char* const* argv, int argc);
+bool CreateProcess(const char* path,
+                   const char* const* argv, int argc,
+                   const char* const* envp, int envc,
+                   uint32_t* out_pid);
+bool ExecuteProcess(uint32_t pid, const uint8_t* image, uint64_t image_size);
 bool IsProcessReady(uint32_t pid);
 bool MarkProcessRunning(uint32_t pid);
 bool MarkProcessExited(uint32_t pid, int64_t exit_code);

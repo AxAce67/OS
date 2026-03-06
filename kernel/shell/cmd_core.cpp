@@ -1198,24 +1198,29 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
         }
     }
 
-    const BootFileEntry* file = FindBootFileByPath(g_cwd, path);
+    char resolved_path[96];
+    if (!ResolveFilePath(g_cwd, path, resolved_path, sizeof(resolved_path))) {
+        console->PrintLine("exec: invalid path");
+        return true;
+    }
+    const BootFileEntry* file = FindBootFileByPath("/", resolved_path);
     uint32_t pid = 0;
-    proc::CreateProcess(path, env_ptrs, envc, &pid);
+    proc::CreateProcess(resolved_path, arg_ptrs, argc, env_ptrs, envc, &pid);
     if (file == nullptr) {
         console->Print("exec: not found: ");
-        console->PrintLine(path);
+        console->PrintLine(resolved_path);
         proc::MarkProcessFailed(pid, -1);
         return true;
     }
     console->Print("exec: pid=");
     console->PrintDec(static_cast<int64_t>(pid));
     console->Print(" path=");
-    console->PrintLine(path);
+    console->PrintLine(resolved_path);
     if (nowait) {
         console->PrintLine("exec: queued");
         return true;
     }
-    if (proc::ExecuteProcess(pid, file->data, file->size, arg_ptrs, argc)) {
+    if (proc::ExecuteProcess(pid, file->data, file->size)) {
         int64_t wait_status = 0;
         const int64_t wait_ret = proc::WaitPid(pid, &wait_status, false);
         console->Print("exec: waitpid -> ");
@@ -1224,7 +1229,7 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
         console->PrintDec(wait_status);
         console->Print("\n");
         console->Print("exec: ok: ");
-        console->PrintLine(path);
+        console->PrintLine(resolved_path);
         const int64_t ret = wait_status;
         console->Print("exec.ret=");
         console->PrintDec(ret);
@@ -1236,7 +1241,7 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
         console->Print("\n");
     } else {
         console->Print("exec: failed: ");
-        console->Print(path);
+        console->Print(resolved_path);
         console->Print(" (");
         console->Print(usermode::GetLastRing3Error());
         console->Print(")\n");
@@ -1262,7 +1267,7 @@ bool ExecuteRunNextCommand() {
     console->PrintDec(static_cast<int64_t>(info.pid));
     console->Print(" path=");
     console->PrintLine(info.path);
-    if (!proc::ExecuteProcess(info.pid, file->data, file->size, nullptr, 0)) {
+    if (!proc::ExecuteProcess(info.pid, file->data, file->size)) {
         console->Print("runnext: failed: ");
         console->Print(info.path);
         console->Print(" (");

@@ -8,11 +8,16 @@ namespace proc {
 namespace {
 
 constexpr int kMaxProcesses = 16;
+constexpr int kMaxExecArgs = 16;
+constexpr int kMaxExecArgLen = 64;
 constexpr int kMaxExecEnvs = 24;
 constexpr int kMaxExecEnvEntryLen = 128;
 
 struct ProcessEntry {
     Info info;
+    int argc;
+    char arg_entries[kMaxExecArgs][kMaxExecArgLen];
+    const char* arg_ptrs[kMaxExecArgs];
     int envc;
     char env_entries[kMaxExecEnvs][kMaxExecEnvEntryLen];
     const char* env_ptrs[kMaxExecEnvs];
@@ -36,6 +41,11 @@ void InitIfNeeded() {
         g_processes[i].info.start_tick = 0;
         g_processes[i].info.end_tick = 0;
         g_processes[i].info.path[0] = '\0';
+        g_processes[i].argc = 0;
+        for (int j = 0; j < kMaxExecArgs; ++j) {
+            g_processes[i].arg_entries[j][0] = '\0';
+            g_processes[i].arg_ptrs[j] = nullptr;
+        }
         g_processes[i].envc = 0;
         for (int j = 0; j < kMaxExecEnvs; ++j) {
             g_processes[i].env_entries[j][0] = '\0';
@@ -138,6 +148,36 @@ void ClearEnv(ProcessEntry* entry) {
     }
 }
 
+void ClearArgs(ProcessEntry* entry) {
+    if (entry == nullptr) {
+        return;
+    }
+    entry->argc = 0;
+    for (int i = 0; i < kMaxExecArgs; ++i) {
+        entry->arg_entries[i][0] = '\0';
+        entry->arg_ptrs[i] = nullptr;
+    }
+}
+
+void LoadArgs(ProcessEntry* entry, const char* const* argv, int argc) {
+    ClearArgs(entry);
+    if (entry == nullptr || argv == nullptr || argc <= 0) {
+        return;
+    }
+    if (argc > kMaxExecArgs) {
+        argc = kMaxExecArgs;
+    }
+    for (int i = 0; i < argc; ++i) {
+        const char* src = argv[i];
+        if (src == nullptr) {
+            src = "";
+        }
+        CopyString(entry->arg_entries[i], src, kMaxExecArgLen);
+        entry->arg_ptrs[i] = entry->arg_entries[i];
+    }
+    entry->argc = argc;
+}
+
 void LoadEnv(ProcessEntry* entry, const char* const* envp, int envc) {
     ClearEnv(entry);
     if (entry == nullptr || envp == nullptr || envc <= 0) {
@@ -184,7 +224,10 @@ void CpuPause() {
 
 }  // namespace
 
-bool CreateProcess(const char* path, const char* const* envp, int envc, uint32_t* out_pid) {
+bool CreateProcess(const char* path,
+                   const char* const* argv, int argc,
+                   const char* const* envp, int envc,
+                   uint32_t* out_pid) {
     InitIfNeeded();
     ProcessEntry* entry = &g_processes[g_next_slot];
     g_next_slot = (g_next_slot + 1) % kMaxProcesses;
@@ -195,6 +238,7 @@ bool CreateProcess(const char* path, const char* const* envp, int envc, uint32_t
     entry->info.start_tick = 0;
     entry->info.end_tick = 0;
     CopyString(entry->info.path, path != nullptr ? path : "", sizeof(entry->info.path));
+    LoadArgs(entry, argv, argc);
     LoadEnv(entry, envp, envc);
     if (out_pid != nullptr) {
         *out_pid = entry->info.pid;
@@ -202,8 +246,7 @@ bool CreateProcess(const char* path, const char* const* envp, int envc, uint32_t
     return true;
 }
 
-bool ExecuteProcess(uint32_t pid, const uint8_t* image, uint64_t image_size,
-                    const char* const* argv, int argc) {
+bool ExecuteProcess(uint32_t pid, const uint8_t* image, uint64_t image_size) {
     ProcessEntry* entry = FindEntryByPid(pid);
     if (entry == nullptr || image == nullptr || entry->info.state != State::kReady) {
         return false;
@@ -216,7 +259,7 @@ bool ExecuteProcess(uint32_t pid, const uint8_t* image, uint64_t image_size,
         return false;
     }
     const bool ok = usermode::RunRing3BinaryFromBufferWithContext(
-        image, image_size, argv, argc, entry->env_ptrs, entry->envc);
+        image, image_size, entry->arg_ptrs, entry->argc, entry->env_ptrs, entry->envc);
     if (ok) {
         MarkProcessExited(pid, usermode::GetLastRing3SyscallReturn());
     } else {
