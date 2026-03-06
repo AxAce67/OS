@@ -68,6 +68,33 @@ bool RunProcessAndCollectResult(const proc::Info& info,
     return out_result->ok;
 }
 
+bool FindNextYieldedProcess(proc::Info* out_info) {
+    if (out_info == nullptr) {
+        return false;
+    }
+    for (int i = 0; i < 16; ++i) {
+        proc::Info info{};
+        if (!proc::GetProcessInfoByRecentIndex(i, &info) || !info.used) {
+            continue;
+        }
+        if (info.state != proc::State::kYielded) {
+            continue;
+        }
+        out_info->used = info.used;
+        out_info->pid = info.pid;
+        out_info->state = info.state;
+        out_info->argc = info.argc;
+        out_info->yield_count = info.yield_count;
+        out_info->resume_count = info.resume_count;
+        out_info->exit_code = info.exit_code;
+        out_info->start_tick = info.start_tick;
+        out_info->end_tick = info.end_tick;
+        CopyString(out_info->path, info.path, sizeof(out_info->path));
+        return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 const char* PolicyName() {
@@ -116,6 +143,25 @@ int RunAllReadyProcesses(proc::BootFileLookup lookup, RunResult* out_results, in
         }
         RunProcessAndCollectResult(info, lookup, &out_results[ran]);
         ++ran;
+    }
+    return ran;
+}
+
+int RunAllYieldedProcesses(proc::BootFileLookup lookup, RunResult* out_results, int max_results) {
+    if (lookup == nullptr || out_results == nullptr || max_results <= 0) {
+        return 0;
+    }
+    int ran = 0;
+    while (ran < max_results) {
+        proc::Info info{};
+        if (!FindNextYieldedProcess(&info)) {
+            break;
+        }
+        RunProcessAndCollectResult(info, lookup, &out_results[ran]);
+        ++ran;
+        if (out_results[ran - 1].final_info.state == proc::State::kYielded) {
+            break;
+        }
     }
     return ran;
 }

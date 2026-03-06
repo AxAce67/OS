@@ -1397,53 +1397,15 @@ bool ExecuteRunAllCommand() {
 }
 
 bool ExecuteResumeAllCommand() {
-    int ran = 0;
-    while (ran < kRunAllPassLimit) {
-        proc::Info selected{};
-        bool found = false;
-        for (int i = 0; i < 16; ++i) {
-            proc::Info info{};
-            if (!proc::GetProcessInfoByRecentIndex(i, &info) || !info.used) {
-                continue;
-            }
-            if (info.state != proc::State::kYielded) {
-                continue;
-            }
-            selected.used = info.used;
-            selected.pid = info.pid;
-            selected.state = info.state;
-            selected.argc = info.argc;
-            selected.yield_count = info.yield_count;
-            selected.resume_count = info.resume_count;
-            selected.exit_code = info.exit_code;
-            selected.start_tick = info.start_tick;
-            selected.end_tick = info.end_tick;
-            CopyString(selected.path, info.path, sizeof(selected.path));
-            found = true;
-            break;
-        }
-        if (!found) {
-            break;
-        }
-        scheduler::RunResult result{};
-        if (!scheduler::RunProcessWithResult(selected.pid, FindBootFileByPath, &result)) {
-            console->Print("resumeall: pid=");
-            console->PrintDec(static_cast<int64_t>(selected.pid));
-            console->Print(" path=");
-            console->PrintLine(selected.path);
-            PrintRunResultLine("resumeall: ", result);
-            ++ran;
-            continue;
-        }
+    scheduler::RunResult results[kRunAllPassLimit]{};
+    const int ran = scheduler::RunAllYieldedProcesses(FindBootFileByPath, results, kRunAllPassLimit);
+    for (int i = 0; i < ran; ++i) {
+        const scheduler::RunResult& result = results[i];
         console->Print("resumeall: pid=");
         console->PrintDec(static_cast<int64_t>(result.queued_info.pid));
         console->Print(" path=");
         console->PrintLine(result.queued_info.path);
         PrintRunResultLine("resumeall: ", result);
-        ++ran;
-        if (result.final_info.state == proc::State::kYielded) {
-            break;
-        }
     }
     console->Print("resumeall: ran=");
     console->PrintDec(ran);
