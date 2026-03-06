@@ -37,6 +37,13 @@ struct Summary {
     int yielded;
 };
 
+struct QueueSnapshot {
+    int runnable_count;
+    uint32_t runnable_pids[16];
+    int yielded_count;
+    uint32_t yielded_pids[16];
+};
+
 bool CreateProcess(const char* path,
                    const char* const* argv, int argc,
                    const char* const* envp, int envc,
@@ -60,6 +67,7 @@ bool PeekNextYieldedProcess(Info* out_info);
 void AdvanceYieldedProcessCursor();
 bool FindNextYieldedProcess(Info* out_info);
 Summary GetProcessSummary();
+bool GetQueueSnapshot(QueueSnapshot* out_snapshot);
 const char* StateName(State state);
 
 bool SetCurrentProcess(uint32_t pid);

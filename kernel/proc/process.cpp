@@ -834,6 +834,34 @@ Summary GetProcessSummary() {
     return summary;
 }
 
+bool GetQueueSnapshot(QueueSnapshot* out_snapshot) {
+    InitIfNeeded();
+    if (out_snapshot == nullptr) {
+        return false;
+    }
+    out_snapshot->runnable_count = g_runnable_count;
+    out_snapshot->yielded_count = g_yielded_count;
+    for (int i = 0; i < kMaxProcesses; ++i) {
+        out_snapshot->runnable_pids[i] = 0;
+        out_snapshot->yielded_pids[i] = 0;
+    }
+    for (int i = 0; i < g_runnable_count && i < kMaxProcesses; ++i) {
+        const int slot = g_runnable_queue[i];
+        if (!IsValidSlotIndex(slot) || !g_processes[slot].info.used) {
+            continue;
+        }
+        out_snapshot->runnable_pids[i] = g_processes[slot].info.pid;
+    }
+    for (int i = 0; i < g_yielded_count && i < kMaxProcesses; ++i) {
+        const int slot = g_yielded_queue[i];
+        if (!IsValidSlotIndex(slot) || !g_processes[slot].info.used) {
+            continue;
+        }
+        out_snapshot->yielded_pids[i] = g_processes[slot].info.pid;
+    }
+    return true;
+}
+
 const char* StateName(State state) {
     switch (state) {
         case State::kReady:
