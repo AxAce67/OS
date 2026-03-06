@@ -1480,6 +1480,11 @@ bool ExecuteProcQueueCommand() {
     console->Print("procq.last_run=");
     console->PrintDec(static_cast<int64_t>(sched.last_run_pid));
     console->Print("\n");
+    console->Print("procq.last_state=");
+    console->PrintLine(proc::StateName(sched.last_run_state));
+    console->Print("procq.last_status=");
+    console->PrintDec(sched.last_wait_status);
+    console->Print("\n");
     console->Print("procq.valid=");
     console->PrintLine(snapshot.valid ? "1" : "0");
     console->Print("procq.current=");

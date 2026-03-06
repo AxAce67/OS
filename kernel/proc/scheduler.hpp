@@ -17,6 +17,8 @@ struct Snapshot {
     uint64_t last_autosched_tick;
     int tick_burst_remaining;
     uint32_t last_run_pid;
+    proc::State last_run_state;
+    int64_t last_wait_status;
 };
 
 const char* PolicyName();

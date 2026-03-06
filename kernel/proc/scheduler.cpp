@@ -8,6 +8,8 @@ bool g_auto_schedule_enabled = false;
 uint64_t g_last_autosched_tick = 0;
 int g_tick_burst_remaining = 0;
 uint32_t g_last_run_pid = 0;
+proc::State g_last_run_state = proc::State::kFree;
+int64_t g_last_wait_status = 0;
 constexpr int kAutoScheduleBurstLimit = 4;
 
 void InitializeRunResult(RunResult* result, const proc::Info& info) {
@@ -67,6 +69,8 @@ bool RunProcessAndCollectResult(const proc::Info& info,
     g_last_run_pid = info.pid;
     out_result->ok = proc::RunProcessByPid(info.pid, lookup, &out_result->wait_status);
     FinalizeRunResult(out_result, out_result->queued_info);
+    g_last_run_state = out_result->final_info.state;
+    g_last_wait_status = out_result->wait_status;
     return out_result->ok;
 }
 
@@ -93,6 +97,8 @@ Snapshot GetSnapshot() {
     snapshot.last_autosched_tick = g_last_autosched_tick;
     snapshot.tick_burst_remaining = g_tick_burst_remaining;
     snapshot.last_run_pid = g_last_run_pid;
+    snapshot.last_run_state = g_last_run_state;
+    snapshot.last_wait_status = g_last_wait_status;
     return snapshot;
 }
 
