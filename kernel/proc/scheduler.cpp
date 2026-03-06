@@ -1,4 +1,5 @@
 #include "proc/scheduler.hpp"
+#include "shell/text.hpp"
 
 namespace scheduler {
 namespace {
@@ -37,6 +38,34 @@ bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info)
     }
     --g_tick_burst_remaining;
     return true;
+}
+
+int RunAutoScheduledTick(uint64_t now_tick,
+                         proc::BootFileLookup lookup,
+                         TickRunResult* out_results,
+                         int max_results) {
+    if (lookup == nullptr || out_results == nullptr || max_results <= 0) {
+        return 0;
+    }
+    int ran = 0;
+    while (ran < max_results) {
+        proc::Info info{};
+        if (!DequeueAutoScheduledProcessForTick(now_tick, &info)) {
+            break;
+        }
+        out_results[ran].info.used = info.used;
+        out_results[ran].info.pid = info.pid;
+        out_results[ran].info.state = info.state;
+        out_results[ran].info.argc = info.argc;
+        out_results[ran].info.exit_code = info.exit_code;
+        out_results[ran].info.start_tick = info.start_tick;
+        out_results[ran].info.end_tick = info.end_tick;
+        CopyString(out_results[ran].info.path, info.path, sizeof(out_results[ran].info.path));
+        out_results[ran].wait_status = 0;
+        out_results[ran].ok = proc::RunProcessByPid(info.pid, lookup, &out_results[ran].wait_status);
+        ++ran;
+    }
+    return ran;
 }
 
 }  // namespace scheduler

@@ -2777,45 +2777,32 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RestorePromptAndInput(snapshot, saved_cursor);
     };
     auto MaybeRunIdleAutoScheduledProcess = [&]() -> bool {
-        proc::Info first_info{};
         const uint64_t now_tick = CurrentTick();
-        if (!scheduler::DequeueAutoScheduledProcessForTick(now_tick, &first_info)) {
+        scheduler::TickRunResult results[4]{};
+        const int ran = scheduler::RunAutoScheduledTick(now_tick, FindBootFileByPath, results, 4);
+        if (ran <= 0) {
             return false;
         }
         AppendAsyncShellOutput([&]() {
             console->PrintLine("[autosched]");
-            int ran = 0;
-            proc::Info info{};
-            info.used = first_info.used;
-            info.pid = first_info.pid;
-            info.state = first_info.state;
-            info.argc = first_info.argc;
-            info.exit_code = first_info.exit_code;
-            info.start_tick = first_info.start_tick;
-            info.end_tick = first_info.end_tick;
-            CopyString(info.path, first_info.path, static_cast<int>(sizeof(info.path)));
-            while (true) {
+            for (int i = 0; i < ran; ++i) {
+                const scheduler::TickRunResult& result = results[i];
                 console->Print("runnext: pid=");
-                console->PrintDec(static_cast<int64_t>(info.pid));
+                console->PrintDec(static_cast<int64_t>(result.info.pid));
                 console->Print(" path=");
-                console->PrintLine(info.path);
-                int64_t wait_status = 0;
-                if (!proc::RunProcessByPid(info.pid, FindBootFileByPath, &wait_status)) {
+                console->PrintLine(result.info.path);
+                if (!result.ok) {
                     console->Print("runnext: failed: ");
-                    console->Print(info.path);
+                    console->Print(result.info.path);
                     console->Print(" (");
                     console->Print(usermode::GetLastRing3Error());
                     console->Print(")\n");
                 } else {
                     console->Print("runnext: waitpid -> ");
-                    console->PrintDec(static_cast<int64_t>(info.pid));
+                    console->PrintDec(static_cast<int64_t>(result.info.pid));
                     console->Print(" status=");
-                    console->PrintDec(wait_status);
+                    console->PrintDec(result.wait_status);
                     console->Print("\n");
-                }
-                ++ran;
-                if (!scheduler::DequeueAutoScheduledProcessForTick(now_tick, &info)) {
-                    break;
                 }
             }
             console->Print("autosched: ran=");
