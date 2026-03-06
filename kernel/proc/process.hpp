@@ -54,6 +54,7 @@ int64_t WaitPid(uint32_t pid, int64_t* out_exit_code, bool nohang);
 bool GetProcessInfo(uint32_t pid, Info* out_info);
 bool GetProcessInfoByRecentIndex(int recent_index, Info* out_info);
 bool FindNextRunnableProcess(Info* out_info);
+bool FindNextYieldedProcess(Info* out_info);
 Summary GetProcessSummary();
 const char* StateName(State state);
 

@@ -30,6 +30,7 @@ ProcessEntry g_processes[kMaxProcesses];
 uint32_t g_next_pid = 1;
 int g_next_slot = 0;
 int g_next_runnable_slot = 0;
+int g_next_yielded_slot = 0;
 uint32_t g_current_pid = 0;
 bool g_initialized = false;
 
@@ -605,6 +606,35 @@ bool FindNextRunnableProcess(Info* out_info) {
         out_info->end_tick = g_processes[idx].info.end_tick;
         CopyString(out_info->path, g_processes[idx].info.path, sizeof(out_info->path));
         g_next_runnable_slot = (idx + 1) % kMaxProcesses;
+        return true;
+    }
+    return false;
+}
+
+bool FindNextYieldedProcess(Info* out_info) {
+    InitIfNeeded();
+    if (out_info == nullptr) {
+        return false;
+    }
+    for (int n = 0; n < kMaxProcesses; ++n) {
+        const int idx = (g_next_yielded_slot + n) % kMaxProcesses;
+        if (!g_processes[idx].info.used) {
+            continue;
+        }
+        if (g_processes[idx].info.state != State::kYielded) {
+            continue;
+        }
+        out_info->used = g_processes[idx].info.used;
+        out_info->pid = g_processes[idx].info.pid;
+        out_info->state = g_processes[idx].info.state;
+        out_info->argc = g_processes[idx].info.argc;
+        out_info->yield_count = g_processes[idx].info.yield_count;
+        out_info->resume_count = g_processes[idx].info.resume_count;
+        out_info->exit_code = g_processes[idx].info.exit_code;
+        out_info->start_tick = g_processes[idx].info.start_tick;
+        out_info->end_tick = g_processes[idx].info.end_tick;
+        CopyString(out_info->path, g_processes[idx].info.path, sizeof(out_info->path));
+        g_next_yielded_slot = (idx + 1) % kMaxProcesses;
         return true;
     }
     return false;

@@ -68,37 +68,10 @@ bool RunProcessAndCollectResult(const proc::Info& info,
     return out_result->ok;
 }
 
-bool FindNextYieldedProcess(proc::Info* out_info) {
-    if (out_info == nullptr) {
-        return false;
-    }
-    for (int i = 0; i < 16; ++i) {
-        proc::Info info{};
-        if (!proc::GetProcessInfoByRecentIndex(i, &info) || !info.used) {
-            continue;
-        }
-        if (info.state != proc::State::kYielded) {
-            continue;
-        }
-        out_info->used = info.used;
-        out_info->pid = info.pid;
-        out_info->state = info.state;
-        out_info->argc = info.argc;
-        out_info->yield_count = info.yield_count;
-        out_info->resume_count = info.resume_count;
-        out_info->exit_code = info.exit_code;
-        out_info->start_tick = info.start_tick;
-        out_info->end_tick = info.end_tick;
-        CopyString(out_info->path, info.path, sizeof(out_info->path));
-        return true;
-    }
-    return false;
-}
-
 }  // namespace
 
 const char* PolicyName() {
-    return "round-robin";
+    return "ready=round-robin,yielded=round-robin";
 }
 
 bool IsAutoScheduleEnabled() {
@@ -154,7 +127,7 @@ int RunAllYieldedProcesses(proc::BootFileLookup lookup, RunResult* out_results, 
     int ran = 0;
     while (ran < max_results) {
         proc::Info info{};
-        if (!FindNextYieldedProcess(&info)) {
+        if (!proc::FindNextYieldedProcess(&info)) {
             break;
         }
         RunProcessAndCollectResult(info, lookup, &out_results[ran]);
