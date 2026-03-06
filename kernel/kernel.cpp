@@ -2691,17 +2691,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RenderInputLine();
         RefreshInputLine();
     };
-
-    auto RepaintPromptAndInput = [&]() {
-        char snapshot[128];
-        CopyString(snapshot, command_buffer, static_cast<int>(sizeof(snapshot)));
-        int saved_cursor = cursor_pos;
-
+    auto ClearCurrentInputRow = [&]() {
         console->SetCursorPosition(input_row, 0);
         for (int i = 0; i < console->Columns(); ++i) {
             console->Print(" ");
         }
         console->SetCursorPosition(input_row, 0);
+    };
+    auto RestorePromptAndInput = [&](const char* snapshot, int saved_cursor) {
         PrintPrompt();
         input_row = console->CursorRow();
         input_col = console->CursorColumn();
@@ -2719,66 +2716,50 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             RefreshInputLine();
         }
     };
-    auto RelocatePromptAndInputAfterAsyncOutput = [&]() {
+    auto AppendAsyncShellOutput = [&](auto&& writer) {
         char snapshot[128];
         CopyString(snapshot, command_buffer, static_cast<int>(sizeof(snapshot)));
-        int saved_cursor = cursor_pos;
+        const int saved_cursor = cursor_pos;
+        EnsureLiveConsole();
+        ClearCurrentInputRow();
+        writer();
+        RestorePromptAndInput(snapshot, saved_cursor);
+        RefreshConsole();
+    };
 
-        console->SetCursorPosition(input_row, 0);
-        for (int i = 0; i < console->Columns(); ++i) {
-            console->Print(" ");
-        }
-        console->SetCursorPosition(input_row, 0);
-
-        PrintPrompt();
-        input_row = console->CursorRow();
-        input_col = console->CursorColumn();
-        ReplaceInputLine(snapshot);
-
-        if (saved_cursor < 0) {
-            saved_cursor = 0;
-        }
-        if (saved_cursor > command_len) {
-            saved_cursor = command_len;
-        }
-        if (cursor_pos != saved_cursor) {
-            cursor_pos = saved_cursor;
-            RenderInputLine();
-            RefreshInputLine();
-        }
+    auto RepaintPromptAndInput = [&]() {
+        char snapshot[128];
+        CopyString(snapshot, command_buffer, static_cast<int>(sizeof(snapshot)));
+        const int saved_cursor = cursor_pos;
+        ClearCurrentInputRow();
+        RestorePromptAndInput(snapshot, saved_cursor);
     };
     auto MaybeRunIdleAutoScheduledProcess = [&]() -> bool {
         proc::Info info{};
         if (!scheduler::GetNextAutoScheduledProcess(&info)) {
             return false;
         }
-        EnsureLiveConsole();
-        console->SetCursorPosition(input_row, 0);
-        for (int i = 0; i < console->Columns(); ++i) {
-            console->Print(" ");
-        }
-        console->SetCursorPosition(input_row, 0);
-        console->PrintLine("[autosched]");
-        console->Print("runnext: pid=");
-        console->PrintDec(static_cast<int64_t>(info.pid));
-        console->Print(" path=");
-        console->PrintLine(info.path);
-        int64_t wait_status = 0;
-        if (!proc::RunProcessByPid(info.pid, FindBootFileByPath, &wait_status)) {
-            console->Print("runnext: failed: ");
-            console->Print(info.path);
-            console->Print(" (");
-            console->Print(usermode::GetLastRing3Error());
-            console->Print(")\n");
-        } else {
+        AppendAsyncShellOutput([&]() {
+            console->PrintLine("[autosched]");
+            console->Print("runnext: pid=");
+            console->PrintDec(static_cast<int64_t>(info.pid));
+            console->Print(" path=");
+            console->PrintLine(info.path);
+            int64_t wait_status = 0;
+            if (!proc::RunProcessByPid(info.pid, FindBootFileByPath, &wait_status)) {
+                console->Print("runnext: failed: ");
+                console->Print(info.path);
+                console->Print(" (");
+                console->Print(usermode::GetLastRing3Error());
+                console->Print(")\n");
+                return;
+            }
             console->Print("runnext: waitpid -> ");
             console->PrintDec(static_cast<int64_t>(info.pid));
             console->Print(" status=");
             console->PrintDec(wait_status);
             console->Print("\n");
-        }
-        RelocatePromptAndInputAfterAsyncOutput();
-        RefreshConsole();
+        });
         return true;
     };
 
