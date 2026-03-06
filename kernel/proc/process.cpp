@@ -411,9 +411,9 @@ bool RunProcessByPid(uint32_t pid, BootFileLookup lookup, int64_t* out_wait_stat
     return true;
 }
 
-bool RunNextReadyProcess(BootFileLookup lookup, Info* out_info, int64_t* out_wait_status) {
+bool RunNextRunnableProcess(BootFileLookup lookup, Info* out_info, int64_t* out_wait_status) {
     Info info{};
-    if (!FindNextReadyProcess(&info)) {
+    if (!FindNextRunnableProcess(&info)) {
         return false;
     }
     if (out_info != nullptr) {
@@ -431,7 +431,7 @@ bool RunNextReadyProcess(BootFileLookup lookup, Info* out_info, int64_t* out_wai
     return RunProcessByPid(info.pid, lookup, out_wait_status);
 }
 
-bool IsProcessReady(uint32_t pid) {
+bool IsProcessRunnable(uint32_t pid) {
     const ProcessEntry* entry = FindEntryByPidConst(pid);
     return entry != nullptr && (entry->info.state == State::kReady || entry->info.state == State::kYielded);
 }
@@ -576,7 +576,7 @@ bool GetProcessInfoByRecentIndex(int recent_index, Info* out_info) {
     return true;
 }
 
-bool FindNextReadyProcess(Info* out_info) {
+bool FindNextRunnableProcess(Info* out_info) {
     InitIfNeeded();
     if (out_info == nullptr) {
         return false;

@@ -36,8 +36,8 @@ bool CreateProcess(const char* path,
                    uint32_t* out_pid);
 bool ExecuteProcess(uint32_t pid, const uint8_t* image, uint64_t image_size);
 bool RunProcessByPid(uint32_t pid, BootFileLookup lookup, int64_t* out_wait_status);
-bool RunNextReadyProcess(BootFileLookup lookup, Info* out_info, int64_t* out_wait_status);
-bool IsProcessReady(uint32_t pid);
+bool RunNextRunnableProcess(BootFileLookup lookup, Info* out_info, int64_t* out_wait_status);
+bool IsProcessRunnable(uint32_t pid);
 bool SaveCurrentProcessUserFrame(const Ring3SyscallFrame* frame);
 bool MarkProcessRunning(uint32_t pid);
 bool MarkProcessYielded(uint32_t pid);
@@ -46,7 +46,7 @@ bool MarkProcessFailed(uint32_t pid, int64_t exit_code);
 int64_t WaitPid(uint32_t pid, int64_t* out_exit_code, bool nohang);
 bool GetProcessInfo(uint32_t pid, Info* out_info);
 bool GetProcessInfoByRecentIndex(int recent_index, Info* out_info);
-bool FindNextReadyProcess(Info* out_info);
+bool FindNextRunnableProcess(Info* out_info);
 const char* StateName(State state);
 
 bool SetCurrentProcess(uint32_t pid);

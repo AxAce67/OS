@@ -107,7 +107,7 @@ int RunAllReadyProcesses(proc::BootFileLookup lookup, RunResult* out_results, in
     int ran = 0;
     while (ran < max_results) {
         proc::Info info{};
-        if (!proc::FindNextReadyProcess(&info)) {
+        if (!proc::FindNextRunnableProcess(&info)) {
             break;
         }
         RunProcessAndCollectResult(info, lookup, &out_results[ran]);
@@ -127,7 +127,7 @@ bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info)
     if (g_tick_burst_remaining <= 0) {
         return false;
     }
-    if (!proc::FindNextReadyProcess(out_info)) {
+    if (!proc::FindNextRunnableProcess(out_info)) {
         return false;
     }
     --g_tick_burst_remaining;

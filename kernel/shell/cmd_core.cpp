@@ -1302,8 +1302,8 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
 
 bool ExecuteRunNextCommand() {
     proc::Info info{};
-    if (!proc::FindNextReadyProcess(&info)) {
-        console->PrintLine("runnext: no ready process");
+    if (!proc::FindNextRunnableProcess(&info)) {
+        console->PrintLine("runnext: no runnable process");
         return true;
     }
     RunReadyProcessByInfo(info);
