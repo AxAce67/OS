@@ -16,7 +16,6 @@ constexpr int kMaxExecEnvEntryLen = 128;
 
 struct ProcessEntry {
     Info info;
-    bool runnable_queued;
     bool has_saved_frame;
     Ring3SyscallFrame saved_frame;
     int argc;
@@ -30,104 +29,18 @@ struct ProcessEntry {
 ProcessEntry g_processes[kMaxProcesses];
 uint32_t g_next_pid = 1;
 int g_next_slot = 0;
-uint32_t g_runnable_queue[kMaxProcesses];
-int g_runnable_head = 0;
-int g_runnable_count = 0;
+int g_next_runnable_slot = 0;
 uint32_t g_current_pid = 0;
 bool g_initialized = false;
 
-ProcessEntry* FindEntryByPid(uint32_t pid);
-const ProcessEntry* FindEntryByPidConst(uint32_t pid);
-
-void ResetRunnableQueue() {
-    g_runnable_head = 0;
-    g_runnable_count = 0;
-    for (int i = 0; i < kMaxProcesses; ++i) {
-        g_runnable_queue[i] = 0;
-    }
-}
-
 bool IsRunnableState(State state) {
     return state == State::kReady || state == State::kYielded;
-}
-
-bool EnqueueRunnable(ProcessEntry* entry) {
-    if (entry == nullptr || !entry->info.used || !IsRunnableState(entry->info.state) || entry->runnable_queued) {
-        return false;
-    }
-    if (g_runnable_count >= kMaxProcesses) {
-        return false;
-    }
-    const int tail = (g_runnable_head + g_runnable_count) % kMaxProcesses;
-    g_runnable_queue[tail] = entry->info.pid;
-    entry->runnable_queued = true;
-    ++g_runnable_count;
-    return true;
-}
-
-bool RemoveRunnable(uint32_t pid) {
-    if (pid == 0 || g_runnable_count <= 0) {
-        return false;
-    }
-    for (int i = 0; i < g_runnable_count; ++i) {
-        const int idx = (g_runnable_head + i) % kMaxProcesses;
-        if (g_runnable_queue[idx] != pid) {
-            continue;
-        }
-        for (int j = i; j < g_runnable_count - 1; ++j) {
-            const int from = (g_runnable_head + j + 1) % kMaxProcesses;
-            const int to = (g_runnable_head + j) % kMaxProcesses;
-            g_runnable_queue[to] = g_runnable_queue[from];
-        }
-        const int tail = (g_runnable_head + g_runnable_count - 1) % kMaxProcesses;
-        g_runnable_queue[tail] = 0;
-        --g_runnable_count;
-        ProcessEntry* entry = FindEntryByPid(pid);
-        if (entry != nullptr) {
-            entry->runnable_queued = false;
-        }
-        return true;
-    }
-    return false;
-}
-
-bool DequeueNextRunnable(Info* out_info) {
-    if (out_info == nullptr) {
-        return false;
-    }
-    while (g_runnable_count > 0) {
-        const uint32_t pid = g_runnable_queue[g_runnable_head];
-        g_runnable_queue[g_runnable_head] = 0;
-        g_runnable_head = (g_runnable_head + 1) % kMaxProcesses;
-        --g_runnable_count;
-        ProcessEntry* entry = FindEntryByPid(pid);
-        if (entry == nullptr) {
-            continue;
-        }
-        entry->runnable_queued = false;
-        if (!entry->info.used || !IsRunnableState(entry->info.state)) {
-            continue;
-        }
-        out_info->used = entry->info.used;
-        out_info->pid = entry->info.pid;
-        out_info->state = entry->info.state;
-        out_info->argc = entry->info.argc;
-        out_info->yield_count = entry->info.yield_count;
-        out_info->resume_count = entry->info.resume_count;
-        out_info->exit_code = entry->info.exit_code;
-        out_info->start_tick = entry->info.start_tick;
-        out_info->end_tick = entry->info.end_tick;
-        CopyString(out_info->path, entry->info.path, sizeof(out_info->path));
-        return true;
-    }
-    return false;
 }
 
 void InitIfNeeded() {
     if (g_initialized) {
         return;
     }
-    ResetRunnableQueue();
     for (int i = 0; i < kMaxProcesses; ++i) {
         g_processes[i].info.used = false;
         g_processes[i].info.pid = 0;
@@ -139,7 +52,6 @@ void InitIfNeeded() {
         g_processes[i].info.start_tick = 0;
         g_processes[i].info.end_tick = 0;
         g_processes[i].info.path[0] = '\0';
-        g_processes[i].runnable_queued = false;
         g_processes[i].has_saved_frame = false;
         g_processes[i].argc = 0;
         for (int j = 0; j < kMaxExecArgs; ++j) {
@@ -403,9 +315,6 @@ bool CreateProcess(const char* path,
     InitIfNeeded();
     ProcessEntry* entry = &g_processes[g_next_slot];
     g_next_slot = (g_next_slot + 1) % kMaxProcesses;
-    if (entry->info.used) {
-        RemoveRunnable(entry->info.pid);
-    }
     entry->info.used = true;
     entry->info.pid = g_next_pid++;
     entry->info.state = State::kReady;
@@ -419,8 +328,6 @@ bool CreateProcess(const char* path,
     ClearSavedFrame(entry);
     LoadArgs(entry, argv, argc);
     LoadEnv(entry, envp, envc);
-    entry->runnable_queued = false;
-    EnqueueRunnable(entry);
     if (out_pid != nullptr) {
         *out_pid = entry->info.pid;
     }
@@ -549,7 +456,6 @@ bool MarkProcessRunning(uint32_t pid) {
     if (entry == nullptr) {
         return false;
     }
-    RemoveRunnable(pid);
     if (entry->info.state == State::kYielded) {
         ++entry->info.resume_count;
     }
@@ -569,7 +475,6 @@ bool MarkProcessYielded(uint32_t pid) {
     ++entry->info.yield_count;
     entry->info.state = State::kYielded;
     entry->info.end_tick = 0;
-    EnqueueRunnable(entry);
     return true;
 }
 
@@ -581,7 +486,6 @@ bool MarkProcessExited(uint32_t pid, int64_t exit_code) {
     entry->info.state = State::kExited;
     entry->info.exit_code = exit_code;
     ClearSavedFrame(entry);
-    RemoveRunnable(pid);
     if (entry->info.start_tick == 0) {
         entry->info.start_tick = CurrentTick();
     }
@@ -597,7 +501,6 @@ bool MarkProcessFailed(uint32_t pid, int64_t exit_code) {
     entry->info.state = State::kFailed;
     entry->info.exit_code = exit_code;
     ClearSavedFrame(entry);
-    RemoveRunnable(pid);
     entry->info.end_tick = CurrentTick();
     return true;
 }
@@ -680,7 +583,31 @@ bool GetProcessInfoByRecentIndex(int recent_index, Info* out_info) {
 
 bool FindNextRunnableProcess(Info* out_info) {
     InitIfNeeded();
-    return DequeueNextRunnable(out_info);
+    if (out_info == nullptr) {
+        return false;
+    }
+    for (int n = 0; n < kMaxProcesses; ++n) {
+        const int idx = (g_next_runnable_slot + n) % kMaxProcesses;
+        if (!g_processes[idx].info.used) {
+            continue;
+        }
+        if (!IsRunnableState(g_processes[idx].info.state)) {
+            continue;
+        }
+        out_info->used = g_processes[idx].info.used;
+        out_info->pid = g_processes[idx].info.pid;
+        out_info->state = g_processes[idx].info.state;
+        out_info->argc = g_processes[idx].info.argc;
+        out_info->yield_count = g_processes[idx].info.yield_count;
+        out_info->resume_count = g_processes[idx].info.resume_count;
+        out_info->exit_code = g_processes[idx].info.exit_code;
+        out_info->start_tick = g_processes[idx].info.start_tick;
+        out_info->end_tick = g_processes[idx].info.end_tick;
+        CopyString(out_info->path, g_processes[idx].info.path, sizeof(out_info->path));
+        g_next_runnable_slot = (idx + 1) % kMaxProcesses;
+        return true;
+    }
+    return false;
 }
 
 const char* StateName(State state) {
