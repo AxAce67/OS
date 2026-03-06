@@ -1,6 +1,7 @@
 #include "syscall/syscall.hpp"
 
 #include "console.hpp"
+#include "proc/process.hpp"
 #include "timer.hpp"
 #include "user/ring3.hpp"
 
@@ -239,6 +240,31 @@ int64_t HandleUnsetEnv(uint64_t arg0, uint64_t arg1, bool from_user) {
     return usermode::UnsetCurrentExecEnv(key) ? 0 : kErrInvalid;
 }
 
+int64_t HandleWaitPid(uint64_t arg0, uint64_t arg1, uint64_t arg2, bool from_user) {
+    if (arg0 == 0 || arg0 > 0xFFFFFFFFULL) {
+        return kErrInvalid;
+    }
+    if (arg1 != 0 && !ValidateWriteRange(arg1, sizeof(int64_t), from_user)) {
+        return kErrFault;
+    }
+    if (arg2 > 1) {
+        return kErrInvalid;
+    }
+
+    int64_t exit_code = 0;
+    const int64_t ret = proc::WaitPid(static_cast<uint32_t>(arg0), &exit_code, arg2 != 0);
+    if (ret == -1) {
+        return kErrInvalid;
+    }
+    if (ret == -2) {
+        return kErrBusy;
+    }
+    if (ret > 0 && arg1 != 0) {
+        *reinterpret_cast<int64_t*>(arg1) = exit_code;
+    }
+    return ret;
+}
+
 }  // namespace
 
 int64_t Dispatch(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3) {
@@ -261,6 +287,8 @@ int64_t DispatchFromTrap(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t
             return HandleSetEnv(arg0, arg1, arg2, arg3, from_user);
         case Number::kUnsetEnv:
             return HandleUnsetEnv(arg0, arg1, from_user);
+        case Number::kWaitPid:
+            return HandleWaitPid(arg0, arg1, arg2, from_user);
         default:
             return kErrNoSys;
     }
@@ -274,6 +302,8 @@ const char* ErrorName(int64_t code) {
             return "EFAULT";
         case kErrInvalid:
             return "EINVAL";
+        case kErrBusy:
+            return "EBUSY";
         default:
             return "EUNKNOWN";
     }

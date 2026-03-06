@@ -6,6 +6,7 @@
 #include "arch/x86_64/interrupt.hpp"
 #include "arch/x86_64/paging.hpp"
 #include "boot_info.h"
+#include "proc/process.hpp"
 #include "shell/context.hpp"
 #include "shell/text.hpp"
 #include "arch/x86_64/syscall_entry.hpp"
@@ -50,57 +51,7 @@ int ImportImeLearningFromBuffer(const uint8_t* data, int size, bool clear_before
 int ExportImeLearningToBuffer(char* out, int out_len);
 
 namespace {
-struct ExecProcessEntry {
-    bool used;
-    uint32_t pid;
-    bool running;
-    int64_t exit_code;
-    uint64_t start_tick;
-    uint64_t end_tick;
-    char path[96];
-    char status[16];
-};
-
-ExecProcessEntry g_exec_processes[16];
-uint32_t g_exec_next_pid = 1;
-int g_exec_next_slot = 0;
 constexpr int kExecMaxEnv = 24;
-
-void InitExecProcessTableIfNeeded() {
-    static bool initialized = false;
-    if (initialized) {
-        return;
-    }
-    for (int i = 0; i < static_cast<int>(sizeof(g_exec_processes) / sizeof(g_exec_processes[0])); ++i) {
-        g_exec_processes[i].used = false;
-    }
-    initialized = true;
-}
-
-ExecProcessEntry* BeginExecProcessRecord(const char* path) {
-    InitExecProcessTableIfNeeded();
-    ExecProcessEntry* e = &g_exec_processes[g_exec_next_slot];
-    g_exec_next_slot = (g_exec_next_slot + 1) % static_cast<int>(sizeof(g_exec_processes) / sizeof(g_exec_processes[0]));
-    e->used = true;
-    e->pid = g_exec_next_pid++;
-    e->running = true;
-    e->exit_code = 0;
-    e->start_tick = CurrentTick();
-    e->end_tick = 0;
-    CopyString(e->path, path, sizeof(e->path));
-    CopyString(e->status, "running", sizeof(e->status));
-    return e;
-}
-
-void EndExecProcessRecord(ExecProcessEntry* e, bool ok, int64_t exit_code) {
-    if (e == nullptr) {
-        return;
-    }
-    e->running = false;
-    e->exit_code = exit_code;
-    e->end_tick = CurrentTick();
-    CopyString(e->status, ok ? "exited" : "failed", sizeof(e->status));
-}
 
 bool AppendExecEnv(char out[][128], const char** out_ptrs, int max_count, int* io_count,
                    const char* key, const char* value) {
@@ -807,6 +758,58 @@ bool ExecuteSyscallCommand(const char* rest) {
         return true;
     }
 
+    if (StrStartsWith(rest, "waitpid ")) {
+        int pos = 0;
+        char sub[16];
+        char pid_text[16];
+        char option[16];
+        NextToken(rest, &pos, sub, sizeof(sub)); // waitpid
+        if (!NextToken(rest, &pos, pid_text, sizeof(pid_text))) {
+            console->PrintLine("usage: syscall waitpid <pid> [nohang]");
+            return true;
+        }
+        bool nohang = false;
+        if (NextToken(rest, &pos, option, sizeof(option))) {
+            if (!StrEqual(option, "nohang")) {
+                console->PrintLine("usage: syscall waitpid <pid> [nohang]");
+                return true;
+            }
+            nohang = true;
+            char extra[8];
+            if (NextToken(rest, &pos, extra, sizeof(extra))) {
+                console->PrintLine("usage: syscall waitpid <pid> [nohang]");
+                return true;
+            }
+        }
+        uint32_t pid = 0;
+        for (int i = 0; pid_text[i] != '\0'; ++i) {
+            if (pid_text[i] < '0' || pid_text[i] > '9') {
+                console->PrintLine("syscall waitpid: pid must be decimal");
+                return true;
+            }
+            pid = pid * 10u + static_cast<uint32_t>(pid_text[i] - '0');
+        }
+        int64_t status = 0;
+        const int64_t ret = syscall::Dispatch(
+            static_cast<uint64_t>(syscall::Number::kWaitPid),
+            pid,
+            reinterpret_cast<uint64_t>(&status),
+            nohang ? 1 : 0,
+            0);
+        console->Print("syscall waitpid -> ");
+        console->PrintDec(ret);
+        if (ret > 0) {
+            console->Print(" status=");
+            console->PrintDec(status);
+        } else if (ret < 0) {
+            console->Print(" (");
+            console->Print(syscall::ErrorName(ret));
+            console->Print(")");
+        }
+        console->Print("\n");
+        return true;
+    }
+
     if (StrEqual(rest, "trap tick")) {
         const int64_t ret = InvokeSyscallInt80(static_cast<uint64_t>(syscall::Number::kCurrentTick), 0, 0, 0, 0);
         console->Print("syscall trap tick -> ");
@@ -952,7 +955,7 @@ bool ExecuteSyscallCommand(const char* rest) {
         return true;
     }
 
-    console->PrintLine("usage: syscall [stat|tick|version|write <text>|getenv <key>|setenv <k> <v>|unsetenv <k>|invalid|trap tick|trap version|trap write <text>|trap getenv <k>|trap setenv <k> <v>|trap unsetenv <k>|trap invalid|trap badptr]");
+    console->PrintLine("usage: syscall [stat|tick|version|write <text>|getenv <key>|setenv <k> <v>|unsetenv <k>|waitpid <pid> [nohang]|invalid|trap tick|trap version|trap write <text>|trap getenv <k>|trap setenv <k> <v>|trap unsetenv <k>|trap invalid|trap badptr]");
     return true;
 }
 
@@ -1191,17 +1194,30 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
     }
 
     const BootFileEntry* file = FindBootFileByPath(g_cwd, path);
-    ExecProcessEntry* proc = BeginExecProcessRecord(path);
+    uint32_t pid = 0;
+    proc::CreateProcess(path, env_ptrs, envc, &pid);
     if (file == nullptr) {
         console->Print("exec: not found: ");
         console->PrintLine(path);
-        EndExecProcessRecord(proc, false, -1);
+        proc::MarkProcessFailed(pid, -1);
         return true;
     }
-    if (usermode::RunRing3BinaryFromBufferWithArgsEnv(file->data, file->size, arg_ptrs, argc, env_ptrs, envc)) {
+    proc::MarkProcessRunning(pid);
+    console->Print("exec: pid=");
+    console->PrintDec(static_cast<int64_t>(pid));
+    console->Print(" path=");
+    console->PrintLine(path);
+    if (usermode::RunRing3BinaryFromBufferWithPid(file->data, file->size, pid, arg_ptrs, argc, env_ptrs, envc)) {
+        int64_t wait_status = 0;
+        const int64_t wait_ret = proc::WaitPid(pid, &wait_status, false);
+        console->Print("exec: waitpid -> ");
+        console->PrintDec(wait_ret);
+        console->Print(" status=");
+        console->PrintDec(wait_status);
+        console->Print("\n");
         console->Print("exec: ok: ");
         console->PrintLine(path);
-        const int64_t ret = usermode::GetLastRing3SyscallReturn();
+        const int64_t ret = wait_status;
         console->Print("exec.ret=");
         console->PrintDec(ret);
         if (ret < 0) {
@@ -1210,45 +1226,40 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
             console->Print(")");
         }
         console->Print("\n");
-        EndExecProcessRecord(proc, true, ret);
     } else {
         console->Print("exec: failed: ");
         console->Print(path);
         console->Print(" (");
         console->Print(usermode::GetLastRing3Error());
         console->Print(")\n");
-        EndExecProcessRecord(proc, false, -1);
+        proc::MarkProcessFailed(pid, -1);
     }
     return true;
 }
 
 bool ExecuteProcsCommand() {
-    InitExecProcessTableIfNeeded();
-    console->PrintLine("pid status  exit    start end   path");
+    console->PrintLine("pid state   exit    start end   path");
     bool any = false;
-    for (int n = 0; n < static_cast<int>(sizeof(g_exec_processes) / sizeof(g_exec_processes[0])); ++n) {
-        const int idx =
-            (g_exec_next_slot - 1 - n + static_cast<int>(sizeof(g_exec_processes) / sizeof(g_exec_processes[0]))) %
-            static_cast<int>(sizeof(g_exec_processes) / sizeof(g_exec_processes[0]));
-        const ExecProcessEntry* e = &g_exec_processes[idx];
-        if (!e->used) {
+    for (int n = 0; n < 16; ++n) {
+        proc::Info info{};
+        if (!proc::GetProcessInfoByRecentIndex(n, &info) || !info.used) {
             continue;
         }
         any = true;
-        console->PrintDec(static_cast<int64_t>(e->pid));
+        console->PrintDec(static_cast<int64_t>(info.pid));
         console->Print(" ");
-        console->Print(e->status);
+        console->Print(proc::StateName(info.state));
         console->Print(" ");
-        console->PrintDec(e->exit_code);
+        console->PrintDec(info.exit_code);
         console->Print(" ");
-        console->PrintDec(static_cast<int64_t>(e->start_tick));
+        console->PrintDec(static_cast<int64_t>(info.start_tick));
         console->Print(" ");
-        console->PrintDec(static_cast<int64_t>(e->end_tick));
+        console->PrintDec(static_cast<int64_t>(info.end_tick));
         console->Print(" ");
-        console->PrintLine(e->path);
+        console->PrintLine(info.path);
     }
     if (!any) {
-        console->PrintLine("(no exec records)");
+        console->PrintLine("(no processes)");
     }
     return true;
 }

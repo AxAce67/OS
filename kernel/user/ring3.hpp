@@ -24,6 +24,10 @@ bool RunRing3BinaryFromBufferWithArgs(const uint8_t* data, uint64_t size, const 
 bool RunRing3BinaryFromBufferWithArgsEnv(const uint8_t* data, uint64_t size,
                                          const char* const* argv, int argc,
                                          const char* const* envp, int envc);
+bool RunRing3BinaryFromBufferWithPid(const uint8_t* data, uint64_t size,
+                                     uint32_t pid,
+                                     const char* const* argv, int argc,
+                                     const char* const* envp, int envc);
 bool RunRing3BinaryFromBufferWithContext(const uint8_t* data, uint64_t size,
                                          const char* const* argv, int argc,
                                          const char* const* envp, int envc);
