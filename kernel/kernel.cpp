@@ -99,6 +99,8 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "layer.hpp"
 #include "apic.hpp"
 #include "timer.hpp"
+#include "proc/process.hpp"
+#include "proc/scheduler.hpp"
 #include "shell/commands.hpp"
 #include "shell/context.hpp"
 #include "shell/cmd_dispatch.hpp"
@@ -107,6 +109,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "shell/tab_completion.hpp"
 #include "shell/text.hpp"
 #include "ui/system_monitor.hpp"
+#include "user/ring3.hpp"
 
 extern Console* console;
 
@@ -2078,12 +2081,38 @@ void ExecuteCommand(const char* command) {
     }
 
     if (DispatchShellCommand(cmd, command, rest, &pos)) {
-        MaybeRunAutoScheduledProcess();
         return;
     }
 
     console->Print("unknown command: ");
     console->PrintLine(command);
+}
+
+bool MaybeRunIdleAutoScheduledProcess() {
+    proc::Info info{};
+    int64_t wait_status = 0;
+    if (!scheduler::RunAutoScheduledProcess(FindBootFileByPath, &info, &wait_status)) {
+        return false;
+    }
+    console->PrintLine("[autosched]");
+    console->Print("runnext: pid=");
+    console->PrintDec(static_cast<int64_t>(info.pid));
+    console->Print(" path=");
+    console->PrintLine(info.path);
+    if (!proc::GetProcessInfo(info.pid, &info) || info.state == proc::State::kFailed) {
+        console->Print("runnext: failed: ");
+        console->Print(info.path);
+        console->Print(" (");
+        console->Print(usermode::GetLastRing3Error());
+        console->Print(")\n");
+        return true;
+    }
+    console->Print("runnext: waitpid -> ");
+    console->PrintDec(static_cast<int64_t>(info.pid));
+    console->Print(" status=");
+    console->PrintDec(wait_status);
+    console->Print("\n");
+    return true;
 }
 
 void PrintHistory(const CommandHistory& history) {
@@ -3518,6 +3547,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (event_queue::Count(main_queue) == 0) {
             __asm__ volatile("sti");
             PollHostClipSerialCom1();
+            if (MaybeRunIdleAutoScheduledProcess()) {
+                return false;
+            }
             if (HandleXHCIAutoPollOnIdle()) {
                 return false;
             }

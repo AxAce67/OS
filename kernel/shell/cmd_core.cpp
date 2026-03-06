@@ -1330,24 +1330,6 @@ bool ExecuteAutoSchedCommand(const char* rest) {
     return true;
 }
 
-void MaybeRunAutoScheduledProcess() {
-    proc::Info info{};
-    int64_t wait_status = 0;
-    if (!scheduler::RunAutoScheduledProcess(FindBootFileByPath, &info, &wait_status)) {
-        return;
-    }
-    console->PrintLine("[autosched]");
-    console->Print("runnext: pid=");
-    console->PrintDec(static_cast<int64_t>(info.pid));
-    console->Print(" path=");
-    console->PrintLine(info.path);
-    console->Print("runnext: waitpid -> ");
-    console->PrintDec(static_cast<int64_t>(info.pid));
-    console->Print(" status=");
-    console->PrintDec(wait_status);
-    console->Print("\n");
-}
-
 bool ExecuteRunAllCommand() {
     const int ran = proc::RunAllReadyProcesses(FindBootFileByPath);
     console->Print("runall: ran=");
