@@ -15,6 +15,9 @@ struct RunResult {
 struct Snapshot {
     bool autosched_enabled;
     uint64_t last_autosched_tick;
+    uint64_t autosched_tick_count;
+    uint64_t autosched_run_count;
+    uint64_t autosched_yield_count;
     int tick_burst_remaining;
     uint32_t last_run_pid;
     proc::State last_run_state;

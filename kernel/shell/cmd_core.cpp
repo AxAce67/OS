@@ -1474,6 +1474,15 @@ bool ExecuteProcQueueCommand() {
     console->Print("procq.tick.last=");
     console->PrintDec(static_cast<int64_t>(sched.last_autosched_tick));
     console->Print("\n");
+    console->Print("procq.tick.count=");
+    console->PrintDec(static_cast<int64_t>(sched.autosched_tick_count));
+    console->Print("\n");
+    console->Print("procq.run.count=");
+    console->PrintDec(static_cast<int64_t>(sched.autosched_run_count));
+    console->Print("\n");
+    console->Print("procq.yield.count=");
+    console->PrintDec(static_cast<int64_t>(sched.autosched_yield_count));
+    console->Print("\n");
     console->Print("procq.tick.burst_remaining=");
     console->PrintDec(static_cast<int64_t>(sched.tick_burst_remaining));
     console->Print("\n");

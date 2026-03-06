@@ -6,6 +6,9 @@ namespace {
 
 bool g_auto_schedule_enabled = false;
 uint64_t g_last_autosched_tick = 0;
+uint64_t g_autosched_tick_count = 0;
+uint64_t g_autosched_run_count = 0;
+uint64_t g_autosched_yield_count = 0;
 int g_tick_burst_remaining = 0;
 uint32_t g_last_run_pid = 0;
 proc::State g_last_run_state = proc::State::kFree;
@@ -95,6 +98,9 @@ Snapshot GetSnapshot() {
     Snapshot snapshot{};
     snapshot.autosched_enabled = g_auto_schedule_enabled;
     snapshot.last_autosched_tick = g_last_autosched_tick;
+    snapshot.autosched_tick_count = g_autosched_tick_count;
+    snapshot.autosched_run_count = g_autosched_run_count;
+    snapshot.autosched_yield_count = g_autosched_yield_count;
     snapshot.tick_burst_remaining = g_tick_burst_remaining;
     snapshot.last_run_pid = g_last_run_pid;
     snapshot.last_run_state = g_last_run_state;
@@ -202,6 +208,7 @@ bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info)
     }
     if (now_tick != g_last_autosched_tick) {
         g_last_autosched_tick = now_tick;
+        ++g_autosched_tick_count;
         g_tick_burst_remaining = kAutoScheduleBurstLimit;
     }
     if (g_tick_burst_remaining <= 0) {
@@ -229,8 +236,10 @@ int RunAutoScheduledTick(uint64_t now_tick,
             break;
         }
         RunProcessAndCollectResult(info, lookup, &out_results[ran]);
+        ++g_autosched_run_count;
         ++ran;
         if (out_results[ran - 1].final_info.state == proc::State::kYielded) {
+            ++g_autosched_yield_count;
             break;
         }
     }
