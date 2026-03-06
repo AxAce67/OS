@@ -1368,7 +1368,7 @@ bool ExecuteProcsCommand() {
         }
         any = true;
         ++total;
-        if (info.state == proc::State::kReady) {
+        if (info.state == proc::State::kReady || info.state == proc::State::kYielded) {
             ++ready;
         }
         console->PrintDec(static_cast<int64_t>(info.pid));

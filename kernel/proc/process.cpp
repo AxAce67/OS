@@ -572,7 +572,11 @@ bool FindNextReadyProcess(Info* out_info) {
     }
     for (int n = 0; n < kMaxProcesses; ++n) {
         const int idx = (g_next_slot - 1 - n + kMaxProcesses) % kMaxProcesses;
-        if (!g_processes[idx].info.used || g_processes[idx].info.state != State::kReady) {
+        if (!g_processes[idx].info.used) {
+            continue;
+        }
+        if (g_processes[idx].info.state != State::kReady &&
+            g_processes[idx].info.state != State::kYielded) {
             continue;
         }
         out_info->used = g_processes[idx].info.used;
