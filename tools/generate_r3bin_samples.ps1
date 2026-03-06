@@ -119,6 +119,58 @@ function New-ImageYieldOnce {
     return $bytes
 }
 
+function New-ImageYieldTwice {
+    $msg1 = [System.Text.Encoding]::ASCII.GetBytes("[ring3-file] yield one`n")
+    $msg2 = [System.Text.Encoding]::ASCII.GetBytes("[ring3-file] yield two`n")
+    $msg3 = [System.Text.Encoding]::ASCII.GetBytes("[ring3-file] yield done`n")
+
+    $buf = New-Object 'System.Collections.Generic.List[byte]'
+    $dispOffsets = New-Object 'System.Collections.Generic.List[int]'
+
+    $append = {
+        param([byte[]]$bytes)
+        foreach ($b in $bytes) { [void]$buf.Add($b) }
+    }
+    $appendWrite = {
+        param([byte[]]$msgBytes)
+        & $append ([byte[]](0x48,0xB8,0x01,0,0,0,0,0,0,0))          # mov rax,1
+        & $append ([byte[]](0x48,0x8D,0x3D))
+        [void]$dispOffsets.Add($buf.Count)
+        & $append ([byte[]](0,0,0,0))                               # lea rdi,[rip+disp32]
+        & $append ([byte[]](0x48,0xBE))
+        & $append ([System.BitConverter]::GetBytes([uint64]$msgBytes.Length))
+        & $append ([byte[]](0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80))
+    }
+    $appendYield = {
+        & $append ([byte[]](0x48,0xB8,0x09,0,0,0,0,0,0,0))          # mov rax,9
+        & $append ([byte[]](0x48,0x31,0xFF,0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80))
+    }
+
+    & $appendWrite $msg1
+    & $appendYield
+    & $appendWrite $msg2
+    & $appendYield
+    & $appendWrite $msg3
+    & $append ([byte[]](0x48,0xBF,0x58,0,0,0,0,0,0,0))              # mov rdi,88
+    & $append ([byte[]](0x48,0xB8,0x04,0,0,0,0,0,0,0))              # mov rax,4
+    & $append ([byte[]](0x48,0x31,0xF6,0x48,0x31,0xD2,0x48,0x31,0xC9,0xCD,0x80,0xEB,0xFE))
+
+    $msgOffsets = @($buf.Count)
+    & $append $msg1
+    $msgOffsets += $buf.Count
+    & $append $msg2
+    $msgOffsets += $buf.Count
+    & $append $msg3
+
+    $bytes = $buf.ToArray()
+    for ($i = 0; $i -lt $dispOffsets.Count; $i++) {
+        $dispOffset = $dispOffsets[$i]
+        $nextRip = $dispOffset + 4
+        [Array]::Copy([System.BitConverter]::GetBytes([int32]($msgOffsets[$i] - $nextRip)), 0, $bytes, $dispOffset, 4)
+    }
+    return $bytes
+}
+
 function New-ImageArgc {
     return [byte[]](
         0x48,0x89,0xFF,                          # mov rdi,rdi (argc already in rdi; keep explicit)
@@ -329,6 +381,7 @@ New-R3BinFile -Path (Join-Path $OutputDir "hello.r3bin") -Image (New-ImageHello)
 New-R3BinFile -Path (Join-Path $OutputDir "fault.r3bin") -Image (New-ImageFault)
 New-R3BinFile -Path (Join-Path $OutputDir "tick.r3bin") -Image (New-ImageTick)
 New-R3BinFile -Path (Join-Path $OutputDir "yieldonce.r3bin") -Image (New-ImageYieldOnce)
+New-R3BinFile -Path (Join-Path $OutputDir "yieldtwice.r3bin") -Image (New-ImageYieldTwice)
 New-R3BinFile -Path (Join-Path $OutputDir "argc.r3bin") -Image (New-ImageArgc)
 New-R3BinFile -Path (Join-Path $OutputDir "argv0head.r3bin") -Image (New-ImageArgv0Head)
 New-R3BinFile -Path (Join-Path $OutputDir "argv1head.r3bin") -Image (New-ImageArgv1Head)
