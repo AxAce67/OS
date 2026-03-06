@@ -7,6 +7,7 @@ namespace {
 bool g_auto_schedule_enabled = false;
 uint64_t g_last_autosched_tick = 0;
 int g_tick_burst_remaining = 0;
+uint32_t g_last_run_pid = 0;
 constexpr int kAutoScheduleBurstLimit = 4;
 
 void InitializeRunResult(RunResult* result, const proc::Info& info) {
@@ -63,6 +64,7 @@ bool RunProcessAndCollectResult(const proc::Info& info,
         return false;
     }
     InitializeRunResult(out_result, info);
+    g_last_run_pid = info.pid;
     out_result->ok = proc::RunProcessByPid(info.pid, lookup, &out_result->wait_status);
     FinalizeRunResult(out_result, out_result->queued_info);
     return out_result->ok;
@@ -83,6 +85,15 @@ void SetAutoScheduleEnabled(bool enabled) {
     if (!enabled) {
         g_tick_burst_remaining = 0;
     }
+}
+
+Snapshot GetSnapshot() {
+    Snapshot snapshot{};
+    snapshot.autosched_enabled = g_auto_schedule_enabled;
+    snapshot.last_autosched_tick = g_last_autosched_tick;
+    snapshot.tick_burst_remaining = g_tick_burst_remaining;
+    snapshot.last_run_pid = g_last_run_pid;
+    return snapshot;
 }
 
 bool RunProcessWithResult(uint32_t pid, proc::BootFileLookup lookup, RunResult* out_result) {

@@ -12,9 +12,17 @@ struct RunResult {
     bool ok;
 };
 
+struct Snapshot {
+    bool autosched_enabled;
+    uint64_t last_autosched_tick;
+    int tick_burst_remaining;
+    uint32_t last_run_pid;
+};
+
 const char* PolicyName();
 bool IsAutoScheduleEnabled();
 void SetAutoScheduleEnabled(bool enabled);
+Snapshot GetSnapshot();
 bool RunProcessWithResult(uint32_t pid, proc::BootFileLookup lookup, RunResult* out_result);
 bool RunPid(proc::BootFileLookup lookup, uint32_t pid, RunResult* out_result);
 bool RunNextRunnableProcess(proc::BootFileLookup lookup, RunResult* out_result);
