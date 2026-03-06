@@ -190,6 +190,58 @@ int g_last_abs_dispatched_x = -1;
 int g_last_abs_dispatched_y = -1;
 uint8_t g_last_abs_dispatched_buttons = 0;
 
+void PrintPrompt();
+
+struct ShellUiState {
+    Console* console;
+    int* input_row;
+    int* input_col;
+    int* command_len;
+    int* cursor_pos;
+    char* command_buffer;
+    int command_capacity;
+
+    void ClearCurrentInputRow() const {
+        console->SetCursorPosition(*input_row, 0);
+        for (int i = 0; i < console->Columns(); ++i) {
+            console->Print(" ");
+        }
+        console->SetCursorPosition(*input_row, 0);
+    }
+
+    void CaptureInputSnapshot(char* out_snapshot, int out_len, int* out_cursor_pos) const {
+        if (out_snapshot != nullptr && out_len > 0) {
+            CopyString(out_snapshot, command_buffer, out_len);
+        }
+        if (out_cursor_pos != nullptr) {
+            *out_cursor_pos = *cursor_pos;
+        }
+    }
+
+    template <class TReplaceInputLine, class TRenderInputLine, class TRefreshInputLine>
+    void RestorePromptAndInput(const char* snapshot, int saved_cursor,
+                               TReplaceInputLine&& replace_input_line,
+                               TRenderInputLine&& render_input_line,
+                               TRefreshInputLine&& refresh_input_line) const {
+        PrintPrompt();
+        *input_row = console->CursorRow();
+        *input_col = console->CursorColumn();
+        replace_input_line(snapshot);
+
+        if (saved_cursor < 0) {
+            saved_cursor = 0;
+        }
+        if (saved_cursor > *command_len) {
+            saved_cursor = *command_len;
+        }
+        if (*cursor_pos != saved_cursor) {
+            *cursor_pos = saved_cursor;
+            render_input_line();
+            refresh_input_line();
+        }
+    }
+};
+
 int ClampInt(int v, int min_v, int max_v) {
     if (v < min_v) return min_v;
     if (v > max_v) return max_v;
@@ -2523,6 +2575,15 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     }
     int input_row = console->CursorRow();
     int input_col = console->CursorColumn();
+    ShellUiState shell_ui{
+        console,
+        &input_row,
+        &input_col,
+        &command_len,
+        &cursor_pos,
+        command_buffer,
+        static_cast<int>(sizeof(command_buffer))
+    };
     int rendered_len = 0;
     int selection_anchor = -1;
     int selection_end = -1;
@@ -2691,37 +2752,18 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RenderInputLine();
         RefreshInputLine();
     };
-    auto ClearCurrentInputRow = [&]() {
-        console->SetCursorPosition(input_row, 0);
-        for (int i = 0; i < console->Columns(); ++i) {
-            console->Print(" ");
-        }
-        console->SetCursorPosition(input_row, 0);
-    };
     auto RestorePromptAndInput = [&](const char* snapshot, int saved_cursor) {
-        PrintPrompt();
-        input_row = console->CursorRow();
-        input_col = console->CursorColumn();
-        ReplaceInputLine(snapshot);
-
-        if (saved_cursor < 0) {
-            saved_cursor = 0;
-        }
-        if (saved_cursor > command_len) {
-            saved_cursor = command_len;
-        }
-        if (cursor_pos != saved_cursor) {
-            cursor_pos = saved_cursor;
-            RenderInputLine();
-            RefreshInputLine();
-        }
+        shell_ui.RestorePromptAndInput(snapshot, saved_cursor,
+                                       ReplaceInputLine,
+                                       RenderInputLine,
+                                       RefreshInputLine);
     };
     auto AppendAsyncShellOutput = [&](auto&& writer) {
         char snapshot[128];
-        CopyString(snapshot, command_buffer, static_cast<int>(sizeof(snapshot)));
-        const int saved_cursor = cursor_pos;
+        int saved_cursor = 0;
+        shell_ui.CaptureInputSnapshot(snapshot, static_cast<int>(sizeof(snapshot)), &saved_cursor);
         EnsureLiveConsole();
-        ClearCurrentInputRow();
+        shell_ui.ClearCurrentInputRow();
         writer();
         RestorePromptAndInput(snapshot, saved_cursor);
         RefreshConsole();
@@ -2729,9 +2771,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
 
     auto RepaintPromptAndInput = [&]() {
         char snapshot[128];
-        CopyString(snapshot, command_buffer, static_cast<int>(sizeof(snapshot)));
-        const int saved_cursor = cursor_pos;
-        ClearCurrentInputRow();
+        int saved_cursor = 0;
+        shell_ui.CaptureInputSnapshot(snapshot, static_cast<int>(sizeof(snapshot)), &saved_cursor);
+        shell_ui.ClearCurrentInputRow();
         RestorePromptAndInput(snapshot, saved_cursor);
     };
     auto MaybeRunIdleAutoScheduledProcess = [&]() -> bool {
