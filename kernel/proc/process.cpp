@@ -42,6 +42,8 @@ bool IsRunnableState(State state) {
     return state == State::kReady || state == State::kYielded;
 }
 
+void ClearSavedFrame(ProcessEntry* entry);
+
 bool QueueContainsSlot(const int* queue, int count, int slot_index) {
     if (queue == nullptr || slot_index < 0 || slot_index >= kMaxProcesses ||
         count < 0 || count > kMaxProcesses) {
@@ -256,6 +258,57 @@ bool ValidateQueueStateInternal() {
             return false;
         }
     }
+    return true;
+}
+
+bool CanTransitionState(State from, State to) {
+    switch (from) {
+        case State::kFree:
+            return to == State::kReady;
+        case State::kReady:
+            return to == State::kRunning || to == State::kFailed;
+        case State::kRunning:
+            return to == State::kYielded || to == State::kExited || to == State::kFailed;
+        case State::kYielded:
+            return to == State::kRunning || to == State::kFailed;
+        case State::kExited:
+        case State::kFailed:
+            return false;
+    }
+    return false;
+}
+
+bool TransitionProcessState(ProcessEntry* entry, State next_state, int64_t exit_code) {
+    if (entry == nullptr || !CanTransitionState(entry->info.state, next_state)) {
+        return false;
+    }
+
+    if (entry->info.state == State::kYielded && next_state == State::kRunning) {
+        ++entry->info.resume_count;
+    }
+    if (entry->info.state == State::kRunning && next_state == State::kYielded) {
+        ++entry->info.yield_count;
+    }
+
+    entry->info.state = next_state;
+    if (next_state == State::kRunning) {
+        if (entry->info.start_tick == 0) {
+            entry->info.start_tick = CurrentTick();
+        }
+        entry->info.end_tick = 0;
+    } else if (next_state == State::kYielded) {
+        entry->info.end_tick = 0;
+    } else if (next_state == State::kExited || next_state == State::kFailed) {
+        entry->info.exit_code = exit_code;
+        ClearSavedFrame(entry);
+        if (entry->info.start_tick == 0) {
+            entry->info.start_tick = CurrentTick();
+        }
+        entry->info.end_tick = CurrentTick();
+    }
+
+    const int slot_index = static_cast<int>(entry - g_processes);
+    SyncSlotQueues(slot_index);
     return true;
 }
 
@@ -685,64 +738,22 @@ bool SaveCurrentProcessUserFrame(const Ring3SyscallFrame* frame) {
 
 bool MarkProcessRunning(uint32_t pid) {
     ProcessEntry* entry = FindEntryByPid(pid);
-    if (entry == nullptr) {
-        return false;
-    }
-    if (entry->info.state == State::kYielded) {
-        ++entry->info.resume_count;
-    }
-    entry->info.state = State::kRunning;
-    if (entry->info.start_tick == 0) {
-        entry->info.start_tick = CurrentTick();
-    }
-    entry->info.end_tick = 0;
-    const int slot_index = static_cast<int>(entry - g_processes);
-    SyncSlotQueues(slot_index);
-    return true;
+    return TransitionProcessState(entry, State::kRunning, 0);
 }
 
 bool MarkProcessYielded(uint32_t pid) {
     ProcessEntry* entry = FindEntryByPid(pid);
-    if (entry == nullptr) {
-        return false;
-    }
-    ++entry->info.yield_count;
-    entry->info.state = State::kYielded;
-    entry->info.end_tick = 0;
-    const int slot_index = static_cast<int>(entry - g_processes);
-    SyncSlotQueues(slot_index);
-    return true;
+    return TransitionProcessState(entry, State::kYielded, 0);
 }
 
 bool MarkProcessExited(uint32_t pid, int64_t exit_code) {
     ProcessEntry* entry = FindEntryByPid(pid);
-    if (entry == nullptr) {
-        return false;
-    }
-    entry->info.state = State::kExited;
-    entry->info.exit_code = exit_code;
-    ClearSavedFrame(entry);
-    if (entry->info.start_tick == 0) {
-        entry->info.start_tick = CurrentTick();
-    }
-    entry->info.end_tick = CurrentTick();
-    const int slot_index = static_cast<int>(entry - g_processes);
-    SyncSlotQueues(slot_index);
-    return true;
+    return TransitionProcessState(entry, State::kExited, exit_code);
 }
 
 bool MarkProcessFailed(uint32_t pid, int64_t exit_code) {
     ProcessEntry* entry = FindEntryByPid(pid);
-    if (entry == nullptr) {
-        return false;
-    }
-    entry->info.state = State::kFailed;
-    entry->info.exit_code = exit_code;
-    ClearSavedFrame(entry);
-    entry->info.end_tick = CurrentTick();
-    const int slot_index = static_cast<int>(entry - g_processes);
-    SyncSlotQueues(slot_index);
-    return true;
+    return TransitionProcessState(entry, State::kFailed, exit_code);
 }
 
 int64_t WaitPid(uint32_t pid, int64_t* out_exit_code, bool nohang) {
