@@ -615,6 +615,8 @@ Summary GetProcessSummary() {
     Summary summary{};
     summary.total = 0;
     summary.runnable = 0;
+    summary.ready = 0;
+    summary.yielded = 0;
     for (int i = 0; i < kMaxProcesses; ++i) {
         if (!g_processes[i].info.used) {
             continue;
@@ -622,6 +624,11 @@ Summary GetProcessSummary() {
         ++summary.total;
         if (IsRunnableState(g_processes[i].info.state)) {
             ++summary.runnable;
+        }
+        if (g_processes[i].info.state == State::kReady) {
+            ++summary.ready;
+        } else if (g_processes[i].info.state == State::kYielded) {
+            ++summary.yielded;
         }
     }
     return summary;

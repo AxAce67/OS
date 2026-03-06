@@ -33,6 +33,8 @@ struct Info {
 struct Summary {
     int total;
     int runnable;
+    int ready;
+    int yielded;
 };
 
 bool CreateProcess(const char* path,

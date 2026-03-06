@@ -1361,6 +1361,10 @@ bool ExecuteAutoSchedCommand(const char* rest) {
 }
 
 bool ExecuteRunAllCommand() {
+    const proc::Summary summary = proc::GetProcessSummary();
+    console->Print("runall: target.ready=");
+    console->PrintDec(summary.ready);
+    console->Print("\n");
     int ran = 0;
     while (ran < kRunAllPassLimit) {
         proc::Info info{};
@@ -1397,6 +1401,10 @@ bool ExecuteRunAllCommand() {
 }
 
 bool ExecuteResumeAllCommand() {
+    const proc::Summary summary = proc::GetProcessSummary();
+    console->Print("resumeall: target.yielded=");
+    console->PrintDec(summary.yielded);
+    console->Print("\n");
     scheduler::RunResult results[kRunAllPassLimit]{};
     const int ran = scheduler::RunAllYieldedProcesses(FindBootFileByPath, results, kRunAllPassLimit);
     for (int i = 0; i < ran; ++i) {
@@ -1452,6 +1460,10 @@ bool ExecuteProcsCommand() {
         console->PrintDec(summary.total);
         console->Print(" runnable=");
         console->PrintDec(summary.runnable);
+        console->Print(" ready=");
+        console->PrintDec(summary.ready);
+        console->Print(" yielded=");
+        console->PrintDec(summary.yielded);
         console->Print("\n");
     }
     return true;
