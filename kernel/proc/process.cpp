@@ -16,6 +16,8 @@ constexpr int kMaxExecEnvEntryLen = 128;
 
 struct ProcessEntry {
     Info info;
+    bool in_runnable_queue;
+    bool in_yielded_queue;
     bool has_saved_frame;
     Ring3SyscallFrame saved_frame;
     int argc;
@@ -29,13 +31,133 @@ struct ProcessEntry {
 ProcessEntry g_processes[kMaxProcesses];
 uint32_t g_next_pid = 1;
 int g_next_slot = 0;
-int g_next_runnable_slot = 0;
-int g_next_yielded_slot = 0;
+int g_runnable_queue[kMaxProcesses];
+int g_runnable_count = 0;
+int g_yielded_queue[kMaxProcesses];
+int g_yielded_count = 0;
 uint32_t g_current_pid = 0;
 bool g_initialized = false;
 
 bool IsRunnableState(State state) {
     return state == State::kReady || state == State::kYielded;
+}
+
+void ResetQueue(int* queue, int* count) {
+    if (queue == nullptr || count == nullptr) {
+        return;
+    }
+    *count = 0;
+    for (int i = 0; i < kMaxProcesses; ++i) {
+        queue[i] = -1;
+    }
+}
+
+bool IsValidSlotIndex(int slot_index) {
+    return slot_index >= 0 && slot_index < kMaxProcesses;
+}
+
+void RemoveSlotFromQueue(int* queue, int* count, int slot_index) {
+    if (queue == nullptr || count == nullptr || !IsValidSlotIndex(slot_index) || *count <= 0) {
+        return;
+    }
+    for (int i = 0; i < *count; ++i) {
+        if (queue[i] != slot_index) {
+            continue;
+        }
+        for (int j = i; j + 1 < *count; ++j) {
+            queue[j] = queue[j + 1];
+        }
+        queue[*count - 1] = -1;
+        --(*count);
+        return;
+    }
+}
+
+void DropFrontQueueEntry(int* queue, int* count) {
+    if (queue == nullptr || count == nullptr || *count <= 0) {
+        return;
+    }
+    for (int i = 0; i + 1 < *count; ++i) {
+        queue[i] = queue[i + 1];
+    }
+    queue[*count - 1] = -1;
+    --(*count);
+}
+
+bool EnqueueSlot(int* queue, int* count, int slot_index) {
+    if (queue == nullptr || count == nullptr || !IsValidSlotIndex(slot_index) || *count >= kMaxProcesses) {
+        return false;
+    }
+    for (int i = 0; i < *count; ++i) {
+        if (queue[i] == slot_index) {
+            return true;
+        }
+    }
+    queue[*count] = slot_index;
+    ++(*count);
+    return true;
+}
+
+bool RemoveRunnableSlot(int slot_index) {
+    if (!IsValidSlotIndex(slot_index)) {
+        return false;
+    }
+    RemoveSlotFromQueue(g_runnable_queue, &g_runnable_count, slot_index);
+    g_processes[slot_index].in_runnable_queue = false;
+    return true;
+}
+
+bool RemoveYieldedSlot(int slot_index) {
+    if (!IsValidSlotIndex(slot_index)) {
+        return false;
+    }
+    RemoveSlotFromQueue(g_yielded_queue, &g_yielded_count, slot_index);
+    g_processes[slot_index].in_yielded_queue = false;
+    return true;
+}
+
+bool EnqueueRunnableSlot(int slot_index) {
+    if (!IsValidSlotIndex(slot_index)) {
+        return false;
+    }
+    if (!EnqueueSlot(g_runnable_queue, &g_runnable_count, slot_index)) {
+        return false;
+    }
+    g_processes[slot_index].in_runnable_queue = true;
+    return true;
+}
+
+bool EnqueueYieldedSlot(int slot_index) {
+    if (!IsValidSlotIndex(slot_index)) {
+        return false;
+    }
+    if (!EnqueueSlot(g_yielded_queue, &g_yielded_count, slot_index)) {
+        return false;
+    }
+    g_processes[slot_index].in_yielded_queue = true;
+    return true;
+}
+
+void SyncSlotQueues(int slot_index) {
+    if (!IsValidSlotIndex(slot_index)) {
+        return;
+    }
+    ProcessEntry& entry = g_processes[slot_index];
+    if (!entry.info.used) {
+        RemoveRunnableSlot(slot_index);
+        RemoveYieldedSlot(slot_index);
+        return;
+    }
+    if (IsRunnableState(entry.info.state)) {
+        EnqueueRunnableSlot(slot_index);
+    } else {
+        RemoveRunnableSlot(slot_index);
+    }
+    if (entry.info.state == State::kYielded) {
+        EnqueueYieldedSlot(slot_index);
+    } else {
+        RemoveYieldedSlot(slot_index);
+    }
 }
 
 void CopyInfoFromEntry(Info* out_info, const ProcessEntry* entry) {
@@ -58,6 +180,8 @@ void InitIfNeeded() {
     if (g_initialized) {
         return;
     }
+    ResetQueue(g_runnable_queue, &g_runnable_count);
+    ResetQueue(g_yielded_queue, &g_yielded_count);
     for (int i = 0; i < kMaxProcesses; ++i) {
         g_processes[i].info.used = false;
         g_processes[i].info.pid = 0;
@@ -69,6 +193,8 @@ void InitIfNeeded() {
         g_processes[i].info.start_tick = 0;
         g_processes[i].info.end_tick = 0;
         g_processes[i].info.path[0] = '\0';
+        g_processes[i].in_runnable_queue = false;
+        g_processes[i].in_yielded_queue = false;
         g_processes[i].has_saved_frame = false;
         g_processes[i].argc = 0;
         for (int j = 0; j < kMaxExecArgs; ++j) {
@@ -331,7 +457,10 @@ bool CreateProcess(const char* path,
                    uint32_t* out_pid) {
     InitIfNeeded();
     ProcessEntry* entry = &g_processes[g_next_slot];
+    const int slot_index = g_next_slot;
     g_next_slot = (g_next_slot + 1) % kMaxProcesses;
+    RemoveRunnableSlot(slot_index);
+    RemoveYieldedSlot(slot_index);
     entry->info.used = true;
     entry->info.pid = g_next_pid++;
     entry->info.state = State::kReady;
@@ -345,6 +474,9 @@ bool CreateProcess(const char* path,
     ClearSavedFrame(entry);
     LoadArgs(entry, argv, argc);
     LoadEnv(entry, envp, envc);
+    entry->in_runnable_queue = false;
+    entry->in_yielded_queue = false;
+    SyncSlotQueues(slot_index);
     if (out_pid != nullptr) {
         *out_pid = entry->info.pid;
     }
@@ -481,6 +613,8 @@ bool MarkProcessRunning(uint32_t pid) {
         entry->info.start_tick = CurrentTick();
     }
     entry->info.end_tick = 0;
+    const int slot_index = static_cast<int>(entry - g_processes);
+    SyncSlotQueues(slot_index);
     return true;
 }
 
@@ -492,6 +626,8 @@ bool MarkProcessYielded(uint32_t pid) {
     ++entry->info.yield_count;
     entry->info.state = State::kYielded;
     entry->info.end_tick = 0;
+    const int slot_index = static_cast<int>(entry - g_processes);
+    SyncSlotQueues(slot_index);
     return true;
 }
 
@@ -507,6 +643,8 @@ bool MarkProcessExited(uint32_t pid, int64_t exit_code) {
         entry->info.start_tick = CurrentTick();
     }
     entry->info.end_tick = CurrentTick();
+    const int slot_index = static_cast<int>(entry - g_processes);
+    SyncSlotQueues(slot_index);
     return true;
 }
 
@@ -519,6 +657,8 @@ bool MarkProcessFailed(uint32_t pid, int64_t exit_code) {
     entry->info.exit_code = exit_code;
     ClearSavedFrame(entry);
     entry->info.end_tick = CurrentTick();
+    const int slot_index = static_cast<int>(entry - g_processes);
+    SyncSlotQueues(slot_index);
     return true;
 }
 
@@ -603,12 +743,14 @@ bool PeekNextRunnableProcess(Info* out_info) {
     if (out_info == nullptr) {
         return false;
     }
-    for (int n = 0; n < kMaxProcesses; ++n) {
-        const int idx = (g_next_runnable_slot + n) % kMaxProcesses;
-        if (!g_processes[idx].info.used) {
+    while (g_runnable_count > 0) {
+        const int idx = g_runnable_queue[0];
+        if (!IsValidSlotIndex(idx)) {
+            DropFrontQueueEntry(g_runnable_queue, &g_runnable_count);
             continue;
         }
-        if (!IsRunnableState(g_processes[idx].info.state)) {
+        if (!g_processes[idx].info.used || !IsRunnableState(g_processes[idx].info.state)) {
+            RemoveRunnableSlot(idx);
             continue;
         }
         CopyInfoFromEntry(out_info, &g_processes[idx]);
@@ -618,7 +760,10 @@ bool PeekNextRunnableProcess(Info* out_info) {
 }
 
 void AdvanceRunnableProcessCursor() {
-    g_next_runnable_slot = (g_next_runnable_slot + 1) % kMaxProcesses;
+    if (g_runnable_count <= 0) {
+        return;
+    }
+    RemoveRunnableSlot(g_runnable_queue[0]);
 }
 
 bool FindNextRunnableProcess(Info* out_info) {
@@ -634,12 +779,14 @@ bool PeekNextYieldedProcess(Info* out_info) {
     if (out_info == nullptr) {
         return false;
     }
-    for (int n = 0; n < kMaxProcesses; ++n) {
-        const int idx = (g_next_yielded_slot + n) % kMaxProcesses;
-        if (!g_processes[idx].info.used) {
+    while (g_yielded_count > 0) {
+        const int idx = g_yielded_queue[0];
+        if (!IsValidSlotIndex(idx)) {
+            DropFrontQueueEntry(g_yielded_queue, &g_yielded_count);
             continue;
         }
-        if (g_processes[idx].info.state != State::kYielded) {
+        if (!g_processes[idx].info.used || g_processes[idx].info.state != State::kYielded) {
+            RemoveYieldedSlot(idx);
             continue;
         }
         CopyInfoFromEntry(out_info, &g_processes[idx]);
@@ -649,7 +796,10 @@ bool PeekNextYieldedProcess(Info* out_info) {
 }
 
 void AdvanceYieldedProcessCursor() {
-    g_next_yielded_slot = (g_next_yielded_slot + 1) % kMaxProcesses;
+    if (g_yielded_count <= 0) {
+        return;
+    }
+    RemoveYieldedSlot(g_yielded_queue[0]);
 }
 
 bool FindNextYieldedProcess(Info* out_info) {
