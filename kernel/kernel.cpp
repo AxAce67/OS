@@ -2719,13 +2719,45 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             RefreshInputLine();
         }
     };
+    auto RelocatePromptAndInputAfterAsyncOutput = [&]() {
+        char snapshot[128];
+        CopyString(snapshot, command_buffer, static_cast<int>(sizeof(snapshot)));
+        int saved_cursor = cursor_pos;
+
+        console->SetCursorPosition(input_row, 0);
+        for (int i = 0; i < console->Columns(); ++i) {
+            console->Print(" ");
+        }
+        console->SetCursorPosition(input_row, 0);
+
+        PrintPrompt();
+        input_row = console->CursorRow();
+        input_col = console->CursorColumn();
+        ReplaceInputLine(snapshot);
+
+        if (saved_cursor < 0) {
+            saved_cursor = 0;
+        }
+        if (saved_cursor > command_len) {
+            saved_cursor = command_len;
+        }
+        if (cursor_pos != saved_cursor) {
+            cursor_pos = saved_cursor;
+            RenderInputLine();
+            RefreshInputLine();
+        }
+    };
     auto MaybeRunIdleAutoScheduledProcess = [&]() -> bool {
         proc::Info info{};
         if (!scheduler::GetNextAutoScheduledProcess(&info)) {
             return false;
         }
         EnsureLiveConsole();
-        console->Print("\n");
+        console->SetCursorPosition(input_row, 0);
+        for (int i = 0; i < console->Columns(); ++i) {
+            console->Print(" ");
+        }
+        console->SetCursorPosition(input_row, 0);
         console->PrintLine("[autosched]");
         console->Print("runnext: pid=");
         console->PrintDec(static_cast<int64_t>(info.pid));
@@ -2745,7 +2777,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             console->PrintDec(wait_status);
             console->Print("\n");
         }
-        RepaintPromptAndInput();
+        RelocatePromptAndInputAfterAsyncOutput();
         RefreshConsole();
         return true;
     };
