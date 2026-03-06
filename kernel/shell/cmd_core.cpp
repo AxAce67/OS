@@ -1466,6 +1466,10 @@ bool ExecuteProcQueueCommand() {
         console->PrintLine("procq: unavailable");
         return true;
     }
+    console->Print("procq.autosched=");
+    console->PrintLine(scheduler::IsAutoScheduleEnabled() ? "on" : "off");
+    console->Print("procq.policy=");
+    console->PrintLine(scheduler::PolicyName());
     console->Print("procq.valid=");
     console->PrintLine(snapshot.valid ? "1" : "0");
     console->Print("procq.current=");
