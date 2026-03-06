@@ -102,6 +102,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "shell/commands.hpp"
 #include "shell/context.hpp"
 #include "shell/cmd_dispatch.hpp"
+#include "shell/api.hpp"
 #include "shell/cmd_xhci.hpp"
 #include "shell/tab_completion.hpp"
 #include "shell/text.hpp"
@@ -2077,6 +2078,7 @@ void ExecuteCommand(const char* command) {
     }
 
     if (DispatchShellCommand(cmd, command, rest, &pos)) {
+        MaybeRunAutoScheduledProcess();
         return;
     }
 

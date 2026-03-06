@@ -36,6 +36,7 @@ const char* const kBuiltInCommands[] = {
     "syscall",
     "ring3",
     "exec",
+    "autosched",
     "runpid",
     "runnext",
     "runall",

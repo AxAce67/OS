@@ -52,6 +52,7 @@ int ExportImeLearningToBuffer(char* out, int out_len);
 
 namespace {
 constexpr int kExecMaxEnv = 24;
+bool g_auto_schedule_enabled = false;
 
 bool RunReadyProcessByInfo(const proc::Info& info) {
     const BootFileEntry* file = FindBootFileByPath("/", info.path);
@@ -295,7 +296,7 @@ bool ParseEnvFileBuffer(const uint8_t* data, uint64_t size,
 }  // namespace
 
 bool ExecuteHelpCommand() {
-    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec runpid runnext runall procs");
+    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec autosched runpid runnext runall procs");
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
     console->PrintLine("help: misc  history clearhistory inputstat about");
@@ -1317,6 +1318,38 @@ bool ExecuteRunPidCommand(const char* rest) {
     }
     RunReadyProcessByInfo(info);
     return true;
+}
+
+bool ExecuteAutoSchedCommand(const char* rest) {
+    if (rest == nullptr || rest[0] == '\0') {
+        console->Print("autosched=");
+        console->PrintLine(g_auto_schedule_enabled ? "on" : "off");
+        return true;
+    }
+    if (StrEqual(rest, "on")) {
+        g_auto_schedule_enabled = true;
+        console->PrintLine("autosched=on");
+        return true;
+    }
+    if (StrEqual(rest, "off")) {
+        g_auto_schedule_enabled = false;
+        console->PrintLine("autosched=off");
+        return true;
+    }
+    console->PrintLine("usage: autosched [on|off]");
+    return true;
+}
+
+void MaybeRunAutoScheduledProcess() {
+    if (!g_auto_schedule_enabled) {
+        return;
+    }
+    proc::Info info{};
+    if (!proc::FindNextReadyProcess(&info)) {
+        return;
+    }
+    console->PrintLine("[autosched]");
+    RunReadyProcessByInfo(info);
 }
 
 bool ExecuteRunAllCommand() {

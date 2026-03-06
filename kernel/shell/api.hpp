@@ -35,3 +35,5 @@ bool ExecuteProcsCommand();
 bool ExecuteRunNextCommand();
 bool ExecuteRunAllCommand();
 bool ExecuteRunPidCommand(const char* rest);
+bool ExecuteAutoSchedCommand(const char* rest);
+void MaybeRunAutoScheduledProcess();
