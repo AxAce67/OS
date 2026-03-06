@@ -7,6 +7,7 @@
 #include "arch/x86_64/paging.hpp"
 #include "boot_info.h"
 #include "proc/process.hpp"
+#include "proc/scheduler.hpp"
 #include "shell/context.hpp"
 #include "shell/text.hpp"
 #include "arch/x86_64/syscall_entry.hpp"
@@ -52,7 +53,6 @@ int ExportImeLearningToBuffer(char* out, int out_len);
 
 namespace {
 constexpr int kExecMaxEnv = 24;
-bool g_auto_schedule_enabled = false;
 
 bool RunReadyProcessByInfo(const proc::Info& info) {
     console->Print("runnext: pid=");
@@ -1313,16 +1313,16 @@ bool ExecuteRunPidCommand(const char* rest) {
 bool ExecuteAutoSchedCommand(const char* rest) {
     if (rest == nullptr || rest[0] == '\0') {
         console->Print("autosched=");
-        console->PrintLine(g_auto_schedule_enabled ? "on" : "off");
+        console->PrintLine(scheduler::IsAutoScheduleEnabled() ? "on" : "off");
         return true;
     }
     if (StrEqual(rest, "on")) {
-        g_auto_schedule_enabled = true;
+        scheduler::SetAutoScheduleEnabled(true);
         console->PrintLine("autosched=on");
         return true;
     }
     if (StrEqual(rest, "off")) {
-        g_auto_schedule_enabled = false;
+        scheduler::SetAutoScheduleEnabled(false);
         console->PrintLine("autosched=off");
         return true;
     }
@@ -1331,15 +1331,21 @@ bool ExecuteAutoSchedCommand(const char* rest) {
 }
 
 void MaybeRunAutoScheduledProcess() {
-    if (!g_auto_schedule_enabled) {
-        return;
-    }
     proc::Info info{};
-    if (!proc::FindNextReadyProcess(&info)) {
+    int64_t wait_status = 0;
+    if (!scheduler::RunAutoScheduledProcess(FindBootFileByPath, &info, &wait_status)) {
         return;
     }
     console->PrintLine("[autosched]");
-    RunReadyProcessByInfo(info);
+    console->Print("runnext: pid=");
+    console->PrintDec(static_cast<int64_t>(info.pid));
+    console->Print(" path=");
+    console->PrintLine(info.path);
+    console->Print("runnext: waitpid -> ");
+    console->PrintDec(static_cast<int64_t>(info.pid));
+    console->Print(" status=");
+    console->PrintDec(wait_status);
+    console->Print("\n");
 }
 
 bool ExecuteRunAllCommand() {
@@ -1352,7 +1358,7 @@ bool ExecuteRunAllCommand() {
 
 bool ExecuteProcsCommand() {
     console->Print("procs.autosched=");
-    console->PrintLine(g_auto_schedule_enabled ? "on" : "off");
+    console->PrintLine(scheduler::IsAutoScheduleEnabled() ? "on" : "off");
     console->PrintLine("pid state   argc exit    start end   path");
     bool any = false;
     int total = 0;
