@@ -1362,7 +1362,6 @@ bool ExecuteAutoSchedCommand(const char* rest) {
 
 bool ExecuteRunAllCommand() {
     int ran = 0;
-    bool truncated = false;
     while (ran < kRunAllPassLimit) {
         proc::Info info{};
         if (!proc::FindNextRunnableProcess(&info)) {
@@ -1388,15 +1387,8 @@ bool ExecuteRunAllCommand() {
             break;
         }
     }
-    if (ran >= kRunAllPassLimit) {
-        proc::Info info{};
-        truncated = proc::FindNextRunnableProcess(&info);
-    }
     console->Print("runall: ran=");
     console->PrintDec(ran);
-    if (truncated) {
-        console->Print(" (truncated)");
-    }
     console->Print("\n");
     return true;
 }
