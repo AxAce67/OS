@@ -22,6 +22,8 @@ struct Snapshot {
     uint32_t last_run_pid;
     proc::State last_run_state;
     int64_t last_wait_status;
+    uint32_t last_yield_pid;
+    uint64_t last_yield_tick;
 };
 
 const char* PolicyName();

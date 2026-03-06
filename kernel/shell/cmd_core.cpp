@@ -1494,6 +1494,12 @@ bool ExecuteProcQueueCommand() {
     console->Print("procq.last_status=");
     console->PrintDec(sched.last_wait_status);
     console->Print("\n");
+    console->Print("procq.last_yield.pid=");
+    console->PrintDec(static_cast<int64_t>(sched.last_yield_pid));
+    console->Print("\n");
+    console->Print("procq.last_yield.tick=");
+    console->PrintDec(static_cast<int64_t>(sched.last_yield_tick));
+    console->Print("\n");
     console->Print("procq.valid=");
     console->PrintLine(snapshot.valid ? "1" : "0");
     console->Print("procq.current=");

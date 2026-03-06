@@ -14,6 +14,8 @@ bool g_autosched_rearm_pending = false;
 uint32_t g_last_run_pid = 0;
 proc::State g_last_run_state = proc::State::kFree;
 int64_t g_last_wait_status = 0;
+uint32_t g_last_yield_pid = 0;
+uint64_t g_last_yield_tick = 0;
 constexpr int kAutoScheduleBurstLimit = 4;
 
 void InitializeRunResult(RunResult* result, const proc::Info& info) {
@@ -110,6 +112,8 @@ Snapshot GetSnapshot() {
     snapshot.last_run_pid = g_last_run_pid;
     snapshot.last_run_state = g_last_run_state;
     snapshot.last_wait_status = g_last_wait_status;
+    snapshot.last_yield_pid = g_last_yield_pid;
+    snapshot.last_yield_tick = g_last_yield_tick;
     return snapshot;
 }
 
@@ -123,6 +127,8 @@ void ResetSnapshot() {
     g_last_run_pid = 0;
     g_last_run_state = proc::State::kFree;
     g_last_wait_status = 0;
+    g_last_yield_pid = 0;
+    g_last_yield_tick = 0;
 }
 
 bool RunProcessWithResult(uint32_t pid, proc::BootFileLookup lookup, RunResult* out_result) {
@@ -258,6 +264,8 @@ int RunAutoScheduledTick(uint64_t now_tick,
         ++ran;
         if (out_results[ran - 1].final_info.state == proc::State::kYielded) {
             ++g_autosched_yield_count;
+            g_last_yield_pid = out_results[ran - 1].final_info.pid;
+            g_last_yield_tick = now_tick;
             break;
         }
     }
