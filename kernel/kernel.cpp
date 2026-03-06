@@ -2797,6 +2797,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     console->Print(" (");
                     console->Print(usermode::GetLastRing3Error());
                     console->Print(")\n");
+                } else if (result.final_info.state == proc::State::kYielded) {
+                    console->Print("runnext: yielded -> ");
+                    console->PrintDec(static_cast<int64_t>(result.final_info.pid));
+                    console->Print("\n");
                 } else {
                     console->Print("runnext: waitpid -> ");
                     console->PrintDec(static_cast<int64_t>(result.final_info.pid));

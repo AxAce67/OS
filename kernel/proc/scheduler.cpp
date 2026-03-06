@@ -84,6 +84,9 @@ int RunAutoScheduledTick(uint64_t now_tick,
                        sizeof(out_results[ran].final_info.path));
         }
         ++ran;
+        if (out_results[ran - 1].final_info.state == proc::State::kYielded) {
+            break;
+        }
     }
     return ran;
 }

@@ -68,6 +68,13 @@ bool RunReadyProcessByInfo(const proc::Info& info) {
         console->Print(")\n");
         return false;
     }
+    proc::Info final_info{};
+    if (proc::GetProcessInfo(info.pid, &final_info) && final_info.state == proc::State::kYielded) {
+        console->Print("runnext: yielded -> ");
+        console->PrintDec(static_cast<int64_t>(info.pid));
+        console->Print("\n");
+        return true;
+    }
     console->Print("runnext: waitpid -> ");
     console->PrintDec(static_cast<int64_t>(info.pid));
     console->Print(" status=");
@@ -1261,6 +1268,13 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
     }
     int64_t wait_status = 0;
     if (proc::RunProcessByPid(pid, FindBootFileByPath, &wait_status)) {
+        proc::Info final_info{};
+        if (proc::GetProcessInfo(pid, &final_info) && final_info.state == proc::State::kYielded) {
+            console->Print("exec: yielded -> ");
+            console->PrintDec(static_cast<int64_t>(pid));
+            console->Print("\n");
+            return true;
+        }
         console->Print("exec: waitpid -> ");
         console->PrintDec(static_cast<int64_t>(pid));
         console->Print(" status=");
