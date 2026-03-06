@@ -15,11 +15,11 @@ void SetAutoScheduleEnabled(bool enabled) {
     g_auto_schedule_enabled = enabled;
 }
 
-bool RunAutoScheduledProcess(proc::BootFileLookup lookup, proc::Info* out_info, int64_t* out_wait_status) {
+bool GetNextAutoScheduledProcess(proc::Info* out_info) {
     if (!g_auto_schedule_enabled) {
         return false;
     }
-    return proc::RunNextReadyProcess(lookup, out_info, out_wait_status);
+    return proc::FindNextReadyProcess(out_info);
 }
 
 }  // namespace scheduler

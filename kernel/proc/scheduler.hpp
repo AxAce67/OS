@@ -7,6 +7,6 @@ namespace scheduler {
 
 bool IsAutoScheduleEnabled();
 void SetAutoScheduleEnabled(bool enabled);
-bool RunAutoScheduledProcess(proc::BootFileLookup lookup, proc::Info* out_info, int64_t* out_wait_status);
+bool GetNextAutoScheduledProcess(proc::Info* out_info);
 
 }  // namespace scheduler

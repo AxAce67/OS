@@ -2090,8 +2090,7 @@ void ExecuteCommand(const char* command) {
 
 bool MaybeRunIdleAutoScheduledProcess() {
     proc::Info info{};
-    int64_t wait_status = 0;
-    if (!scheduler::RunAutoScheduledProcess(FindBootFileByPath, &info, &wait_status)) {
+    if (!scheduler::GetNextAutoScheduledProcess(&info)) {
         return false;
     }
     console->PrintLine("[autosched]");
@@ -2099,7 +2098,8 @@ bool MaybeRunIdleAutoScheduledProcess() {
     console->PrintDec(static_cast<int64_t>(info.pid));
     console->Print(" path=");
     console->PrintLine(info.path);
-    if (!proc::GetProcessInfo(info.pid, &info) || info.state == proc::State::kFailed) {
+    int64_t wait_status = 0;
+    if (!proc::RunProcessByPid(info.pid, FindBootFileByPath, &wait_status)) {
         console->Print("runnext: failed: ");
         console->Print(info.path);
         console->Print(" (");
