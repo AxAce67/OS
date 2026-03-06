@@ -1303,12 +1303,16 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
 }
 
 bool ExecuteRunNextCommand() {
-    proc::Info info{};
-    if (!proc::FindNextRunnableProcess(&info)) {
+    scheduler::RunResult result{};
+    if (!scheduler::RunNextRunnableProcess(FindBootFileByPath, &result)) {
         console->PrintLine("runnext: no runnable process");
         return true;
     }
-    RunReadyProcessByInfo(info);
+    console->Print("runnext: pid=");
+    console->PrintDec(static_cast<int64_t>(result.queued_info.pid));
+    console->Print(" path=");
+    console->PrintLine(result.queued_info.path);
+    PrintRunResultLine("runnext: ", result);
     return true;
 }
 
@@ -1367,22 +1371,9 @@ bool ExecuteRunAllCommand() {
     console->Print("\n");
     int ran = 0;
     while (ran < kRunAllPassLimit) {
-        proc::Info info{};
-        if (!proc::FindNextRunnableProcess(&info)) {
-            break;
-        }
-        if (info.state == proc::State::kYielded) {
-            break;
-        }
         scheduler::RunResult result{};
-        if (!scheduler::RunProcessWithResult(info.pid, FindBootFileByPath, &result)) {
-            console->Print("runall: pid=");
-            console->PrintDec(static_cast<int64_t>(info.pid));
-            console->Print(" path=");
-            console->PrintLine(info.path);
-            PrintRunResultLine("runall: ", result);
-            ++ran;
-            continue;
+        if (!scheduler::RunNextReadyProcess(FindBootFileByPath, &result)) {
+            break;
         }
         console->Print("runall: pid=");
         console->PrintDec(static_cast<int64_t>(result.queued_info.pid));
@@ -1390,9 +1381,6 @@ bool ExecuteRunAllCommand() {
         console->PrintLine(result.queued_info.path);
         PrintRunResultLine("runall: ", result);
         ++ran;
-        if (result.final_info.state == proc::State::kYielded) {
-            break;
-        }
     }
     console->Print("runall: ran=");
     console->PrintDec(ran);

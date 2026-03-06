@@ -16,6 +16,8 @@ const char* PolicyName();
 bool IsAutoScheduleEnabled();
 void SetAutoScheduleEnabled(bool enabled);
 bool RunProcessWithResult(uint32_t pid, proc::BootFileLookup lookup, RunResult* out_result);
+bool RunNextRunnableProcess(proc::BootFileLookup lookup, RunResult* out_result);
+bool RunNextReadyProcess(proc::BootFileLookup lookup, RunResult* out_result);
 bool AdvanceProcessForWait(uint32_t pid, RunResult* out_result);
 int RunAllReadyProcesses(proc::BootFileLookup lookup, RunResult* out_results, int max_results);
 int RunAllYieldedProcesses(proc::BootFileLookup lookup, RunResult* out_results, int max_results);

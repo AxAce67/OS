@@ -93,6 +93,33 @@ bool RunProcessWithResult(uint32_t pid, proc::BootFileLookup lookup, RunResult* 
     return RunProcessAndCollectResult(info, lookup, out_result);
 }
 
+bool RunNextRunnableProcess(proc::BootFileLookup lookup, RunResult* out_result) {
+    if (lookup == nullptr || out_result == nullptr) {
+        return false;
+    }
+    proc::Info info{};
+    if (!proc::PeekNextRunnableProcess(&info)) {
+        return false;
+    }
+    proc::AdvanceRunnableProcessCursor();
+    return RunProcessAndCollectResult(info, lookup, out_result);
+}
+
+bool RunNextReadyProcess(proc::BootFileLookup lookup, RunResult* out_result) {
+    if (lookup == nullptr || out_result == nullptr) {
+        return false;
+    }
+    proc::Info info{};
+    if (!proc::PeekNextRunnableProcess(&info)) {
+        return false;
+    }
+    if (info.state != proc::State::kReady) {
+        return false;
+    }
+    proc::AdvanceRunnableProcessCursor();
+    return RunProcessAndCollectResult(info, lookup, out_result);
+}
+
 bool AdvanceProcessForWait(uint32_t pid, RunResult* out_result) {
     proc::Info info{};
     if (!proc::GetProcessInfo(pid, &info)) {
@@ -110,12 +137,9 @@ int RunAllReadyProcesses(proc::BootFileLookup lookup, RunResult* out_results, in
     }
     int ran = 0;
     while (ran < max_results) {
-        proc::Info info{};
-        if (!proc::PeekNextRunnableProcess(&info)) {
+        if (!RunNextReadyProcess(lookup, &out_results[ran])) {
             break;
         }
-        proc::AdvanceRunnableProcessCursor();
-        RunProcessAndCollectResult(info, lookup, &out_results[ran]);
         ++ran;
     }
     return ran;
