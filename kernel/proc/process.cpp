@@ -43,6 +43,7 @@ bool IsRunnableState(State state) {
 }
 
 void ClearSavedFrame(ProcessEntry* entry);
+bool CompleteProcessRun(ProcessEntry* entry, bool ok);
 
 bool QueueContainsSlot(const int* queue, int count, int slot_index) {
     if (queue == nullptr || slot_index < 0 || slot_index >= kMaxProcesses ||
@@ -310,6 +311,28 @@ bool TransitionProcessState(ProcessEntry* entry, State next_state, int64_t exit_
     const int slot_index = static_cast<int>(entry - g_processes);
     SyncSlotQueues(slot_index);
     return true;
+}
+
+bool EnterRunningProcess(ProcessEntry* entry) {
+    if (entry == nullptr) {
+        return false;
+    }
+    if (!TransitionProcessState(entry, State::kRunning, 0)) {
+        return false;
+    }
+    if (SetCurrentProcess(entry->info.pid)) {
+        return true;
+    }
+    TransitionProcessState(entry, State::kFailed, -1);
+    return false;
+}
+
+void LeaveRunningProcess(ProcessEntry* entry, bool ok) {
+    if (entry == nullptr) {
+        return;
+    }
+    CompleteProcessRun(entry, ok);
+    ClearCurrentProcess();
 }
 
 void InitIfNeeded() {
@@ -627,17 +650,12 @@ bool ExecuteProcess(uint32_t pid, const uint8_t* image, uint64_t image_size) {
     if (entry == nullptr || image == nullptr || entry->info.state != State::kReady) {
         return false;
     }
-    if (!MarkProcessRunning(pid)) {
-        return false;
-    }
-    if (!SetCurrentProcess(pid)) {
-        MarkProcessFailed(pid, -1);
+    if (!EnterRunningProcess(entry)) {
         return false;
     }
     const bool ok = usermode::RunRing3BinaryFromBufferWithContext(
         image, image_size, entry->arg_ptrs, entry->argc, entry->env_ptrs, entry->envc);
-    CompleteProcessRun(entry, ok);
-    ClearCurrentProcess();
+    LeaveRunningProcess(entry, ok);
     return ok;
 }
 
@@ -646,17 +664,12 @@ bool ResumeProcess(uint32_t pid) {
     if (entry == nullptr || entry->info.state != State::kYielded || !entry->has_saved_frame) {
         return false;
     }
-    if (!MarkProcessRunning(pid)) {
-        return false;
-    }
-    if (!SetCurrentProcess(pid)) {
-        MarkProcessFailed(pid, -1);
+    if (!EnterRunningProcess(entry)) {
         return false;
     }
     ResumeUserModeFrame(&entry->saved_frame);
     const bool ok = usermode::FinalizeLastRing3Run();
-    CompleteProcessRun(entry, ok);
-    ClearCurrentProcess();
+    LeaveRunningProcess(entry, ok);
     return ok;
 }
 
