@@ -1359,15 +1359,28 @@ bool ExecuteAutoSchedCommand(const char* rest) {
 }
 
 bool ExecuteRunAllCommand() {
-    scheduler::RunResult results[16]{};
-    const int ran = scheduler::RunAllReadyProcesses(FindBootFileByPath, results, 16);
-    for (int i = 0; i < ran; ++i) {
-        const scheduler::RunResult& result = results[i];
+    int ran = 0;
+    while (true) {
+        proc::Info info{};
+        if (!proc::FindNextRunnableProcess(&info)) {
+            break;
+        }
+        scheduler::RunResult result{};
+        if (!scheduler::RunProcessWithResult(info.pid, FindBootFileByPath, &result)) {
+            console->Print("runall: pid=");
+            console->PrintDec(static_cast<int64_t>(info.pid));
+            console->Print(" path=");
+            console->PrintLine(info.path);
+            PrintRunResultLine("runall: ", result);
+            ++ran;
+            continue;
+        }
         console->Print("runall: pid=");
         console->PrintDec(static_cast<int64_t>(result.queued_info.pid));
         console->Print(" path=");
         console->PrintLine(result.queued_info.path);
         PrintRunResultLine("runall: ", result);
+        ++ran;
     }
     console->Print("runall: ran=");
     console->PrintDec(ran);
