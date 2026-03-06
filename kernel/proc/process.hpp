@@ -22,6 +22,8 @@ struct Info {
     uint32_t pid;
     State state;
     int argc;
+    uint32_t yield_count;
+    uint32_t resume_count;
     int64_t exit_code;
     uint64_t start_tick;
     uint64_t end_tick;

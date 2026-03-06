@@ -1328,8 +1328,8 @@ bool ExecuteRunPidCommand(const char* rest) {
         console->PrintLine("runpid: pid not found");
         return true;
     }
-    if (info.state != proc::State::kReady) {
-        console->Print("runpid: pid not ready: ");
+    if (info.state != proc::State::kReady && info.state != proc::State::kYielded) {
+        console->Print("runpid: pid not runnable: ");
         console->PrintDec(static_cast<int64_t>(pid));
         console->Print("\n");
         return true;
@@ -1369,7 +1369,7 @@ bool ExecuteRunAllCommand() {
 bool ExecuteProcsCommand() {
     console->Print("procs.autosched=");
     console->PrintLine(scheduler::IsAutoScheduleEnabled() ? "on" : "off");
-    console->PrintLine("pid state   argc exit    start end   path");
+    console->PrintLine("pid state   argc yld rsp exit    start end   path");
     bool any = false;
     int total = 0;
     int ready = 0;
@@ -1388,6 +1388,10 @@ bool ExecuteProcsCommand() {
         console->Print(proc::StateName(info.state));
         console->Print(" ");
         console->PrintDec(static_cast<int64_t>(info.argc));
+        console->Print(" ");
+        console->PrintDec(static_cast<int64_t>(info.yield_count));
+        console->Print(" ");
+        console->PrintDec(static_cast<int64_t>(info.resume_count));
         console->Print(" ");
         console->PrintDec(info.exit_code);
         console->Print(" ");

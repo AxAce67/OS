@@ -17,6 +17,8 @@ void InitializeRunResult(RunResult* result, const proc::Info& info) {
     result->queued_info.pid = info.pid;
     result->queued_info.state = info.state;
     result->queued_info.argc = info.argc;
+    result->queued_info.yield_count = info.yield_count;
+    result->queued_info.resume_count = info.resume_count;
     result->queued_info.exit_code = info.exit_code;
     result->queued_info.start_tick = info.start_tick;
     result->queued_info.end_tick = info.end_tick;
@@ -25,6 +27,8 @@ void InitializeRunResult(RunResult* result, const proc::Info& info) {
     result->final_info.pid = info.pid;
     result->final_info.state = proc::State::kFree;
     result->final_info.argc = 0;
+    result->final_info.yield_count = 0;
+    result->final_info.resume_count = 0;
     result->final_info.exit_code = 0;
     result->final_info.start_tick = 0;
     result->final_info.end_tick = 0;
@@ -44,6 +48,8 @@ void FinalizeRunResult(RunResult* result, const proc::Info& fallback_info) {
     result->final_info.pid = fallback_info.pid;
     result->final_info.state = fallback_info.state;
     result->final_info.argc = fallback_info.argc;
+    result->final_info.yield_count = fallback_info.yield_count;
+    result->final_info.resume_count = fallback_info.resume_count;
     result->final_info.exit_code = fallback_info.exit_code;
     result->final_info.start_tick = fallback_info.start_tick;
     result->final_info.end_tick = fallback_info.end_tick;
