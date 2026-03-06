@@ -9,6 +9,59 @@ uint64_t g_last_autosched_tick = 0;
 int g_tick_burst_remaining = 0;
 constexpr int kAutoScheduleBurstLimit = 4;
 
+void InitializeRunResult(RunResult* result, const proc::Info& info) {
+    if (result == nullptr) {
+        return;
+    }
+    result->queued_info.used = info.used;
+    result->queued_info.pid = info.pid;
+    result->queued_info.state = info.state;
+    result->queued_info.argc = info.argc;
+    result->queued_info.exit_code = info.exit_code;
+    result->queued_info.start_tick = info.start_tick;
+    result->queued_info.end_tick = info.end_tick;
+    CopyString(result->queued_info.path, info.path, sizeof(result->queued_info.path));
+    result->final_info.used = false;
+    result->final_info.pid = info.pid;
+    result->final_info.state = proc::State::kFree;
+    result->final_info.argc = 0;
+    result->final_info.exit_code = 0;
+    result->final_info.start_tick = 0;
+    result->final_info.end_tick = 0;
+    result->final_info.path[0] = '\0';
+    result->wait_status = 0;
+    result->ok = false;
+}
+
+void FinalizeRunResult(RunResult* result, const proc::Info& fallback_info) {
+    if (result == nullptr) {
+        return;
+    }
+    if (proc::GetProcessInfo(fallback_info.pid, &result->final_info)) {
+        return;
+    }
+    result->final_info.used = fallback_info.used;
+    result->final_info.pid = fallback_info.pid;
+    result->final_info.state = fallback_info.state;
+    result->final_info.argc = fallback_info.argc;
+    result->final_info.exit_code = fallback_info.exit_code;
+    result->final_info.start_tick = fallback_info.start_tick;
+    result->final_info.end_tick = fallback_info.end_tick;
+    CopyString(result->final_info.path, fallback_info.path, sizeof(result->final_info.path));
+}
+
+bool RunProcessAndCollectResult(const proc::Info& info,
+                                proc::BootFileLookup lookup,
+                                RunResult* out_result) {
+    if (out_result == nullptr) {
+        return false;
+    }
+    InitializeRunResult(out_result, info);
+    out_result->ok = proc::RunProcessByPid(info.pid, lookup, &out_result->wait_status);
+    FinalizeRunResult(out_result, out_result->queued_info);
+    return out_result->ok;
+}
+
 }  // namespace
 
 bool IsAutoScheduleEnabled() {
@@ -22,7 +75,7 @@ void SetAutoScheduleEnabled(bool enabled) {
     }
 }
 
-bool AdvanceProcessForWait(uint32_t pid) {
+bool AdvanceProcessForWait(uint32_t pid, RunResult* out_result) {
     proc::Info info{};
     if (!proc::GetProcessInfo(pid, &info)) {
         return false;
@@ -30,7 +83,7 @@ bool AdvanceProcessForWait(uint32_t pid) {
     if (info.state != proc::State::kYielded) {
         return false;
     }
-    return proc::RunProcessByPid(pid, nullptr, nullptr);
+    return RunProcessAndCollectResult(info, nullptr, out_result);
 }
 
 bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info) {
@@ -53,7 +106,7 @@ bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info)
 
 int RunAutoScheduledTick(uint64_t now_tick,
                          proc::BootFileLookup lookup,
-                         TickRunResult* out_results,
+                         RunResult* out_results,
                          int max_results) {
     if (lookup == nullptr || out_results == nullptr || max_results <= 0) {
         return 0;
@@ -64,36 +117,7 @@ int RunAutoScheduledTick(uint64_t now_tick,
         if (!DequeueAutoScheduledProcessForTick(now_tick, &info)) {
             break;
         }
-        out_results[ran].queued_info.used = info.used;
-        out_results[ran].queued_info.pid = info.pid;
-        out_results[ran].queued_info.state = info.state;
-        out_results[ran].queued_info.argc = info.argc;
-        out_results[ran].queued_info.exit_code = info.exit_code;
-        out_results[ran].queued_info.start_tick = info.start_tick;
-        out_results[ran].queued_info.end_tick = info.end_tick;
-        CopyString(out_results[ran].queued_info.path, info.path, sizeof(out_results[ran].queued_info.path));
-        out_results[ran].final_info.used = false;
-        out_results[ran].final_info.pid = info.pid;
-        out_results[ran].final_info.state = proc::State::kFree;
-        out_results[ran].final_info.argc = 0;
-        out_results[ran].final_info.exit_code = 0;
-        out_results[ran].final_info.start_tick = 0;
-        out_results[ran].final_info.end_tick = 0;
-        out_results[ran].final_info.path[0] = '\0';
-        out_results[ran].wait_status = 0;
-        out_results[ran].ok = proc::RunProcessByPid(info.pid, lookup, &out_results[ran].wait_status);
-        if (!proc::GetProcessInfo(info.pid, &out_results[ran].final_info)) {
-            out_results[ran].final_info.used = out_results[ran].queued_info.used;
-            out_results[ran].final_info.pid = out_results[ran].queued_info.pid;
-            out_results[ran].final_info.state = out_results[ran].queued_info.state;
-            out_results[ran].final_info.argc = out_results[ran].queued_info.argc;
-            out_results[ran].final_info.exit_code = out_results[ran].queued_info.exit_code;
-            out_results[ran].final_info.start_tick = out_results[ran].queued_info.start_tick;
-            out_results[ran].final_info.end_tick = out_results[ran].queued_info.end_tick;
-            CopyString(out_results[ran].final_info.path,
-                       out_results[ran].queued_info.path,
-                       sizeof(out_results[ran].final_info.path));
-        }
+        RunProcessAndCollectResult(info, lookup, &out_results[ran]);
         ++ran;
         if (out_results[ran - 1].final_info.state == proc::State::kYielded) {
             break;

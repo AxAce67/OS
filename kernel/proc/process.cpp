@@ -532,7 +532,7 @@ int64_t WaitPid(uint32_t pid, int64_t* out_exit_code, bool nohang) {
             return static_cast<int64_t>(pid);
         }
         if (CanAdvanceWithoutLookup(entry)) {
-            scheduler::AdvanceProcessForWait(pid);
+            scheduler::AdvanceProcessForWait(pid, nullptr);
             continue;
         }
         CpuPause();

@@ -2778,7 +2778,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
     auto MaybeRunIdleAutoScheduledProcess = [&]() -> bool {
         const uint64_t now_tick = CurrentTick();
-        scheduler::TickRunResult results[4]{};
+        scheduler::RunResult results[4]{};
         const int ran = scheduler::RunAutoScheduledTick(now_tick, FindBootFileByPath, results, 4);
         if (ran <= 0) {
             return false;
@@ -2786,7 +2786,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         AppendAsyncShellOutput([&]() {
             console->PrintLine("[autosched]");
             for (int i = 0; i < ran; ++i) {
-                const scheduler::TickRunResult& result = results[i];
+                const scheduler::RunResult& result = results[i];
                 console->Print("runnext: pid=");
                 console->PrintDec(static_cast<int64_t>(result.queued_info.pid));
                 console->Print(" path=");

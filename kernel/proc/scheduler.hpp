@@ -5,7 +5,7 @@
 
 namespace scheduler {
 
-struct TickRunResult {
+struct RunResult {
     proc::Info queued_info;
     proc::Info final_info;
     int64_t wait_status;
@@ -14,11 +14,11 @@ struct TickRunResult {
 
 bool IsAutoScheduleEnabled();
 void SetAutoScheduleEnabled(bool enabled);
-bool AdvanceProcessForWait(uint32_t pid);
+bool AdvanceProcessForWait(uint32_t pid, RunResult* out_result);
 bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info);
 int RunAutoScheduledTick(uint64_t now_tick,
                          proc::BootFileLookup lookup,
-                         TickRunResult* out_results,
+                         RunResult* out_results,
                          int max_results);
 
 }  // namespace scheduler
