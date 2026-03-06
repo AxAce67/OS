@@ -55,30 +55,21 @@ constexpr int kExecMaxEnv = 24;
 bool g_auto_schedule_enabled = false;
 
 bool RunReadyProcessByInfo(const proc::Info& info) {
-    const BootFileEntry* file = FindBootFileByPath("/", info.path);
-    if (file == nullptr) {
-        console->Print("runnext: image missing: ");
-        console->PrintLine(info.path);
-        proc::MarkProcessFailed(info.pid, -1);
-        return false;
-    }
     console->Print("runnext: pid=");
     console->PrintDec(static_cast<int64_t>(info.pid));
     console->Print(" path=");
     console->PrintLine(info.path);
-    if (!proc::ExecuteProcess(info.pid, file->data, file->size)) {
+    int64_t wait_status = 0;
+    if (!proc::RunProcessByPid(info.pid, FindBootFileByPath, &wait_status)) {
         console->Print("runnext: failed: ");
         console->Print(info.path);
         console->Print(" (");
         console->Print(usermode::GetLastRing3Error());
         console->Print(")\n");
-        proc::MarkProcessFailed(info.pid, -1);
         return false;
     }
-    int64_t wait_status = 0;
-    const int64_t wait_ret = proc::WaitPid(info.pid, &wait_status, false);
     console->Print("runnext: waitpid -> ");
-    console->PrintDec(wait_ret);
+    console->PrintDec(static_cast<int64_t>(info.pid));
     console->Print(" status=");
     console->PrintDec(wait_status);
     console->Print("\n");
@@ -1252,11 +1243,10 @@ bool ExecuteExecCommand(const char* command, int* pos_ptr) {
         console->PrintLine("exec: queued");
         return true;
     }
-    if (proc::ExecuteProcess(pid, file->data, file->size)) {
-        int64_t wait_status = 0;
-        const int64_t wait_ret = proc::WaitPid(pid, &wait_status, false);
+    int64_t wait_status = 0;
+    if (proc::RunProcessByPid(pid, FindBootFileByPath, &wait_status)) {
         console->Print("exec: waitpid -> ");
-        console->PrintDec(wait_ret);
+        console->PrintDec(static_cast<int64_t>(pid));
         console->Print(" status=");
         console->PrintDec(wait_status);
         console->Print("\n");

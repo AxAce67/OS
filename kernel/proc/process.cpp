@@ -269,6 +269,61 @@ bool ExecuteProcess(uint32_t pid, const uint8_t* image, uint64_t image_size) {
     return ok;
 }
 
+bool RunProcessByPid(uint32_t pid, BootFileLookup lookup, int64_t* out_wait_status) {
+    const ProcessEntry* entry = FindEntryByPidConst(pid);
+    if (entry == nullptr || entry->info.state != State::kReady || lookup == nullptr) {
+        return false;
+    }
+    const BootFileEntry* file = lookup("/", entry->info.path);
+    if (file == nullptr) {
+        MarkProcessFailed(pid, -1);
+        return false;
+    }
+    if (!ExecuteProcess(pid, file->data, file->size)) {
+        MarkProcessFailed(pid, -1);
+        return false;
+    }
+    int64_t wait_status = 0;
+    const int64_t wait_ret = WaitPid(pid, &wait_status, false);
+    if (wait_ret <= 0) {
+        return false;
+    }
+    if (out_wait_status != nullptr) {
+        *out_wait_status = wait_status;
+    }
+    return true;
+}
+
+bool RunNextReadyProcess(BootFileLookup lookup, Info* out_info, int64_t* out_wait_status) {
+    Info info{};
+    if (!FindNextReadyProcess(&info)) {
+        return false;
+    }
+    if (out_info != nullptr) {
+        out_info->used = info.used;
+        out_info->pid = info.pid;
+        out_info->state = info.state;
+        out_info->exit_code = info.exit_code;
+        out_info->start_tick = info.start_tick;
+        out_info->end_tick = info.end_tick;
+        CopyString(out_info->path, info.path, sizeof(out_info->path));
+    }
+    return RunProcessByPid(info.pid, lookup, out_wait_status);
+}
+
+int RunAllReadyProcesses(BootFileLookup lookup) {
+    int ran = 0;
+    while (true) {
+        Info info{};
+        int64_t wait_status = 0;
+        if (!RunNextReadyProcess(lookup, &info, &wait_status)) {
+            break;
+        }
+        ++ran;
+    }
+    return ran;
+}
+
 bool IsProcessReady(uint32_t pid) {
     const ProcessEntry* entry = FindEntryByPidConst(pid);
     return entry != nullptr && entry->info.state == State::kReady;
