@@ -53,6 +53,7 @@ int ExportImeLearningToBuffer(char* out, int out_len);
 
 namespace {
 constexpr int kExecMaxEnv = 24;
+constexpr int kRunAllPassLimit = 16;
 
 void PrintRunResultLine(const char* prefix, const scheduler::RunResult& result) {
     if (!result.ok) {
@@ -1360,7 +1361,8 @@ bool ExecuteAutoSchedCommand(const char* rest) {
 
 bool ExecuteRunAllCommand() {
     int ran = 0;
-    while (true) {
+    bool truncated = false;
+    while (ran < kRunAllPassLimit) {
         proc::Info info{};
         if (!proc::FindNextRunnableProcess(&info)) {
             break;
@@ -1381,9 +1383,19 @@ bool ExecuteRunAllCommand() {
         console->PrintLine(result.queued_info.path);
         PrintRunResultLine("runall: ", result);
         ++ran;
+        if (result.final_info.state == proc::State::kYielded) {
+            break;
+        }
+    }
+    if (ran >= kRunAllPassLimit) {
+        proc::Info info{};
+        truncated = proc::FindNextRunnableProcess(&info);
     }
     console->Print("runall: ran=");
     console->PrintDec(ran);
+    if (truncated) {
+        console->Print(" (truncated)");
+    }
     console->Print("\n");
     return true;
 }
