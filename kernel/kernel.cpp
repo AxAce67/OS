@@ -2828,6 +2828,19 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         });
         return true;
     };
+    uint64_t last_autosched_tick = CurrentTick();
+    auto MaybeRunTickAutoScheduledProcess = [&]() -> bool {
+        if (!scheduler::IsAutoScheduleEnabled()) {
+            last_autosched_tick = CurrentTick();
+            return false;
+        }
+        const uint64_t now_tick = CurrentTick();
+        if (now_tick == last_autosched_tick) {
+            return false;
+        }
+        last_autosched_tick = now_tick;
+        return MaybeRunIdleAutoScheduledProcess();
+    };
 
     auto DeleteSelection = [&]() -> bool {
         if (!input::DeleteSelection(command_buffer, static_cast<int>(sizeof(command_buffer)),
@@ -3629,9 +3642,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (event_queue::Count(main_queue) == 0) {
             __asm__ volatile("sti");
             PollHostClipSerialCom1();
-            if (MaybeRunIdleAutoScheduledProcess()) {
-                return false;
-            }
             if (HandleXHCIAutoPollOnIdle()) {
                 return false;
             }
@@ -3662,10 +3672,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     while (1) {
         Message msg;
         if (!WaitAndPopNextMessage(&msg)) {
+            MaybeRunTickAutoScheduledProcess();
+            ProcessCompositorUpdates();
             continue;
         }
         DispatchMessage(msg);
         PollHostClipSerialCom1();
+        MaybeRunTickAutoScheduledProcess();
         ProcessCompositorUpdates();
     }
 }
