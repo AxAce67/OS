@@ -53,6 +53,37 @@ int ExportImeLearningToBuffer(char* out, int out_len);
 namespace {
 constexpr int kExecMaxEnv = 24;
 
+bool RunReadyProcessByInfo(const proc::Info& info) {
+    const BootFileEntry* file = FindBootFileByPath("/", info.path);
+    if (file == nullptr) {
+        console->Print("runnext: image missing: ");
+        console->PrintLine(info.path);
+        proc::MarkProcessFailed(info.pid, -1);
+        return false;
+    }
+    console->Print("runnext: pid=");
+    console->PrintDec(static_cast<int64_t>(info.pid));
+    console->Print(" path=");
+    console->PrintLine(info.path);
+    if (!proc::ExecuteProcess(info.pid, file->data, file->size)) {
+        console->Print("runnext: failed: ");
+        console->Print(info.path);
+        console->Print(" (");
+        console->Print(usermode::GetLastRing3Error());
+        console->Print(")\n");
+        proc::MarkProcessFailed(info.pid, -1);
+        return false;
+    }
+    int64_t wait_status = 0;
+    const int64_t wait_ret = proc::WaitPid(info.pid, &wait_status, false);
+    console->Print("runnext: waitpid -> ");
+    console->PrintDec(wait_ret);
+    console->Print(" status=");
+    console->PrintDec(wait_status);
+    console->Print("\n");
+    return true;
+}
+
 bool AppendExecEnv(char out[][128], const char** out_ptrs, int max_count, int* io_count,
                    const char* key, const char* value) {
     if (out == nullptr || out_ptrs == nullptr || io_count == nullptr || key == nullptr || value == nullptr) {
@@ -264,7 +295,7 @@ bool ParseEnvFileBuffer(const uint8_t* data, uint64_t size,
 }  // namespace
 
 bool ExecuteHelpCommand() {
-    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec runnext procs");
+    console->PrintLine("help: core  help clear tick time mem uptime echo reboot exec runnext runall procs");
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
     console->PrintLine("help: misc  history clearhistory inputstat about");
@@ -1256,32 +1287,22 @@ bool ExecuteRunNextCommand() {
         console->PrintLine("runnext: no ready process");
         return true;
     }
-    const BootFileEntry* file = FindBootFileByPath("/", info.path);
-    if (file == nullptr) {
-        console->Print("runnext: image missing: ");
-        console->PrintLine(info.path);
-        proc::MarkProcessFailed(info.pid, -1);
-        return true;
+    RunReadyProcessByInfo(info);
+    return true;
+}
+
+bool ExecuteRunAllCommand() {
+    int ran = 0;
+    while (true) {
+        proc::Info info{};
+        if (!proc::FindNextReadyProcess(&info)) {
+            break;
+        }
+        RunReadyProcessByInfo(info);
+        ++ran;
     }
-    console->Print("runnext: pid=");
-    console->PrintDec(static_cast<int64_t>(info.pid));
-    console->Print(" path=");
-    console->PrintLine(info.path);
-    if (!proc::ExecuteProcess(info.pid, file->data, file->size)) {
-        console->Print("runnext: failed: ");
-        console->Print(info.path);
-        console->Print(" (");
-        console->Print(usermode::GetLastRing3Error());
-        console->Print(")\n");
-        proc::MarkProcessFailed(info.pid, -1);
-        return true;
-    }
-    int64_t wait_status = 0;
-    const int64_t wait_ret = proc::WaitPid(info.pid, &wait_status, false);
-    console->Print("runnext: waitpid -> ");
-    console->PrintDec(wait_ret);
-    console->Print(" status=");
-    console->PrintDec(wait_status);
+    console->Print("runall: ran=");
+    console->PrintDec(ran);
     console->Print("\n");
     return true;
 }

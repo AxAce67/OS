@@ -37,6 +37,7 @@ const char* const kBuiltInCommands[] = {
     "ring3",
     "exec",
     "runnext",
+    "runall",
     "procs",
     "xhciinfo",
     "xhciregs",
