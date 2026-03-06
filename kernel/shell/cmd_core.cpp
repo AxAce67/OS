@@ -55,6 +55,19 @@ namespace {
 constexpr int kExecMaxEnv = 24;
 constexpr int kRunAllPassLimit = 16;
 
+bool HasYieldedProcess() {
+    for (int i = 0; i < 16; ++i) {
+        proc::Info info{};
+        if (!proc::GetProcessInfoByRecentIndex(i, &info) || !info.used) {
+            continue;
+        }
+        if (info.state == proc::State::kYielded) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void PrintRunResultLine(const char* prefix, const scheduler::RunResult& result) {
     if (!result.ok) {
         console->Print(prefix);
@@ -1384,6 +1397,9 @@ bool ExecuteRunAllCommand() {
         PrintRunResultLine("runall: ", result);
         ++ran;
         if (result.final_info.state == proc::State::kYielded) {
+            break;
+        }
+        if (HasYieldedProcess()) {
             break;
         }
     }
