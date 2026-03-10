@@ -739,6 +739,48 @@ bool XHCISetConfiguration(const XHCICapabilityInfo& info, uint8_t slot_id, uint8
     return SubmitControlTransfer(info, slot_id, 0x00, 9u, configuration_value, 0, 0, false, nullptr, out_result, timeout_iters);
 }
 
+bool XHCIReadConfigurationDescriptor(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t* out_buffer, uint16_t buffer_len, uint16_t* out_actual_length, uint32_t timeout_iters) {
+    if (out_actual_length != nullptr) {
+        *out_actual_length = 0;
+    }
+    if (out_buffer == nullptr || buffer_len == 0) {
+        return false;
+    }
+
+    const int idx = SlotIndexFromId(slot_id);
+    if (!info.valid || idx < 0 || !g_slot_states[idx].used || !g_slot_states[idx].addressed) {
+        return false;
+    }
+
+    if (buffer_len > sizeof(g_ep0_control_buffers[idx])) {
+        buffer_len = static_cast<uint16_t>(sizeof(g_ep0_control_buffers[idx]));
+    }
+    MemorySet(g_ep0_control_buffers[idx], 0, sizeof(g_ep0_control_buffers[idx]));
+
+    XHCIControlTransferResult tr{};
+    if (!SubmitControlTransfer(info, slot_id, 0x80, 6u, static_cast<uint16_t>(2u << 8), 0, buffer_len, true,
+                               &g_ep0_control_buffers[idx][0], &tr, timeout_iters) ||
+        !tr.ok) {
+        return false;
+    }
+
+    uint16_t actual = buffer_len;
+    if (buffer_len >= 4) {
+        const uint16_t total_length = static_cast<uint16_t>(g_ep0_control_buffers[idx][2] |
+                                                            (static_cast<uint16_t>(g_ep0_control_buffers[idx][3]) << 8));
+        if (total_length != 0 && total_length < actual) {
+            actual = total_length;
+        }
+    }
+    for (uint16_t i = 0; i < actual; ++i) {
+        out_buffer[i] = g_ep0_control_buffers[idx][i];
+    }
+    if (out_actual_length != nullptr) {
+        *out_actual_length = actual;
+    }
+    return true;
+}
+
 bool XHCIFindFirstInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t slot_id, XHCIInterruptEndpointInfo* out_info, uint32_t timeout_iters) {
     if (out_info == nullptr) {
         return false;
@@ -755,11 +797,8 @@ bool XHCIFindFirstInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t sl
         return false;
     }
 
-    MemorySet(g_ep0_control_buffers[idx], 0, sizeof(g_ep0_control_buffers[idx]));
-    XHCIControlTransferResult tr{};
-    if (!SubmitControlTransfer(info, slot_id, 0x80, 6u, static_cast<uint16_t>(2u << 8), 0, 64, true,
-                               &g_ep0_control_buffers[idx][0], &tr, timeout_iters) ||
-        !tr.ok) {
+    uint16_t actual_length = 0;
+    if (!XHCIReadConfigurationDescriptor(info, slot_id, &g_ep0_control_buffers[idx][0], 64, &actual_length, timeout_iters)) {
         return false;
     }
 
@@ -768,8 +807,7 @@ bool XHCIFindFirstInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t sl
         return false;
     }
     out_info->configuration_value = desc[5];
-    const uint16_t total_length = static_cast<uint16_t>(desc[2] | (static_cast<uint16_t>(desc[3]) << 8));
-    const uint16_t scan_len = (total_length < 64) ? total_length : 64;
+    const uint16_t scan_len = actual_length;
     uint16_t off = 0;
     while (off + 2 <= scan_len) {
         const uint8_t len = desc[off + 0];

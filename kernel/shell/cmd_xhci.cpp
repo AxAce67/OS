@@ -379,6 +379,54 @@ bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
         return true;
     }
 
+    if (StrEqual(cmd, "xhcidesc")) {
+        if (!g_xhci_caps.valid) {
+            console->PrintLine("xhcidesc: xhci not ready");
+            return true;
+        }
+        int slot = g_last_xhci_slot_id;
+        int max_len = 64;
+        char t0[16];
+        char t1[16];
+        if (NextToken(command, &pos, t0, sizeof(t0))) {
+            slot = ParseInt(t0);
+        }
+        if (NextToken(command, &pos, t1, sizeof(t1))) {
+            max_len = ParseInt(t1);
+        }
+        if (slot <= 0 || slot > 255) {
+            console->PrintLine("xhcidesc: invalid slot");
+            return true;
+        }
+        if (max_len <= 0 || max_len > 128) {
+            console->PrintLine("xhcidesc: len must be 1..128");
+            return true;
+        }
+        uint8_t buf[128];
+        uint16_t actual = 0;
+        if (!XHCIReadConfigurationDescriptor(g_xhci_caps,
+                                             static_cast<uint8_t>(slot),
+                                             buf,
+                                             static_cast<uint16_t>(max_len),
+                                             &actual)) {
+            console->PrintLine("xhcidesc: fail");
+            return true;
+        }
+        console->Print("xhcidesc: slot=");
+        console->PrintDec(slot);
+        console->Print(" len=");
+        console->PrintDec(actual);
+        console->Print(" data=");
+        for (uint16_t i = 0; i < actual; ++i) {
+            console->PrintHex(buf[i], 2);
+            if (i + 1 < actual) {
+                console->Print(" ");
+            }
+        }
+        console->Print("\n");
+        return true;
+    }
+
     if (StrEqual(cmd, "xhcihidpoll")) {
         if (!g_xhci_caps.valid) {
             console->PrintLine("xhcihidpoll: xhci not ready");

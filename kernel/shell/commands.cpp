@@ -56,6 +56,7 @@ const char* const kBuiltInCommands[] = {
     "xhciaddress",
     "xhciconfigep",
     "xhciintrin",
+    "xhcidesc",
     "xhcihidpoll",
     "xhcihidstat",
     "xhciauto",
