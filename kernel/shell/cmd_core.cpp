@@ -46,6 +46,7 @@ extern uint8_t g_xhci_hid_auto_slot;
 extern uint32_t g_xhci_hid_auto_len;
 extern uint64_t g_xhci_hid_auto_fail_count;
 extern uint64_t g_xhci_hid_auto_recover_count;
+extern uint32_t g_xhci_hid_auto_start_fail_reason;
 extern uint64_t g_last_absolute_mouse_tick;
 extern uint8_t g_hid_format_mode;
 extern uint32_t g_hid_sample_count;
@@ -69,6 +70,34 @@ int ExportImeLearningToBuffer(char* out, int out_len);
 namespace {
 constexpr int kExecMaxEnv = 24;
 constexpr int kRunAllPassLimit = 16;
+constexpr uint32_t kXhciHidAutoStartFailNone = 0;
+constexpr uint32_t kXhciHidAutoStartFailCapsNotReady = 1;
+constexpr uint32_t kXhciHidAutoStartFailRingInit = 2;
+constexpr uint32_t kXhciHidAutoStartFailEnableSlot = 3;
+constexpr uint32_t kXhciHidAutoStartFailFindPort = 4;
+constexpr uint32_t kXhciHidAutoStartFailAddressDevice = 5;
+constexpr uint32_t kXhciHidAutoStartFailConfigEndpoint = 6;
+
+const char* XhciHidAutoStartFailReasonName(uint32_t reason) {
+    switch (reason) {
+        case kXhciHidAutoStartFailNone:
+            return "none";
+        case kXhciHidAutoStartFailCapsNotReady:
+            return "caps";
+        case kXhciHidAutoStartFailRingInit:
+            return "ring";
+        case kXhciHidAutoStartFailEnableSlot:
+            return "enable_slot";
+        case kXhciHidAutoStartFailFindPort:
+            return "find_port";
+        case kXhciHidAutoStartFailAddressDevice:
+            return "address";
+        case kXhciHidAutoStartFailConfigEndpoint:
+            return "config_ep";
+        default:
+            return "unknown";
+    }
+}
 
 bool AppendExecEnv(char out[][128], const char** out_ptrs, int max_count, int* io_count,
                    const char* key, const char* value) {
@@ -755,6 +784,8 @@ bool ExecuteInputDiagCommand() {
     console->PrintDec(static_cast<int64_t>(g_hid_sample_count));
     console->Print(" calib=");
     console->Print(g_hid_calibrated ? "1" : "0");
+    console->Print(" start_fail=");
+    console->Print(XhciHidAutoStartFailReasonName(g_xhci_hid_auto_start_fail_reason));
     console->Print(" fail=");
     console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_fail_count));
     console->Print(" recover=");
