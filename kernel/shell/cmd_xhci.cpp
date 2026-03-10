@@ -12,6 +12,9 @@ extern bool g_xhci_hid_auto_enabled;
 extern uint8_t g_xhci_hid_auto_slot;
 extern uint32_t g_xhci_hid_auto_len;
 extern uint64_t g_xhci_hid_last_poll_tick;
+extern uint32_t g_xhci_hid_last_poll_reason;
+extern uint8_t g_xhci_hid_last_poll_ccode;
+extern uint32_t g_xhci_hid_last_poll_length;
 extern uint32_t g_xhci_hid_auto_consecutive_failures;
 extern uint64_t g_xhci_hid_auto_fail_count;
 extern uint64_t g_xhci_hid_auto_recover_count;
@@ -31,6 +34,23 @@ void ResetHIDDecodeLearning();
 bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t timeout_iters = 3000000);
 bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval);
 void EnqueueAbsolutePointerEvent(int x, int y, int wheel, uint8_t buttons = 0);
+
+namespace {
+const char* XhciHidPollReasonName(uint32_t reason) {
+    switch (reason) {
+        case 0:
+            return "none";
+        case 1:
+            return "timeout";
+        case 2:
+            return "transfer";
+        case 3:
+            return "decode";
+        default:
+            return "unknown";
+    }
+}
+}  // namespace
 
 bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
     int& pos = *pos_ptr;
@@ -416,6 +436,12 @@ bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
         console->Print(")");
         console->Print(" btn=0x");
         console->PrintHex(g_hid_buttons_mask, 2);
+        console->Print(" poll=");
+        console->Print(XhciHidPollReasonName(g_xhci_hid_last_poll_reason));
+        console->Print(" ccode=");
+        console->PrintDec(g_xhci_hid_last_poll_ccode);
+        console->Print(" len=");
+        console->PrintDec(g_xhci_hid_last_poll_length);
         console->Print(" auto_fail=");
         console->PrintDec(g_xhci_hid_auto_fail_count);
         console->Print(" auto_recover=");

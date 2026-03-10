@@ -158,6 +158,9 @@ uint8_t g_xhci_hid_auto_slot = 0;
 uint32_t g_xhci_hid_auto_len = 8;
 bool g_xhci_hid_decode_keyboard = false;
 uint64_t g_xhci_hid_last_poll_tick = 0;
+uint32_t g_xhci_hid_last_poll_reason = 0;
+uint8_t g_xhci_hid_last_poll_ccode = 0;
+uint32_t g_xhci_hid_last_poll_length = 0;
 uint16_t g_xhci_hid_auto_mps = 8;
 uint8_t g_xhci_hid_auto_interval = 4;
 uint32_t g_xhci_hid_auto_consecutive_failures = 0;
@@ -180,6 +183,10 @@ const uint32_t kXhciHidAutoStartFailEnableSlot = 3;
 const uint32_t kXhciHidAutoStartFailFindPort = 4;
 const uint32_t kXhciHidAutoStartFailAddressDevice = 5;
 const uint32_t kXhciHidAutoStartFailConfigEndpoint = 6;
+const uint32_t kXhciHidPollReasonNone = 0;
+const uint32_t kXhciHidPollReasonTimeout = 1;
+const uint32_t kXhciHidPollReasonTransfer = 2;
+const uint32_t kXhciHidPollReasonDecode = 3;
 uint8_t g_hid_format_mode = 0;  // 0=unknown,1=A,2=B
 uint32_t g_hid_observed_max_raw = 0;
 uint32_t g_hid_sample_count = 0;
@@ -437,12 +444,18 @@ void ResetHIDDecodeLearning() {
 bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t timeout_iters = 3000000) {
     XHCIInterruptInResult rr{};
     if (!XHCIPollInterruptIn(g_xhci_caps, slot, req_len, &rr, timeout_iters)) {
+        g_xhci_hid_last_poll_reason = kXhciHidPollReasonTimeout;
+        g_xhci_hid_last_poll_ccode = 0;
+        g_xhci_hid_last_poll_length = 0;
         if (verbose) {
             console->PrintLine("xhcihidpoll: timeout/fail");
         }
         return false;
     }
     if (!rr.ok) {
+        g_xhci_hid_last_poll_reason = kXhciHidPollReasonTransfer;
+        g_xhci_hid_last_poll_ccode = rr.completion_code;
+        g_xhci_hid_last_poll_length = rr.data_length;
         if (verbose) {
             console->Print("xhcihidpoll: transfer ccode=");
             console->PrintDec(rr.completion_code);
@@ -473,6 +486,9 @@ bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t time
     int wheel = 0;
     uint8_t buttons = 0;
     if (!DecodeHIDAbsoluteXY(rr.data, rr.data_length, &x, &y, &wheel, &buttons)) {
+        g_xhci_hid_last_poll_reason = kXhciHidPollReasonDecode;
+        g_xhci_hid_last_poll_ccode = rr.completion_code;
+        g_xhci_hid_last_poll_length = rr.data_length;
         if (verbose) {
             console->Print("xhcihidpoll: raw=");
             for (uint32_t i = 0; i < rr.data_length; ++i) {
@@ -485,6 +501,9 @@ bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t time
         }
         return false;
     }
+    g_xhci_hid_last_poll_reason = kXhciHidPollReasonNone;
+    g_xhci_hid_last_poll_ccode = rr.completion_code;
+    g_xhci_hid_last_poll_length = rr.data_length;
     g_hid_buttons_mask = buttons;
     g_last_absolute_mouse_tick = CurrentTick();
 

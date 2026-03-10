@@ -44,6 +44,9 @@ extern XHCICapabilityInfo g_xhci_caps;
 extern uint8_t g_last_xhci_slot_id;
 extern uint8_t g_xhci_hid_auto_slot;
 extern uint32_t g_xhci_hid_auto_len;
+extern uint32_t g_xhci_hid_last_poll_reason;
+extern uint8_t g_xhci_hid_last_poll_ccode;
+extern uint32_t g_xhci_hid_last_poll_length;
 extern uint64_t g_xhci_hid_auto_fail_count;
 extern uint64_t g_xhci_hid_auto_recover_count;
 extern uint32_t g_xhci_hid_auto_start_fail_reason;
@@ -78,6 +81,10 @@ constexpr uint32_t kXhciHidAutoStartFailEnableSlot = 3;
 constexpr uint32_t kXhciHidAutoStartFailFindPort = 4;
 constexpr uint32_t kXhciHidAutoStartFailAddressDevice = 5;
 constexpr uint32_t kXhciHidAutoStartFailConfigEndpoint = 6;
+constexpr uint32_t kXhciHidPollReasonNone = 0;
+constexpr uint32_t kXhciHidPollReasonTimeout = 1;
+constexpr uint32_t kXhciHidPollReasonTransfer = 2;
+constexpr uint32_t kXhciHidPollReasonDecode = 3;
 
 const char* XhciHidAutoStartFailReasonName(uint32_t reason) {
     switch (reason) {
@@ -95,6 +102,21 @@ const char* XhciHidAutoStartFailReasonName(uint32_t reason) {
             return "address";
         case kXhciHidAutoStartFailConfigEndpoint:
             return "config_ep";
+        default:
+            return "unknown";
+    }
+}
+
+const char* XhciHidPollReasonName(uint32_t reason) {
+    switch (reason) {
+        case kXhciHidPollReasonNone:
+            return "none";
+        case kXhciHidPollReasonTimeout:
+            return "timeout";
+        case kXhciHidPollReasonTransfer:
+            return "transfer";
+        case kXhciHidPollReasonDecode:
+            return "decode";
         default:
             return "unknown";
     }
@@ -789,6 +811,12 @@ bool ExecuteInputDiagCommand() {
     console->Print(XhciHidAutoStartFailReasonName(g_xhci_hid_auto_start_fail_reason));
     console->Print(" ccode=");
     console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_start_fail_ccode));
+    console->Print(" poll=");
+    console->Print(XhciHidPollReasonName(g_xhci_hid_last_poll_reason));
+    console->Print(" poll.ccode=");
+    console->PrintDec(static_cast<int64_t>(g_xhci_hid_last_poll_ccode));
+    console->Print(" poll.len=");
+    console->PrintDec(static_cast<int64_t>(g_xhci_hid_last_poll_length));
     console->Print(" fail=");
     console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_fail_count));
     console->Print(" recover=");
