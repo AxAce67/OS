@@ -165,6 +165,7 @@ uint64_t g_xhci_hid_auto_fail_count = 0;
 uint64_t g_xhci_hid_auto_recover_count = 0;
 uint64_t g_xhci_hid_next_recover_tick = 0;
 uint32_t g_xhci_hid_auto_start_fail_reason = 0;
+uint8_t g_xhci_hid_auto_start_fail_ccode = 0;
 bool g_boot_mouse_auto_enabled = true;
 uint64_t g_boot_mouse_auto_retry_count = 0;
 uint64_t g_boot_mouse_auto_next_retry_tick = 0;
@@ -537,16 +538,19 @@ bool FindFirstConnectedPort(int* out_port, int* out_speed) {
 bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
     if (!g_xhci_caps.valid) {
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailCapsNotReady;
+        g_xhci_hid_auto_start_fail_ccode = 0;
         return false;
     }
     if (!XHCIInitializeCommandAndEventRings(g_xhci_caps)) {
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailRingInit;
+        g_xhci_hid_auto_start_fail_ccode = 0;
         return false;
     }
 
     XHCICommandResult slot_result{};
     if (!XHCIEnableSlot(g_xhci_caps, &slot_result) || !slot_result.ok || slot_result.slot_id == 0) {
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailEnableSlot;
+        g_xhci_hid_auto_start_fail_ccode = slot_result.completion_code;
         return false;
     }
     g_last_xhci_slot_id = slot_result.slot_id;
@@ -555,6 +559,7 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
     int speed = 0;
     if (!FindFirstConnectedPort(&port, &speed)) {
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailFindPort;
+        g_xhci_hid_auto_start_fail_ccode = 0;
         return false;
     }
 
@@ -566,6 +571,7 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
                            &addr_result) ||
         !addr_result.ok) {
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailAddressDevice;
+        g_xhci_hid_auto_start_fail_ccode = addr_result.completion_code;
         return false;
     }
 
@@ -577,6 +583,7 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
                                           &cfg_result) ||
         !cfg_result.ok) {
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailConfigEndpoint;
+        g_xhci_hid_auto_start_fail_ccode = cfg_result.completion_code;
         return false;
     }
 
@@ -590,6 +597,7 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
     g_xhci_hid_auto_consecutive_failures = 0;
     g_xhci_hid_next_recover_tick = 0;
     g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailNone;
+    g_xhci_hid_auto_start_fail_ccode = 0;
 
     // 起動直後の追従精度を上げるため、短いタイムアウトで数サンプルを先に学習する。
     for (int i = 0; i < 8; ++i) {

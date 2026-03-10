@@ -47,6 +47,7 @@ extern uint32_t g_xhci_hid_auto_len;
 extern uint64_t g_xhci_hid_auto_fail_count;
 extern uint64_t g_xhci_hid_auto_recover_count;
 extern uint32_t g_xhci_hid_auto_start_fail_reason;
+extern uint8_t g_xhci_hid_auto_start_fail_ccode;
 extern uint64_t g_last_absolute_mouse_tick;
 extern uint8_t g_hid_format_mode;
 extern uint32_t g_hid_sample_count;
@@ -786,6 +787,8 @@ bool ExecuteInputDiagCommand() {
     console->Print(g_hid_calibrated ? "1" : "0");
     console->Print(" start_fail=");
     console->Print(XhciHidAutoStartFailReasonName(g_xhci_hid_auto_start_fail_reason));
+    console->Print(" ccode=");
+    console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_start_fail_ccode));
     console->Print(" fail=");
     console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_fail_count));
     console->Print(" recover=");
