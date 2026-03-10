@@ -136,6 +136,16 @@ bool DequeueAutoScheduledInfoForTick(uint64_t now_tick, proc::Info* out_info) {
     return true;
 }
 
+void AccountAutoScheduledResult(uint64_t now_tick, const RunResult& result) {
+    ++g_autosched_run_count;
+    if (result.final_info.state != proc::State::kYielded) {
+        return;
+    }
+    ++g_autosched_yield_count;
+    g_last_yield_pid = result.final_info.pid;
+    g_last_yield_tick = now_tick;
+}
+
 }  // namespace
 
 const char* PolicyName() {
@@ -314,12 +324,9 @@ int RunAutoScheduledTick(uint64_t now_tick,
             break;
         }
         RunProcessAndCollectResult(info, lookup, &out_results[ran]);
-        ++g_autosched_run_count;
+        AccountAutoScheduledResult(now_tick, out_results[ran]);
         ++ran;
         if (out_results[ran - 1].final_info.state == proc::State::kYielded) {
-            ++g_autosched_yield_count;
-            g_last_yield_pid = out_results[ran - 1].final_info.pid;
-            g_last_yield_tick = now_tick;
             break;
         }
     }
