@@ -186,8 +186,9 @@ const uint32_t kXhciHidAutoStartFailEnableSlot = 3;
 const uint32_t kXhciHidAutoStartFailFindPort = 4;
 const uint32_t kXhciHidAutoStartFailAddressDevice = 5;
 const uint32_t kXhciHidAutoStartFailSetConfiguration = 6;
-const uint32_t kXhciHidAutoStartFailFindEndpoint = 7;
-const uint32_t kXhciHidAutoStartFailConfigEndpoint = 8;
+const uint32_t kXhciHidAutoStartFailSetIdle = 7;
+const uint32_t kXhciHidAutoStartFailFindEndpoint = 8;
+const uint32_t kXhciHidAutoStartFailConfigEndpoint = 9;
 const uint32_t kXhciHidPollReasonNone = 0;
 const uint32_t kXhciHidPollReasonNoData = 1;
 const uint32_t kXhciHidPollReasonTransfer = 2;
@@ -635,6 +636,22 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
         g_xhci_hid_auto_endpoint_id = 0;
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailFindEndpoint;
         g_xhci_hid_auto_start_fail_ccode = 0;
+        return false;
+    }
+
+    XHCIControlTransferResult set_idle_result{};
+    if (!XHCISetHidIdle(g_xhci_caps,
+                        slot_result.slot_id,
+                        ep_info.interface_number,
+                        0,
+                        0,
+                        &set_idle_result) ||
+        !set_idle_result.ok) {
+        g_xhci_hid_auto_config_value = ep_info.configuration_value;
+        g_xhci_hid_auto_endpoint_address = ep_info.endpoint_address;
+        g_xhci_hid_auto_endpoint_id = ep_info.endpoint_id;
+        g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailSetIdle;
+        g_xhci_hid_auto_start_fail_ccode = set_idle_result.completion_code;
         return false;
     }
 

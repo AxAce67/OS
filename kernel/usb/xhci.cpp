@@ -739,6 +739,11 @@ bool XHCISetConfiguration(const XHCICapabilityInfo& info, uint8_t slot_id, uint8
     return SubmitControlTransfer(info, slot_id, 0x00, 9u, configuration_value, 0, 0, false, nullptr, out_result, timeout_iters);
 }
 
+bool XHCISetHidIdle(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t interface_number, uint8_t duration, uint8_t report_id, XHCIControlTransferResult* out_result, uint32_t timeout_iters) {
+    const uint16_t w_value = static_cast<uint16_t>((static_cast<uint16_t>(duration) << 8) | report_id);
+    return SubmitControlTransfer(info, slot_id, 0x21, 0x0Au, w_value, interface_number, 0, false, nullptr, out_result, timeout_iters);
+}
+
 bool XHCIReadConfigurationDescriptor(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t* out_buffer, uint16_t buffer_len, uint16_t* out_actual_length, uint32_t timeout_iters) {
     if (out_actual_length != nullptr) {
         *out_actual_length = 0;
@@ -787,6 +792,7 @@ bool XHCIFindFirstInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t sl
     }
     out_info->ok = false;
     out_info->configuration_value = 1;
+    out_info->interface_number = 0;
     out_info->endpoint_address = 0x81;
     out_info->endpoint_id = 3;
     out_info->max_packet_size = 8;
@@ -808,6 +814,7 @@ bool XHCIFindFirstInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t sl
     }
     out_info->configuration_value = desc[5];
     const uint16_t scan_len = actual_length;
+    uint8_t current_interface_number = 0;
     uint16_t off = 0;
     while (off + 2 <= scan_len) {
         const uint8_t len = desc[off + 0];
@@ -815,12 +822,16 @@ bool XHCIFindFirstInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t sl
         if (len < 2 || off + len > scan_len) {
             break;
         }
+        if (type == 4 && len >= 9) {
+            current_interface_number = desc[off + 2];
+        }
         if (type == 5 && len >= 7) {
             const uint8_t ep_addr = desc[off + 2];
             const uint8_t attrs = desc[off + 3];
             if ((ep_addr & 0x80u) != 0 && (attrs & 0x03u) == 0x03u) {
                 out_info->ok = true;
                 out_info->endpoint_address = ep_addr;
+                out_info->interface_number = current_interface_number;
                 out_info->endpoint_id = static_cast<uint8_t>(((ep_addr & 0x0Fu) * 2u) + 1u);
                 out_info->max_packet_size = static_cast<uint16_t>(desc[off + 4] | (static_cast<uint16_t>(desc[off + 5]) << 8));
                 out_info->interval = desc[off + 6];
