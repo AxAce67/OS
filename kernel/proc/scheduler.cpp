@@ -191,11 +191,15 @@ bool ShouldStopPassForPolicy(PassStopPolicy policy, const RunResult& result) {
 
 using AccountResultFn = void (*)(uint64_t, const RunResult&);
 
+struct SchedulerPassSpec {
+    PassSelectPolicy select_policy;
+    AccountResultFn account_result;
+    PassStopPolicy stop_policy;
+};
+
 int RunSelectedProcessPass(uint64_t now_tick,
                            proc::BootFileLookup lookup,
-                           PassSelectPolicy select_policy,
-                           AccountResultFn account_result,
-                           PassStopPolicy stop_policy,
+                           const SchedulerPassSpec& spec,
                            RunResult* out_results,
                            int max_results) {
     if (lookup == nullptr || out_results == nullptr || max_results <= 0) {
@@ -204,15 +208,15 @@ int RunSelectedProcessPass(uint64_t now_tick,
     int ran = 0;
     while (ran < max_results) {
         proc::Info info{};
-        if (!SelectProcessForPolicy(select_policy, &info)) {
+        if (!SelectProcessForPolicy(spec.select_policy, &info)) {
             break;
         }
         RunProcessAndCollectResult(info, lookup, &out_results[ran]);
-        if (account_result != nullptr) {
-            account_result(now_tick, out_results[ran]);
+        if (spec.account_result != nullptr) {
+            spec.account_result(now_tick, out_results[ran]);
         }
         ++ran;
-        if (ShouldStopPassForPolicy(stop_policy, out_results[ran - 1])) {
+        if (ShouldStopPassForPolicy(spec.stop_policy, out_results[ran - 1])) {
             break;
         }
     }
@@ -347,13 +351,21 @@ bool RunNextReadyProcess(proc::BootFileLookup lookup, RunResult* out_result) {
 }
 
 int RunAllReadyProcesses(proc::BootFileLookup lookup, RunResult* out_results, int max_results) {
-    return RunSelectedProcessPass(0, lookup, PassSelectPolicy::kReady, nullptr,
-                                  PassStopPolicy::kStopOnYielded, out_results, max_results);
+    const SchedulerPassSpec spec{
+        PassSelectPolicy::kReady,
+        nullptr,
+        PassStopPolicy::kStopOnYielded,
+    };
+    return RunSelectedProcessPass(0, lookup, spec, out_results, max_results);
 }
 
 int RunAllYieldedProcesses(proc::BootFileLookup lookup, RunResult* out_results, int max_results) {
-    return RunSelectedProcessPass(0, lookup, PassSelectPolicy::kYielded, nullptr,
-                                  PassStopPolicy::kStopOnYielded, out_results, max_results);
+    const SchedulerPassSpec spec{
+        PassSelectPolicy::kYielded,
+        nullptr,
+        PassStopPolicy::kStopOnYielded,
+    };
+    return RunSelectedProcessPass(0, lookup, spec, out_results, max_results);
 }
 
 bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info) {
@@ -365,9 +377,12 @@ int RunAutoScheduledTick(uint64_t now_tick,
                          RunResult* out_results,
                          int max_results) {
     g_pass_tick_context = now_tick;
-    return RunSelectedProcessPass(now_tick, lookup, PassSelectPolicy::kAutoScheduled,
-                                  AccountAutoScheduledResult, PassStopPolicy::kStopOnYielded,
-                                  out_results, max_results);
+    const SchedulerPassSpec spec{
+        PassSelectPolicy::kAutoScheduled,
+        AccountAutoScheduledResult,
+        PassStopPolicy::kStopOnYielded,
+    };
+    return RunSelectedProcessPass(now_tick, lookup, spec, out_results, max_results);
 }
 
 }  // namespace scheduler
