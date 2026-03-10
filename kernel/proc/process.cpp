@@ -528,14 +528,6 @@ ProcessEntry* GetCurrentEntry() {
     return FindEntryByPid(g_current_pid);
 }
 
-bool IsWaitCompleteState(State state) {
-    return state == State::kExited || state == State::kFailed;
-}
-
-bool CanAdvanceWithoutLookup(const ProcessEntry* entry) {
-    return entry != nullptr && entry->info.state == State::kYielded && entry->has_saved_frame;
-}
-
 void CpuPause() {
     __asm__ volatile("pause");
 }
@@ -776,13 +768,15 @@ int64_t WaitPid(uint32_t pid, int64_t* out_exit_code, bool nohang) {
     if (pid == 0 || pid == g_current_pid) {
         return -1;
     }
-    const ProcessEntry* entry = FindEntryByPidConst(pid);
-    if (entry == nullptr) {
+    int64_t exit_code = 0;
+    const scheduler::WaitStepResult initial =
+        scheduler::StepWaitProcess(pid, false, &exit_code, nullptr);
+    if (initial == scheduler::WaitStepResult::kInvalid) {
         return -1;
     }
-    if (IsWaitCompleteState(entry->info.state)) {
+    if (initial == scheduler::WaitStepResult::kComplete) {
         if (out_exit_code != nullptr) {
-            *out_exit_code = entry->info.exit_code;
+            *out_exit_code = exit_code;
         }
         return static_cast<int64_t>(pid);
     }
@@ -790,18 +784,18 @@ int64_t WaitPid(uint32_t pid, int64_t* out_exit_code, bool nohang) {
         return 0;
     }
     while (true) {
-        entry = FindEntryByPidConst(pid);
-        if (entry == nullptr) {
+        const scheduler::WaitStepResult step =
+            scheduler::StepWaitProcess(pid, true, &exit_code, nullptr);
+        if (step == scheduler::WaitStepResult::kInvalid) {
             return -1;
         }
-        if (IsWaitCompleteState(entry->info.state)) {
+        if (step == scheduler::WaitStepResult::kComplete) {
             if (out_exit_code != nullptr) {
-                *out_exit_code = entry->info.exit_code;
+                *out_exit_code = exit_code;
             }
             return static_cast<int64_t>(pid);
         }
-        if (CanAdvanceWithoutLookup(entry)) {
-            scheduler::AdvanceProcessForWait(pid, nullptr);
+        if (step == scheduler::WaitStepResult::kAdvanced) {
             continue;
         }
         CpuPause();

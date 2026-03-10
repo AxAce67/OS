@@ -131,6 +131,37 @@ void ResetSnapshot() {
     g_last_yield_tick = 0;
 }
 
+WaitStepResult StepWaitProcess(uint32_t pid,
+                               bool allow_advance,
+                               int64_t* out_exit_code,
+                               RunResult* out_result) {
+    proc::Info info{};
+    if (!proc::GetProcessInfo(pid, &info)) {
+        return WaitStepResult::kInvalid;
+    }
+    if (info.state == proc::State::kExited || info.state == proc::State::kFailed) {
+        if (out_exit_code != nullptr) {
+            *out_exit_code = info.exit_code;
+        }
+        return WaitStepResult::kComplete;
+    }
+    if (!allow_advance || info.state != proc::State::kYielded) {
+        return WaitStepResult::kPending;
+    }
+    if (!RunProcessAndCollectResult(info, nullptr, out_result)) {
+        return WaitStepResult::kPending;
+    }
+    if (out_result != nullptr &&
+        (out_result->final_info.state == proc::State::kExited ||
+         out_result->final_info.state == proc::State::kFailed)) {
+        if (out_exit_code != nullptr) {
+            *out_exit_code = out_result->final_info.exit_code;
+        }
+        return WaitStepResult::kComplete;
+    }
+    return WaitStepResult::kAdvanced;
+}
+
 bool RunProcessWithResult(uint32_t pid, proc::BootFileLookup lookup, RunResult* out_result) {
     proc::Info info{};
     if (!proc::GetProcessInfo(pid, &info)) {
