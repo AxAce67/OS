@@ -156,6 +156,9 @@ uint8_t g_last_xhci_slot_id = 0;
 bool g_xhci_hid_auto_enabled = false;
 uint8_t g_xhci_hid_auto_slot = 0;
 uint32_t g_xhci_hid_auto_len = 8;
+uint8_t g_xhci_hid_auto_config_value = 0;
+uint8_t g_xhci_hid_auto_endpoint_address = 0;
+uint8_t g_xhci_hid_auto_endpoint_id = 0;
 bool g_xhci_hid_decode_keyboard = false;
 uint64_t g_xhci_hid_last_poll_tick = 0;
 uint32_t g_xhci_hid_last_poll_reason = 0;
@@ -558,11 +561,17 @@ bool FindFirstConnectedPort(int* out_port, int* out_speed) {
 
 bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
     if (!g_xhci_caps.valid) {
+        g_xhci_hid_auto_config_value = 0;
+        g_xhci_hid_auto_endpoint_address = 0;
+        g_xhci_hid_auto_endpoint_id = 0;
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailCapsNotReady;
         g_xhci_hid_auto_start_fail_ccode = 0;
         return false;
     }
     if (!XHCIInitializeCommandAndEventRings(g_xhci_caps)) {
+        g_xhci_hid_auto_config_value = 0;
+        g_xhci_hid_auto_endpoint_address = 0;
+        g_xhci_hid_auto_endpoint_id = 0;
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailRingInit;
         g_xhci_hid_auto_start_fail_ccode = 0;
         return false;
@@ -570,6 +579,9 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
 
     XHCICommandResult slot_result{};
     if (!XHCIEnableSlot(g_xhci_caps, &slot_result) || !slot_result.ok || slot_result.slot_id == 0) {
+        g_xhci_hid_auto_config_value = 0;
+        g_xhci_hid_auto_endpoint_address = 0;
+        g_xhci_hid_auto_endpoint_id = 0;
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailEnableSlot;
         g_xhci_hid_auto_start_fail_ccode = slot_result.completion_code;
         return false;
@@ -579,6 +591,9 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
     int port = 0;
     int speed = 0;
     if (!FindFirstConnectedPort(&port, &speed)) {
+        g_xhci_hid_auto_config_value = 0;
+        g_xhci_hid_auto_endpoint_address = 0;
+        g_xhci_hid_auto_endpoint_id = 0;
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailFindPort;
         g_xhci_hid_auto_start_fail_ccode = 0;
         return false;
@@ -591,6 +606,9 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
                            static_cast<uint8_t>(speed),
                            &addr_result) ||
         !addr_result.ok) {
+        g_xhci_hid_auto_config_value = 0;
+        g_xhci_hid_auto_endpoint_address = 0;
+        g_xhci_hid_auto_endpoint_id = 0;
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailAddressDevice;
         g_xhci_hid_auto_start_fail_ccode = addr_result.completion_code;
         return false;
@@ -602,6 +620,9 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
                               1,
                               &set_config_result) ||
         !set_config_result.ok) {
+        g_xhci_hid_auto_config_value = 0;
+        g_xhci_hid_auto_endpoint_address = 0;
+        g_xhci_hid_auto_endpoint_id = 0;
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailSetConfiguration;
         g_xhci_hid_auto_start_fail_ccode = set_config_result.completion_code;
         return false;
@@ -609,6 +630,9 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
 
     XHCIInterruptEndpointInfo ep_info{};
     if (!XHCIFindFirstInterruptInEndpoint(g_xhci_caps, slot_result.slot_id, &ep_info) || !ep_info.ok) {
+        g_xhci_hid_auto_config_value = 0;
+        g_xhci_hid_auto_endpoint_address = 0;
+        g_xhci_hid_auto_endpoint_id = 0;
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailFindEndpoint;
         g_xhci_hid_auto_start_fail_ccode = 0;
         return false;
@@ -622,6 +646,9 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
                                             ep_info.interval ? ep_info.interval : interval,
                                             &cfg_result) ||
         !cfg_result.ok) {
+        g_xhci_hid_auto_config_value = ep_info.configuration_value;
+        g_xhci_hid_auto_endpoint_address = ep_info.endpoint_address;
+        g_xhci_hid_auto_endpoint_id = ep_info.endpoint_id;
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailConfigEndpoint;
         g_xhci_hid_auto_start_fail_ccode = cfg_result.completion_code;
         return false;
@@ -629,6 +656,9 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
 
     g_xhci_hid_auto_slot = slot_result.slot_id;
     g_xhci_hid_auto_len = ep_info.max_packet_size ? ep_info.max_packet_size : req_len;
+    g_xhci_hid_auto_config_value = ep_info.configuration_value;
+    g_xhci_hid_auto_endpoint_address = ep_info.endpoint_address;
+    g_xhci_hid_auto_endpoint_id = ep_info.endpoint_id;
     g_xhci_hid_decode_keyboard = false;  // Auto path is used for absolute pointer polling.
     g_xhci_hid_auto_mps = ep_info.max_packet_size ? ep_info.max_packet_size : mps;
     g_xhci_hid_auto_interval = ep_info.interval ? ep_info.interval : interval;
