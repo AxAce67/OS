@@ -46,7 +46,6 @@ bool RunProcessWithResult(uint32_t pid, proc::BootFileLookup lookup, RunResult* 
 bool RunPid(proc::BootFileLookup lookup, uint32_t pid, RunResult* out_result);
 bool RunNextRunnableProcess(proc::BootFileLookup lookup, RunResult* out_result);
 bool RunNextReadyProcess(proc::BootFileLookup lookup, RunResult* out_result);
-bool AdvanceProcessForWait(uint32_t pid, RunResult* out_result);
 int RunAllReadyProcesses(proc::BootFileLookup lookup, RunResult* out_results, int max_results);
 int RunAllYieldedProcesses(proc::BootFileLookup lookup, RunResult* out_results, int max_results);
 bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info);

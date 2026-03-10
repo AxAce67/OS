@@ -148,14 +148,15 @@ WaitStepResult StepWaitProcess(uint32_t pid,
     if (!allow_advance || info.state != proc::State::kYielded) {
         return WaitStepResult::kPending;
     }
-    if (!RunProcessAndCollectResult(info, nullptr, out_result)) {
+    RunResult local_result{};
+    RunResult* result = out_result != nullptr ? out_result : &local_result;
+    if (!RunProcessAndCollectResult(info, nullptr, result)) {
         return WaitStepResult::kPending;
     }
-    if (out_result != nullptr &&
-        (out_result->final_info.state == proc::State::kExited ||
-         out_result->final_info.state == proc::State::kFailed)) {
+    if (result->final_info.state == proc::State::kExited ||
+        result->final_info.state == proc::State::kFailed) {
         if (out_exit_code != nullptr) {
-            *out_exit_code = out_result->final_info.exit_code;
+            *out_exit_code = result->final_info.exit_code;
         }
         return WaitStepResult::kComplete;
     }
@@ -209,17 +210,6 @@ bool RunNextReadyProcess(proc::BootFileLookup lookup, RunResult* out_result) {
     }
     proc::AdvanceRunnableProcessCursor();
     return RunProcessAndCollectResult(info, lookup, out_result);
-}
-
-bool AdvanceProcessForWait(uint32_t pid, RunResult* out_result) {
-    proc::Info info{};
-    if (!proc::GetProcessInfo(pid, &info)) {
-        return false;
-    }
-    if (info.state != proc::State::kYielded) {
-        return false;
-    }
-    return RunProcessAndCollectResult(info, nullptr, out_result);
 }
 
 int RunAllReadyProcesses(proc::BootFileLookup lookup, RunResult* out_results, int max_results) {
