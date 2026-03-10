@@ -20,6 +20,8 @@ extern bool g_jp_layout;
 extern bool g_ime_enabled;
 extern int g_ime_user_candidate_count;
 extern bool g_boot_mouse_auto_enabled;
+extern uint64_t g_boot_mouse_auto_retry_count;
+extern uint64_t g_boot_mouse_auto_next_retry_tick;
 extern bool g_xhci_hid_decode_keyboard;
 extern bool g_has_halfwidth_kana_font;
 extern ShellPair g_vars[16];
@@ -708,6 +710,10 @@ bool ExecuteInputDiagCommand() {
 
     console->Print("mouse auto=");
     console->Print(g_boot_mouse_auto_enabled ? "on" : "off");
+    console->Print(" retry=");
+    console->PrintDec(static_cast<int64_t>(g_boot_mouse_auto_retry_count));
+    console->Print(" next=");
+    console->PrintDec(static_cast<int64_t>(g_boot_mouse_auto_next_retry_tick));
     console->Print(" btn=0x");
     console->PrintHex(g_mouse_buttons_current, 2);
     console->Print(" l=");

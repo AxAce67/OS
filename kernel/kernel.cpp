@@ -165,9 +165,12 @@ uint64_t g_xhci_hid_auto_fail_count = 0;
 uint64_t g_xhci_hid_auto_recover_count = 0;
 uint64_t g_xhci_hid_next_recover_tick = 0;
 bool g_boot_mouse_auto_enabled = true;
+uint64_t g_boot_mouse_auto_retry_count = 0;
+uint64_t g_boot_mouse_auto_next_retry_tick = 0;
 const uint32_t kAutoStartHIDLen = 8;
 const uint16_t kAutoStartHIDMps = 8;
 const uint8_t kAutoStartHIDInterval = 4;
+const uint64_t kBootMouseAutoRetryIntervalTicks = 180;
 uint8_t g_hid_format_mode = 0;  // 0=unknown,1=A,2=B
 uint32_t g_hid_observed_max_raw = 0;
 uint32_t g_hid_sample_count = 0;
@@ -581,11 +584,20 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
 }
 
 bool HandleXHCIAutoPollOnIdle() {
+    const uint64_t now_tick = CurrentTick();
+    if (!g_xhci_hid_auto_enabled && g_boot_mouse_auto_enabled && g_xhci_caps.valid &&
+        now_tick >= g_boot_mouse_auto_next_retry_tick) {
+        g_boot_mouse_auto_next_retry_tick = now_tick + kBootMouseAutoRetryIntervalTicks;
+        ResetHIDDecodeLearning();
+        if (StartXHCIAutoMouse(kAutoStartHIDLen, kAutoStartHIDMps, kAutoStartHIDInterval)) {
+            return true;
+        }
+        ++g_boot_mouse_auto_retry_count;
+    }
+
     if (!g_xhci_hid_auto_enabled || g_xhci_hid_auto_slot == 0) {
         return false;
     }
-
-    uint64_t now_tick = CurrentTick();
     if (now_tick != g_xhci_hid_last_poll_tick) {
         g_xhci_hid_last_poll_tick = now_tick;
         if (PollHIDAndApply(g_xhci_hid_auto_slot, g_xhci_hid_auto_len, false)) {
@@ -2477,16 +2489,19 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
 
             if (g_boot_mouse_auto_enabled) {
                 ResetHIDDecodeLearning();
-                if (StartXHCIAutoMouse(kAutoStartHIDLen, kAutoStartHIDMps, kAutoStartHIDInterval)) {
-                    console->Print("xHCI HID auto-start: ok (slot=");
-                    console->PrintDec(g_xhci_hid_auto_slot);
-                    console->Print(", len=");
-                    console->PrintDec(g_xhci_hid_auto_len);
-                    console->Print(")\n");
-                } else {
-                    console->PrintLine("xHCI HID auto-start: failed (PS/2 mouse/keyboard fallback)");
-                }
+            if (StartXHCIAutoMouse(kAutoStartHIDLen, kAutoStartHIDMps, kAutoStartHIDInterval)) {
+                console->Print("xHCI HID auto-start: ok (slot=");
+                console->PrintDec(g_xhci_hid_auto_slot);
+                console->Print(", len=");
+                console->PrintDec(g_xhci_hid_auto_len);
+                console->Print(")\n");
+                g_boot_mouse_auto_next_retry_tick = 0;
+            } else {
+                console->PrintLine("xHCI HID auto-start: failed (PS/2 mouse/keyboard fallback)");
+                g_boot_mouse_auto_retry_count = 1;
+                g_boot_mouse_auto_next_retry_tick = CurrentTick() + kBootMouseAutoRetryIntervalTicks;
             }
+        }
         }
     } else {
         console->Print("xHCI not found.\n");
