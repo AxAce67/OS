@@ -338,13 +338,18 @@ bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
         }
         int slot = g_last_xhci_slot_id;
         int req_len = 8;
+        int timeout = 3000000;
         char t0[16];
         char t1[16];
+        char t2[16];
         if (NextToken(command, &pos, t0, sizeof(t0))) {
             slot = ParseInt(t0);
         }
         if (NextToken(command, &pos, t1, sizeof(t1))) {
             req_len = ParseInt(t1);
+        }
+        if (NextToken(command, &pos, t2, sizeof(t2))) {
+            timeout = ParseInt(t2);
         }
         if (slot <= 0 || slot > 255) {
             console->PrintLine("xhciintrin: invalid slot");
@@ -354,9 +359,17 @@ bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
             console->PrintLine("xhciintrin: len must be 1..64");
             return true;
         }
+        if (timeout <= 0) {
+            console->PrintLine("xhciintrin: timeout must be > 0");
+            return true;
+        }
 
         XHCIInterruptInResult rr{};
-        if (!XHCIPollInterruptIn(g_xhci_caps, static_cast<uint8_t>(slot), static_cast<uint32_t>(req_len), &rr)) {
+        if (!XHCIPollInterruptIn(g_xhci_caps,
+                                 static_cast<uint8_t>(slot),
+                                 static_cast<uint32_t>(req_len),
+                                 &rr,
+                                 static_cast<uint32_t>(timeout))) {
             console->PrintLine("xhciintrin: timeout/fail");
             return true;
         }
@@ -434,13 +447,18 @@ bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
         }
         int slot = g_last_xhci_slot_id;
         int req_len = 8;
+        int timeout = 3000000;
         char t0[16];
         char t1[16];
+        char t2[16];
         if (NextToken(command, &pos, t0, sizeof(t0))) {
             slot = ParseInt(t0);
         }
         if (NextToken(command, &pos, t1, sizeof(t1))) {
             req_len = ParseInt(t1);
+        }
+        if (NextToken(command, &pos, t2, sizeof(t2))) {
+            timeout = ParseInt(t2);
         }
         if (slot <= 0 || slot > 255) {
             console->PrintLine("xhcihidpoll: invalid slot");
@@ -450,8 +468,15 @@ bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
             console->PrintLine("xhcihidpoll: len must be 1..64");
             return true;
         }
+        if (timeout <= 0) {
+            console->PrintLine("xhcihidpoll: timeout must be > 0");
+            return true;
+        }
 
-        PollHIDAndApply(static_cast<uint8_t>(slot), static_cast<uint32_t>(req_len), true);
+        PollHIDAndApply(static_cast<uint8_t>(slot),
+                        static_cast<uint32_t>(req_len),
+                        true,
+                        static_cast<uint32_t>(timeout));
         return true;
     }
 
