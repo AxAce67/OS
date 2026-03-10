@@ -136,6 +136,12 @@ bool DequeueAutoScheduledInfoForTick(uint64_t now_tick, proc::Info* out_info) {
     return true;
 }
 
+uint64_t g_pass_tick_context = 0;
+
+bool DequeueAutoScheduledInfoFromContext(proc::Info* out_info) {
+    return DequeueAutoScheduledInfoForTick(g_pass_tick_context, out_info);
+}
+
 void AccountAutoScheduledResult(uint64_t now_tick, const RunResult& result) {
     ++g_autosched_run_count;
     if (result.final_info.state != proc::State::kYielded) {
@@ -144,6 +150,36 @@ void AccountAutoScheduledResult(uint64_t now_tick, const RunResult& result) {
     ++g_autosched_yield_count;
     g_last_yield_pid = result.final_info.pid;
     g_last_yield_tick = now_tick;
+}
+
+using SelectInfoFn = bool (*)(proc::Info*);
+using AccountResultFn = void (*)(uint64_t, const RunResult&);
+
+int RunSelectedProcessPass(uint64_t now_tick,
+                           proc::BootFileLookup lookup,
+                           SelectInfoFn select_info,
+                           AccountResultFn account_result,
+                           RunResult* out_results,
+                           int max_results) {
+    if (lookup == nullptr || select_info == nullptr || out_results == nullptr || max_results <= 0) {
+        return 0;
+    }
+    int ran = 0;
+    while (ran < max_results) {
+        proc::Info info{};
+        if (!select_info(&info)) {
+            break;
+        }
+        RunProcessAndCollectResult(info, lookup, &out_results[ran]);
+        if (account_result != nullptr) {
+            account_result(now_tick, out_results[ran]);
+        }
+        ++ran;
+        if (out_results[ran - 1].final_info.state == proc::State::kYielded) {
+            break;
+        }
+    }
+    return ran;
 }
 
 }  // namespace
@@ -274,36 +310,11 @@ bool RunNextReadyProcess(proc::BootFileLookup lookup, RunResult* out_result) {
 }
 
 int RunAllReadyProcesses(proc::BootFileLookup lookup, RunResult* out_results, int max_results) {
-    if (lookup == nullptr || out_results == nullptr || max_results <= 0) {
-        return 0;
-    }
-    int ran = 0;
-    while (ran < max_results) {
-        if (!RunNextReadyProcess(lookup, &out_results[ran])) {
-            break;
-        }
-        ++ran;
-    }
-    return ran;
+    return RunSelectedProcessPass(0, lookup, DequeueNextReadyInfo, nullptr, out_results, max_results);
 }
 
 int RunAllYieldedProcesses(proc::BootFileLookup lookup, RunResult* out_results, int max_results) {
-    if (lookup == nullptr || out_results == nullptr || max_results <= 0) {
-        return 0;
-    }
-    int ran = 0;
-    while (ran < max_results) {
-        proc::Info info{};
-        if (!DequeueNextYieldedInfo(&info)) {
-            break;
-        }
-        RunProcessAndCollectResult(info, lookup, &out_results[ran]);
-        ++ran;
-        if (out_results[ran - 1].final_info.state == proc::State::kYielded) {
-            break;
-        }
-    }
-    return ran;
+    return RunSelectedProcessPass(0, lookup, DequeueNextYieldedInfo, nullptr, out_results, max_results);
 }
 
 bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info) {
@@ -314,23 +325,9 @@ int RunAutoScheduledTick(uint64_t now_tick,
                          proc::BootFileLookup lookup,
                          RunResult* out_results,
                          int max_results) {
-    if (lookup == nullptr || out_results == nullptr || max_results <= 0) {
-        return 0;
-    }
-    int ran = 0;
-    while (ran < max_results) {
-        proc::Info info{};
-        if (!DequeueAutoScheduledProcessForTick(now_tick, &info)) {
-            break;
-        }
-        RunProcessAndCollectResult(info, lookup, &out_results[ran]);
-        AccountAutoScheduledResult(now_tick, out_results[ran]);
-        ++ran;
-        if (out_results[ran - 1].final_info.state == proc::State::kYielded) {
-            break;
-        }
-    }
-    return ran;
+    g_pass_tick_context = now_tick;
+    return RunSelectedProcessPass(now_tick, lookup, DequeueAutoScheduledInfoFromContext,
+                                  AccountAutoScheduledResult, out_results, max_results);
 }
 
 }  // namespace scheduler
