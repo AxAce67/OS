@@ -58,6 +58,7 @@ const char* const kBuiltInCommands[] = {
     "xhciintrin",
     "xhcidesc",
     "xhcihidpoll",
+    "xhcihidwatch",
     "xhcihidstat",
     "xhciauto",
     "xhciautostart",

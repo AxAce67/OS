@@ -480,6 +480,69 @@ bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
         return true;
     }
 
+    if (StrEqual(cmd, "xhcihidwatch")) {
+        if (!g_xhci_caps.valid) {
+            console->PrintLine("xhcihidwatch: xhci not ready");
+            return true;
+        }
+        int slot = g_last_xhci_slot_id;
+        int req_len = 8;
+        int ticks = 180;
+        char t0[16];
+        char t1[16];
+        char t2[16];
+        if (NextToken(command, &pos, t0, sizeof(t0))) {
+            slot = ParseInt(t0);
+        }
+        if (NextToken(command, &pos, t1, sizeof(t1))) {
+            req_len = ParseInt(t1);
+        }
+        if (NextToken(command, &pos, t2, sizeof(t2))) {
+            ticks = ParseInt(t2);
+        }
+        if (slot <= 0 || slot > 255) {
+            console->PrintLine("xhcihidwatch: invalid slot");
+            return true;
+        }
+        if (req_len <= 0 || req_len > 64) {
+            console->PrintLine("xhcihidwatch: len must be 1..64");
+            return true;
+        }
+        if (ticks <= 0 || ticks > 1800) {
+            console->PrintLine("xhcihidwatch: ticks must be 1..1800");
+            return true;
+        }
+        console->Print("xhcihidwatch: slot=");
+        console->PrintDec(slot);
+        console->Print(" len=");
+        console->PrintDec(req_len);
+        console->Print(" ticks=");
+        console->PrintDec(ticks);
+        console->Print("\n");
+        const uint64_t start_tick = CurrentTick();
+        uint64_t polls = 0;
+        while ((CurrentTick() - start_tick) < static_cast<uint64_t>(ticks)) {
+            ++polls;
+            if (PollHIDAndApply(static_cast<uint8_t>(slot),
+                                static_cast<uint32_t>(req_len),
+                                true,
+                                3000000u)) {
+                console->Print("xhcihidwatch: success polls=");
+                console->PrintDec(static_cast<int64_t>(polls));
+                console->Print(" elapsed_ticks=");
+                console->PrintDec(static_cast<int64_t>(CurrentTick() - start_tick));
+                console->Print("\n");
+                return true;
+            }
+        }
+        console->Print("xhcihidwatch: no data polls=");
+        console->PrintDec(static_cast<int64_t>(polls));
+        console->Print(" elapsed_ticks=");
+        console->PrintDec(static_cast<int64_t>(CurrentTick() - start_tick));
+        console->Print("\n");
+        return true;
+    }
+
     if (StrEqual(cmd, "xhcihidstat")) {
         char arg[16];
         if (NextToken(command, &pos, arg, sizeof(arg)) && StrEqual(arg, "reset")) {
