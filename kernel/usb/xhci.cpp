@@ -18,11 +18,12 @@ struct alignas(64) EventRingSegmentTableEntry {
 struct XHCISlotState {
     bool used;
     bool addressed;
-    bool ep1_configured;
+    bool interrupt_in_configured;
     uint8_t root_port;
     uint8_t port_speed;
-    uint16_t ep1_max_packet_size;
-    uint8_t ep1_interval;
+    uint8_t interrupt_in_endpoint_id;
+    uint16_t interrupt_in_max_packet_size;
+    uint8_t interrupt_in_interval;
 };
 
 alignas(64) uint64_t g_dcbaa[256];
@@ -40,11 +41,14 @@ uint16_t g_ep0_enqueue_indices[kXHCIMaxManagedSlots];
 uint8_t g_ep1_cycle_bits[kXHCIMaxManagedSlots];
 uint16_t g_ep1_enqueue_indices[kXHCIMaxManagedSlots];
 alignas(64) uint8_t g_ep1_buffers[kXHCIMaxManagedSlots][64];
+alignas(64) uint8_t g_ep0_control_buffers[kXHCIMaxManagedSlots][256];
 bool g_rings_initialized = false;
 uint32_t g_command_enqueue_index = 0;
 uint8_t g_command_cycle_bit = 1;
 uint32_t g_event_dequeue_index = 0;
 uint8_t g_event_cycle_bit = 1;
+
+int SlotIndexFromId(uint8_t slot_id);
 
 uint8_t ReadMMIO8(uint64_t addr) {
     volatile const uint8_t* p = reinterpret_cast<volatile const uint8_t*>(addr);
@@ -201,6 +205,100 @@ bool WaitTransferEvent(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t 
         return true;
     }
     return false;
+}
+
+bool SubmitControlTransfer(const XHCICapabilityInfo& info,
+                           uint8_t slot_id,
+                           uint8_t bm_request_type,
+                           uint8_t b_request,
+                           uint16_t w_value,
+                           uint16_t w_index,
+                           uint16_t w_length,
+                           bool data_in,
+                           uint8_t* data_buffer,
+                           XHCIControlTransferResult* out_result,
+                           uint32_t timeout_iters) {
+    if (out_result == nullptr) {
+        return false;
+    }
+    out_result->ok = false;
+    out_result->completion_code = 0;
+    out_result->slot_id = slot_id;
+    out_result->endpoint_id = 1;
+
+    const int idx = SlotIndexFromId(slot_id);
+    if (!info.valid || idx < 0 || !g_slot_states[idx].used || !g_slot_states[idx].addressed) {
+        return false;
+    }
+    if (!g_rings_initialized) {
+        return false;
+    }
+
+    uint16_t enqueue = g_ep0_enqueue_indices[idx];
+    if (enqueue >= 255) {
+        enqueue = 0;
+    }
+
+    TRB setup{};
+    setup.dword0 = static_cast<uint32_t>(w_value << 16) |
+                   static_cast<uint32_t>(b_request << 8) |
+                   static_cast<uint32_t>(bm_request_type);
+    setup.dword1 = static_cast<uint32_t>(w_length << 16) |
+                   static_cast<uint32_t>(w_index);
+    setup.dword2 = 8u;
+    uint32_t trt = 0;
+    if (w_length != 0) {
+        trt = data_in ? 3u : 2u;
+    }
+    setup.dword3 = (2u << 10) | (trt << 16) | (1u << 6) | (g_ep0_cycle_bits[idx] ? 1u : 0u);
+    g_ep0_rings[idx][enqueue] = setup;
+    ++enqueue;
+    if (enqueue == 255) {
+        enqueue = 0;
+        g_ep0_cycle_bits[idx] ^= 1;
+    }
+
+    if (w_length != 0) {
+        TRB data{};
+        const uint64_t buf_ptr = reinterpret_cast<uint64_t>(data_buffer);
+        data.dword0 = static_cast<uint32_t>(buf_ptr & 0xFFFFFFFFu);
+        data.dword1 = static_cast<uint32_t>(buf_ptr >> 32);
+        data.dword2 = w_length;
+        data.dword3 = (3u << 10) | (data_in ? (1u << 16) : 0u) | (g_ep0_cycle_bits[idx] ? 1u : 0u);
+        g_ep0_rings[idx][enqueue] = data;
+        ++enqueue;
+        if (enqueue == 255) {
+            enqueue = 0;
+            g_ep0_cycle_bits[idx] ^= 1;
+        }
+    }
+
+    TRB status{};
+    status.dword0 = 0;
+    status.dword1 = 0;
+    status.dword2 = 0;
+    const bool status_in = (w_length == 0);
+    status.dword3 = (4u << 10) | (status_in ? (1u << 16) : 0u) | (1u << 5) |
+                    (g_ep0_cycle_bits[idx] ? 1u : 0u);
+    g_ep0_rings[idx][enqueue] = status;
+    ++enqueue;
+    if (enqueue == 255) {
+        enqueue = 0;
+        g_ep0_cycle_bits[idx] ^= 1;
+    }
+    g_ep0_enqueue_indices[idx] = enqueue;
+
+    RingEndpointDoorbell(info, slot_id, 1);
+
+    XHCIInterruptInResult ev{};
+    if (!WaitTransferEvent(info, slot_id, 1, &ev, timeout_iters)) {
+        return false;
+    }
+    out_result->ok = ev.ok;
+    out_result->completion_code = ev.completion_code;
+    out_result->slot_id = ev.slot_id;
+    out_result->endpoint_id = ev.endpoint_id;
+    return true;
 }
 
 uint8_t* ContextPtr(uint8_t* input_ctx, int index, int ctx_size) {
@@ -540,14 +638,17 @@ bool XHCIAddressDevice(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t 
     if (r.ok) {
         g_slot_states[idx].used = true;
         g_slot_states[idx].addressed = true;
-        g_slot_states[idx].ep1_configured = false;
+        g_slot_states[idx].interrupt_in_configured = false;
         g_slot_states[idx].root_port = root_port;
         g_slot_states[idx].port_speed = port_speed;
+        g_slot_states[idx].interrupt_in_endpoint_id = 3;
+        g_slot_states[idx].interrupt_in_max_packet_size = 8;
+        g_slot_states[idx].interrupt_in_interval = 4;
     }
     return true;
 }
 
-bool XHCIConfigureInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t slot_id, uint16_t max_packet_size, uint8_t interval, XHCIConfigureEndpointResult* out_result, uint32_t timeout_iters) {
+bool XHCIConfigureInterruptInEndpointEx(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t endpoint_id, uint16_t max_packet_size, uint8_t interval, XHCIConfigureEndpointResult* out_result, uint32_t timeout_iters) {
     if (out_result == nullptr) {
         return false;
     }
@@ -557,6 +658,9 @@ bool XHCIConfigureInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t sl
 
     const int idx = SlotIndexFromId(slot_id);
     if (!info.valid || idx < 0 || !g_slot_states[idx].used || !g_slot_states[idx].addressed) {
+        return false;
+    }
+    if (endpoint_id < 2 || endpoint_id > 31) {
         return false;
     }
     if (!g_rings_initialized) {
@@ -585,16 +689,16 @@ bool XHCIConfigureInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t sl
     }
 
     uint32_t* icc = reinterpret_cast<uint32_t*>(ContextPtr(input_ctx, 0, ctx_size));
-    icc[0] = 0;                      // Drop flags
-    icc[1] = (1u << 0) | (1u << 3);  // Add Slot + EP1IN(DCI=3)
+    icc[0] = 0;                               // Drop flags
+    icc[1] = (1u << 0) | (1u << endpoint_id); // Add Slot + Interrupt IN endpoint
 
-    // Update slot context entries to include DCI=3.
+    // Update slot context entries to include the target DCI.
     uint32_t* slot_ctx = reinterpret_cast<uint32_t*>(in_slot);
     slot_ctx[0] &= ~(0x1Fu << 27);
-    slot_ctx[0] |= (3u << 27);
+    slot_ctx[0] |= (static_cast<uint32_t>(endpoint_id) << 27);
 
-    // EP1 IN context is context index 4 (DCI=3 -> idx=dci+1).
-    uint32_t* ep1in_ctx = reinterpret_cast<uint32_t*>(ContextPtr(input_ctx, 4, ctx_size));
+    const int ep_ctx_index = static_cast<int>(endpoint_id) + 1;
+    uint32_t* ep1in_ctx = reinterpret_cast<uint32_t*>(ContextPtr(input_ctx, ep_ctx_index, ctx_size));
     const uint64_t ep1_ring = reinterpret_cast<uint64_t>(&g_ep1in_rings[idx][0]) | 1u;
     ep1in_ctx[0] = (static_cast<uint32_t>(interval) << 16); // Interval
     ep1in_ctx[1] = (3u << 1) | (7u << 3) | (static_cast<uint32_t>(max_packet_size) << 16); // CErr=3, Interrupt IN
@@ -619,80 +723,75 @@ bool XHCIConfigureInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t sl
     out_result->slot_id = r.slot_id;
     out_result->ok = r.ok;
     if (r.ok) {
-        g_slot_states[idx].ep1_configured = true;
-        g_slot_states[idx].ep1_max_packet_size = max_packet_size;
-        g_slot_states[idx].ep1_interval = interval;
+        g_slot_states[idx].interrupt_in_configured = true;
+        g_slot_states[idx].interrupt_in_endpoint_id = endpoint_id;
+        g_slot_states[idx].interrupt_in_max_packet_size = max_packet_size;
+        g_slot_states[idx].interrupt_in_interval = interval;
     }
     return true;
 }
 
+bool XHCIConfigureInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t slot_id, uint16_t max_packet_size, uint8_t interval, XHCIConfigureEndpointResult* out_result, uint32_t timeout_iters) {
+    return XHCIConfigureInterruptInEndpointEx(info, slot_id, 3, max_packet_size, interval, out_result, timeout_iters);
+}
+
 bool XHCISetConfiguration(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t configuration_value, XHCIControlTransferResult* out_result, uint32_t timeout_iters) {
-    if (out_result == nullptr) {
+    return SubmitControlTransfer(info, slot_id, 0x00, 9u, configuration_value, 0, 0, false, nullptr, out_result, timeout_iters);
+}
+
+bool XHCIFindFirstInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t slot_id, XHCIInterruptEndpointInfo* out_info, uint32_t timeout_iters) {
+    if (out_info == nullptr) {
         return false;
     }
-    out_result->ok = false;
-    out_result->completion_code = 0;
-    out_result->slot_id = slot_id;
-    out_result->endpoint_id = 1;
+    out_info->ok = false;
+    out_info->configuration_value = 1;
+    out_info->endpoint_address = 0x81;
+    out_info->endpoint_id = 3;
+    out_info->max_packet_size = 8;
+    out_info->interval = 4;
 
     const int idx = SlotIndexFromId(slot_id);
     if (!info.valid || idx < 0 || !g_slot_states[idx].used || !g_slot_states[idx].addressed) {
         return false;
     }
-    if (!g_rings_initialized) {
+
+    MemorySet(g_ep0_control_buffers[idx], 0, sizeof(g_ep0_control_buffers[idx]));
+    XHCIControlTransferResult tr{};
+    if (!SubmitControlTransfer(info, slot_id, 0x80, 6u, static_cast<uint16_t>(2u << 8), 0, 64, true,
+                               &g_ep0_control_buffers[idx][0], &tr, timeout_iters) ||
+        !tr.ok) {
         return false;
     }
 
-    uint16_t enqueue = g_ep0_enqueue_indices[idx];
-    if (enqueue >= 255) {
-        enqueue = 0;
-    }
-
-    TRB setup{};
-    const uint32_t setup_lo = static_cast<uint32_t>(configuration_value << 16) |
-                              static_cast<uint32_t>(9u << 8) |
-                              static_cast<uint32_t>(0u << 0);
-    const uint32_t setup_hi = static_cast<uint32_t>(0u << 16) |
-                              static_cast<uint32_t>(0u);
-    setup.dword0 = setup_lo;
-    setup.dword1 = setup_hi;
-    setup.dword2 = 8u;
-    setup.dword3 = (2u << 10) | (1u << 6) | (1u << 5) |
-                   (g_ep0_cycle_bits[idx] ? 1u : 0u);
-    g_ep0_rings[idx][enqueue] = setup;
-
-    ++enqueue;
-    if (enqueue == 255) {
-        enqueue = 0;
-        g_ep0_cycle_bits[idx] ^= 1;
-    }
-
-    TRB status{};
-    status.dword0 = 0;
-    status.dword1 = 0;
-    status.dword2 = 0;
-    status.dword3 = (4u << 10) | (1u << 16) | (1u << 5) |
-                    (g_ep0_cycle_bits[idx] ? 1u : 0u);
-    g_ep0_rings[idx][enqueue] = status;
-
-    ++enqueue;
-    if (enqueue == 255) {
-        enqueue = 0;
-        g_ep0_cycle_bits[idx] ^= 1;
-    }
-    g_ep0_enqueue_indices[idx] = enqueue;
-
-    RingEndpointDoorbell(info, slot_id, 1);
-
-    XHCIInterruptInResult ev{};
-    if (!WaitTransferEvent(info, slot_id, 1, &ev, timeout_iters)) {
+    const uint8_t* desc = &g_ep0_control_buffers[idx][0];
+    if (desc[0] < 9 || desc[1] != 2) {
         return false;
     }
-    out_result->ok = ev.ok;
-    out_result->completion_code = ev.completion_code;
-    out_result->slot_id = ev.slot_id;
-    out_result->endpoint_id = ev.endpoint_id;
-    return true;
+    out_info->configuration_value = desc[5];
+    const uint16_t total_length = static_cast<uint16_t>(desc[2] | (static_cast<uint16_t>(desc[3]) << 8));
+    const uint16_t scan_len = (total_length < 64) ? total_length : 64;
+    uint16_t off = 0;
+    while (off + 2 <= scan_len) {
+        const uint8_t len = desc[off + 0];
+        const uint8_t type = desc[off + 1];
+        if (len < 2 || off + len > scan_len) {
+            break;
+        }
+        if (type == 5 && len >= 7) {
+            const uint8_t ep_addr = desc[off + 2];
+            const uint8_t attrs = desc[off + 3];
+            if ((ep_addr & 0x80u) != 0 && (attrs & 0x03u) == 0x03u) {
+                out_info->ok = true;
+                out_info->endpoint_address = ep_addr;
+                out_info->endpoint_id = static_cast<uint8_t>(((ep_addr & 0x0Fu) * 2u) + 1u);
+                out_info->max_packet_size = static_cast<uint16_t>(desc[off + 4] | (static_cast<uint16_t>(desc[off + 5]) << 8));
+                out_info->interval = desc[off + 6];
+                return true;
+            }
+        }
+        off = static_cast<uint16_t>(off + len);
+    }
+    return false;
 }
 
 bool XHCIPollInterruptIn(const XHCICapabilityInfo& info, uint8_t slot_id, uint32_t request_length, XHCIInterruptInResult* out_result, uint32_t timeout_iters) {
@@ -708,11 +807,11 @@ bool XHCIPollInterruptIn(const XHCICapabilityInfo& info, uint8_t slot_id, uint32
     MemorySet(out_result->data, 0, sizeof(out_result->data));
 
     const int idx = SlotIndexFromId(slot_id);
-    if (!info.valid || idx < 0 || !g_slot_states[idx].ep1_configured) {
+    if (!info.valid || idx < 0 || !g_slot_states[idx].interrupt_in_configured) {
         return false;
     }
     if (request_length == 0) {
-        request_length = g_slot_states[idx].ep1_max_packet_size;
+        request_length = g_slot_states[idx].interrupt_in_max_packet_size;
     }
     if (request_length > sizeof(g_ep1_buffers[idx])) {
         request_length = sizeof(g_ep1_buffers[idx]);
@@ -739,9 +838,10 @@ bool XHCIPollInterruptIn(const XHCICapabilityInfo& info, uint8_t slot_id, uint32
     }
     g_ep1_enqueue_indices[idx] = enqueue;
 
-    RingEndpointDoorbell(info, slot_id, 3);
+    const uint8_t endpoint_id = g_slot_states[idx].interrupt_in_endpoint_id;
+    RingEndpointDoorbell(info, slot_id, endpoint_id);
 
-    if (!WaitTransferEvent(info, slot_id, 3, out_result, timeout_iters)) {
+    if (!WaitTransferEvent(info, slot_id, endpoint_id, out_result, timeout_iters)) {
         return false;
     }
 

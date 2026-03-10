@@ -69,6 +69,15 @@ struct XHCIControlTransferResult {
     uint8_t endpoint_id;
 };
 
+struct XHCIInterruptEndpointInfo {
+    bool ok;
+    uint8_t configuration_value;
+    uint8_t endpoint_address;
+    uint8_t endpoint_id;
+    uint16_t max_packet_size;
+    uint8_t interval;
+};
+
 struct XHCIInterruptInResult {
     bool ok;
     uint8_t completion_code;
@@ -89,5 +98,7 @@ bool XHCIInitializeCommandAndEventRings(const XHCICapabilityInfo& info);
 bool XHCIEnableSlot(const XHCICapabilityInfo& info, XHCICommandResult* out_result, uint32_t timeout_iters = 3000000);
 bool XHCIAddressDevice(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t root_port, uint8_t port_speed, XHCIAddressDeviceResult* out_result, uint32_t timeout_iters = 3000000);
 bool XHCISetConfiguration(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t configuration_value, XHCIControlTransferResult* out_result, uint32_t timeout_iters = 3000000);
+bool XHCIFindFirstInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t slot_id, XHCIInterruptEndpointInfo* out_info, uint32_t timeout_iters = 3000000);
+bool XHCIConfigureInterruptInEndpointEx(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t endpoint_id, uint16_t max_packet_size, uint8_t interval, XHCIConfigureEndpointResult* out_result, uint32_t timeout_iters = 3000000);
 bool XHCIConfigureInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t slot_id, uint16_t max_packet_size, uint8_t interval, XHCIConfigureEndpointResult* out_result, uint32_t timeout_iters = 3000000);
 bool XHCIPollInterruptIn(const XHCICapabilityInfo& info, uint8_t slot_id, uint32_t request_length, XHCIInterruptInResult* out_result, uint32_t timeout_iters = 3000000);

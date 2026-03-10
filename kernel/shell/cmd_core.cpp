@@ -81,7 +81,8 @@ constexpr uint32_t kXhciHidAutoStartFailEnableSlot = 3;
 constexpr uint32_t kXhciHidAutoStartFailFindPort = 4;
 constexpr uint32_t kXhciHidAutoStartFailAddressDevice = 5;
 constexpr uint32_t kXhciHidAutoStartFailSetConfiguration = 6;
-constexpr uint32_t kXhciHidAutoStartFailConfigEndpoint = 7;
+constexpr uint32_t kXhciHidAutoStartFailFindEndpoint = 7;
+constexpr uint32_t kXhciHidAutoStartFailConfigEndpoint = 8;
 constexpr uint32_t kXhciHidPollReasonNone = 0;
 constexpr uint32_t kXhciHidPollReasonTimeout = 1;
 constexpr uint32_t kXhciHidPollReasonTransfer = 2;
@@ -103,6 +104,8 @@ const char* XhciHidAutoStartFailReasonName(uint32_t reason) {
             return "address";
         case kXhciHidAutoStartFailSetConfiguration:
             return "set_config";
+        case kXhciHidAutoStartFailFindEndpoint:
+            return "find_ep";
         case kXhciHidAutoStartFailConfigEndpoint:
             return "config_ep";
         default:

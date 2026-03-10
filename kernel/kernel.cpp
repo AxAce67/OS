@@ -183,7 +183,8 @@ const uint32_t kXhciHidAutoStartFailEnableSlot = 3;
 const uint32_t kXhciHidAutoStartFailFindPort = 4;
 const uint32_t kXhciHidAutoStartFailAddressDevice = 5;
 const uint32_t kXhciHidAutoStartFailSetConfiguration = 6;
-const uint32_t kXhciHidAutoStartFailConfigEndpoint = 7;
+const uint32_t kXhciHidAutoStartFailFindEndpoint = 7;
+const uint32_t kXhciHidAutoStartFailConfigEndpoint = 8;
 const uint32_t kXhciHidPollReasonNone = 0;
 const uint32_t kXhciHidPollReasonTimeout = 1;
 const uint32_t kXhciHidPollReasonTransfer = 2;
@@ -606,12 +607,20 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
         return false;
     }
 
+    XHCIInterruptEndpointInfo ep_info{};
+    if (!XHCIFindFirstInterruptInEndpoint(g_xhci_caps, slot_result.slot_id, &ep_info) || !ep_info.ok) {
+        g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailFindEndpoint;
+        g_xhci_hid_auto_start_fail_ccode = 0;
+        return false;
+    }
+
     XHCIConfigureEndpointResult cfg_result{};
-    if (!XHCIConfigureInterruptInEndpoint(g_xhci_caps,
-                                          slot_result.slot_id,
-                                          mps,
-                                          interval,
-                                          &cfg_result) ||
+    if (!XHCIConfigureInterruptInEndpointEx(g_xhci_caps,
+                                            slot_result.slot_id,
+                                            ep_info.endpoint_id,
+                                            ep_info.max_packet_size ? ep_info.max_packet_size : mps,
+                                            ep_info.interval ? ep_info.interval : interval,
+                                            &cfg_result) ||
         !cfg_result.ok) {
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailConfigEndpoint;
         g_xhci_hid_auto_start_fail_ccode = cfg_result.completion_code;
@@ -619,10 +628,10 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
     }
 
     g_xhci_hid_auto_slot = slot_result.slot_id;
-    g_xhci_hid_auto_len = req_len;
+    g_xhci_hid_auto_len = ep_info.max_packet_size ? ep_info.max_packet_size : req_len;
     g_xhci_hid_decode_keyboard = false;  // Auto path is used for absolute pointer polling.
-    g_xhci_hid_auto_mps = mps;
-    g_xhci_hid_auto_interval = interval;
+    g_xhci_hid_auto_mps = ep_info.max_packet_size ? ep_info.max_packet_size : mps;
+    g_xhci_hid_auto_interval = ep_info.interval ? ep_info.interval : interval;
     g_xhci_hid_auto_enabled = true;
     g_xhci_hid_last_poll_tick = CurrentTick();
     g_xhci_hid_auto_consecutive_failures = 0;
