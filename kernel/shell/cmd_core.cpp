@@ -10,6 +10,7 @@
 #include "proc/scheduler.hpp"
 #include "shell/context.hpp"
 #include "shell/text.hpp"
+#include "usb/xhci.hpp"
 #include "arch/x86_64/syscall_entry.hpp"
 #include "syscall/syscall.hpp"
 #include "user/ring3.hpp"
@@ -38,6 +39,8 @@ extern uint8_t g_keyboard_last_key;
 extern bool g_keyboard_last_extended;
 extern bool g_keyboard_last_released;
 extern bool g_xhci_hid_auto_enabled;
+extern XHCICapabilityInfo g_xhci_caps;
+extern uint8_t g_last_xhci_slot_id;
 extern uint8_t g_xhci_hid_auto_slot;
 extern uint32_t g_xhci_hid_auto_len;
 extern uint64_t g_xhci_hid_auto_fail_count;
@@ -730,6 +733,12 @@ bool ExecuteInputDiagCommand() {
 
     console->Print("hid auto=");
     console->Print(g_xhci_hid_auto_enabled ? "on" : "off");
+    console->Print(" xhci.ready=");
+    console->Print(g_xhci_caps.valid ? "1" : "0");
+    console->Print(" ports=");
+    console->PrintDec(static_cast<int64_t>(g_xhci_caps.max_ports));
+    console->Print(" last_slot=");
+    console->PrintDec(static_cast<int64_t>(g_last_xhci_slot_id));
     console->Print(" slot=");
     console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_slot));
     console->Print(" len=");
