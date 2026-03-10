@@ -580,7 +580,7 @@ bool XHCIConfigureInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t sl
 
     uint32_t* icc = reinterpret_cast<uint32_t*>(ContextPtr(input_ctx, 0, ctx_size));
     icc[0] = 0;                      // Drop flags
-    icc[1] = (1u << 0) | (1u << 1) | (1u << 3);  // Add Slot + EP0 + EP1IN(DCI=3)
+    icc[1] = (1u << 0) | (1u << 3);  // Add Slot + EP1IN(DCI=3)
 
     // Update slot context entries to include DCI=3.
     uint32_t* slot_ctx = reinterpret_cast<uint32_t*>(in_slot);
@@ -594,7 +594,9 @@ bool XHCIConfigureInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t sl
     ep1in_ctx[1] = (3u << 1) | (7u << 3) | (static_cast<uint32_t>(max_packet_size) << 16); // CErr=3, Interrupt IN
     ep1in_ctx[2] = static_cast<uint32_t>(ep1_ring & 0xFFFFFFFFu);
     ep1in_ctx[3] = static_cast<uint32_t>(ep1_ring >> 32);
-    ep1in_ctx[4] = max_packet_size;
+    // Average TRB Length and Max ESIT Payload are both required for Interrupt endpoints.
+    ep1in_ctx[4] = static_cast<uint32_t>(max_packet_size) |
+                   (static_cast<uint32_t>(max_packet_size) << 16);
 
     TRB cmd{};
     const uint64_t input_ctx_ptr = reinterpret_cast<uint64_t>(input_ctx);
