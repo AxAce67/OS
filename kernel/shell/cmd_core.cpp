@@ -12,6 +12,7 @@
 #include "shell/text.hpp"
 #include "usb/xhci.hpp"
 #include "arch/x86_64/syscall_entry.hpp"
+#include "arch/x86_64/pci.hpp"
 #include "syscall/syscall.hpp"
 #include "user/ring3.hpp"
 
@@ -733,6 +734,9 @@ bool ExecuteInputDiagCommand() {
 
     console->Print("hid auto=");
     console->Print(g_xhci_hid_auto_enabled ? "on" : "off");
+    const XHCIControllerInfo& xhci = GetXHCIControllerInfo();
+    console->Print(" xhci.found=");
+    console->Print(xhci.found ? "1" : "0");
     console->Print(" xhci.ready=");
     console->Print(g_xhci_caps.valid ? "1" : "0");
     console->Print(" ports=");
