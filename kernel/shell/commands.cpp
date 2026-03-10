@@ -12,6 +12,7 @@ const char* const kBuiltInCommands[] = {
     "history",
     "clearhistory",
     "inputstat",
+    "inputdiag",
     "about",
     "pwd",
     "cd",

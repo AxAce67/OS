@@ -35,6 +35,15 @@ extern uint8_t g_keyboard_last_raw;
 extern uint8_t g_keyboard_last_key;
 extern bool g_keyboard_last_extended;
 extern bool g_keyboard_last_released;
+extern bool g_xhci_hid_auto_enabled;
+extern uint8_t g_xhci_hid_auto_slot;
+extern uint32_t g_xhci_hid_auto_len;
+extern uint64_t g_xhci_hid_auto_fail_count;
+extern uint64_t g_xhci_hid_auto_recover_count;
+extern uint64_t g_last_absolute_mouse_tick;
+extern uint8_t g_hid_format_mode;
+extern uint32_t g_hid_sample_count;
+extern bool g_hid_calibrated;
 extern uint64_t g_clip_rx_bytes;
 extern uint64_t g_clip_rx_lines;
 
@@ -303,7 +312,7 @@ bool ExecuteHelpCommand() {
     console->PrintLine("help: proc  runnext=1 runnable, runpass/runall=ready pass, resumeall=yielded pass, procs=state, procq=queues, schedreset=diag");
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
-    console->PrintLine("help: misc  history clearhistory inputstat about");
+    console->PrintLine("help: misc  history clearhistory inputstat inputdiag about");
     console->PrintLine("help: cfg   repeat layout ime(on/off/toggle/stat/save/import/export/resetlearn) set alias syscall ring3 xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcihidpoll xhcihidstat xhciauto xhciautostart mouseabs usbports");
     return true;
 }
@@ -657,6 +666,85 @@ bool ExecuteInputStatCommand() {
     console->Print(" clip.rx.bytes=");
     console->PrintDec(static_cast<int64_t>(g_clip_rx_bytes));
     console->Print(" clip.rx.lines=");
+    console->PrintDec(static_cast<int64_t>(g_clip_rx_lines));
+    console->Print("\n");
+    return true;
+}
+
+bool ExecuteInputDiagCommand() {
+    const char* hid_format = "unknown";
+    if (g_hid_format_mode == 1) {
+        hid_format = "A";
+    } else if (g_hid_format_mode == 2) {
+        hid_format = "B";
+    }
+
+    console->Print("kbd irq=");
+    console->PrintDec(static_cast<int64_t>(g_keyboard_irq_count));
+    console->Print(" raw=0x");
+    console->PrintHex(g_keyboard_last_raw, 2);
+    console->Print(" key=0x");
+    console->PrintHex(g_keyboard_last_key, 2);
+    console->Print(" ext=");
+    console->Print(g_keyboard_last_extended ? "1" : "0");
+    console->Print(" up=");
+    console->Print(g_keyboard_last_released ? "1" : "0");
+    console->Print(" dropped=");
+    console->PrintDec(static_cast<int64_t>(g_keyboard_dropped_events));
+    console->Print(" layout=");
+    console->Print(g_jp_layout ? "jp" : "us");
+    console->Print(" repeat=");
+    console->PrintLine(g_key_repeat_enabled ? "on" : "off");
+
+    console->Print("ime on=");
+    console->Print(g_ime_enabled ? "1" : "0");
+    console->Print(" font=");
+    console->Print(g_has_halfwidth_kana_font ? "halfkana" : "ascii");
+    console->Print(" dic=");
+    console->PrintDec(g_ime_user_candidate_count);
+    console->Print(" learn=");
+    console->PrintDec(CountImeLearningEntries());
+    console->Print("\n");
+
+    console->Print("mouse auto=");
+    console->Print(g_boot_mouse_auto_enabled ? "on" : "off");
+    console->Print(" btn=0x");
+    console->PrintHex(g_mouse_buttons_current, 2);
+    console->Print(" l=");
+    console->PrintDec(static_cast<int64_t>(g_mouse_left_press_count));
+    console->Print(" r=");
+    console->PrintDec(static_cast<int64_t>(g_mouse_right_press_count));
+    console->Print(" m=");
+    console->PrintDec(static_cast<int64_t>(g_mouse_middle_press_count));
+    console->Print(" dropped=");
+    console->PrintDec(static_cast<int64_t>(g_mouse_dropped_events));
+    console->Print(" last_abs_tick=");
+    console->PrintDec(static_cast<int64_t>(g_last_absolute_mouse_tick));
+    console->Print("\n");
+
+    console->Print("hid auto=");
+    console->Print(g_xhci_hid_auto_enabled ? "on" : "off");
+    console->Print(" slot=");
+    console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_slot));
+    console->Print(" len=");
+    console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_len));
+    console->Print(" kbd=");
+    console->Print(g_xhci_hid_decode_keyboard ? "on" : "off");
+    console->Print(" fmt=");
+    console->Print(hid_format);
+    console->Print(" samples=");
+    console->PrintDec(static_cast<int64_t>(g_hid_sample_count));
+    console->Print(" calib=");
+    console->Print(g_hid_calibrated ? "1" : "0");
+    console->Print(" fail=");
+    console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_fail_count));
+    console->Print(" recover=");
+    console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_recover_count));
+    console->Print("\n");
+
+    console->Print("clip rx.bytes=");
+    console->PrintDec(static_cast<int64_t>(g_clip_rx_bytes));
+    console->Print(" rx.lines=");
     console->PrintDec(static_cast<int64_t>(g_clip_rx_lines));
     console->Print("\n");
     return true;

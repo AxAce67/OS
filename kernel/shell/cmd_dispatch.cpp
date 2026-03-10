@@ -27,6 +27,7 @@ bool HandleTickTime(const char*, const char*, const char*, int*) { return Execut
 bool HandleUptime(const char*, const char*, const char*, int*) { return ExecuteUptimeCommand(); }
 bool HandleMem(const char*, const char*, const char*, int*) { return ExecuteMemCommand(); }
 bool HandleInputStat(const char*, const char*, const char*, int*) { return ExecuteInputStatCommand(); }
+bool HandleInputDiag(const char*, const char*, const char*, int*) { return ExecuteInputDiagCommand(); }
 bool HandleRepeat(const char*, const char*, const char* rest, int*) { return ExecuteRepeatCommand(rest); }
 bool HandleLayout(const char*, const char*, const char* rest, int*) { return ExecuteLayoutCommand(rest); }
 bool HandleIme(const char*, const char*, const char* rest, int*) { return ExecuteImeCommand(rest); }
@@ -71,6 +72,7 @@ const ShellCommandEntry kShellCommandTable[] = {
     {"uptime", HandleUptime},
     {"mem", HandleMem},
     {"inputstat", HandleInputStat},
+    {"inputdiag", HandleInputDiag},
     {"repeat", HandleRepeat},
     {"layout", HandleLayout},
     {"ime", HandleIme},

@@ -20,6 +20,7 @@ bool ExecuteTickTimeCommand();
 bool ExecuteUptimeCommand();
 bool ExecuteMemCommand();
 bool ExecuteInputStatCommand();
+bool ExecuteInputDiagCommand();
 bool ExecuteRepeatCommand(const char* rest);
 bool ExecuteLayoutCommand(const char* rest);
 bool ExecuteImeCommand(const char* rest);
