@@ -653,8 +653,8 @@ bool XHCIPollInterruptIn(const XHCICapabilityInfo& info, uint8_t slot_id, uint32
     trb.dword0 = static_cast<uint32_t>(buf_ptr & 0xFFFFFFFFu);
     trb.dword1 = static_cast<uint32_t>(buf_ptr >> 32);
     trb.dword2 = request_length;  // transfer length
-    // Normal TRB(Type=1), IOC=1, cycle=producer cycle.
-    trb.dword3 = (1u << 10) | (1u << 5) | (g_ep1_cycle_bits[idx] ? 1u : 0u);
+    // Normal TRB(Type=1), ISP=1, IOC=1, cycle=producer cycle.
+    trb.dword3 = (1u << 10) | (1u << 5) | (1u << 2) | (g_ep1_cycle_bits[idx] ? 1u : 0u);
     g_ep1in_rings[idx][enqueue] = trb;
 
     ++enqueue;
