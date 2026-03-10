@@ -2737,6 +2737,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             term_console_layer->GetY(),
                             console->PixelWidth(),
                             console->PixelHeight());
+        mouse_cursor->Redraw();
     };
     auto RefreshInputLine = [&]() {
         int x = term_console_layer->GetX() + Console::kMarginX + input_col * Console::kCellWidth;
@@ -2757,6 +2758,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (w < 1) w = 1;
         if (h < 1) h = 1;
         layer_manager->Draw(x, y, w, h);
+        mouse_cursor->Redraw();
     };
     auto EnsureLiveConsole = [&]() {
         if (console->IsScrolled()) {
