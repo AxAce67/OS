@@ -41,7 +41,7 @@ const char* XhciHidPollReasonName(uint32_t reason) {
         case 0:
             return "none";
         case 1:
-            return "timeout";
+            return "no_data";
         case 2:
             return "transfer";
         case 3:

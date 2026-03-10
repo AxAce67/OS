@@ -84,7 +84,7 @@ constexpr uint32_t kXhciHidAutoStartFailSetConfiguration = 6;
 constexpr uint32_t kXhciHidAutoStartFailFindEndpoint = 7;
 constexpr uint32_t kXhciHidAutoStartFailConfigEndpoint = 8;
 constexpr uint32_t kXhciHidPollReasonNone = 0;
-constexpr uint32_t kXhciHidPollReasonTimeout = 1;
+constexpr uint32_t kXhciHidPollReasonNoData = 1;
 constexpr uint32_t kXhciHidPollReasonTransfer = 2;
 constexpr uint32_t kXhciHidPollReasonDecode = 3;
 
@@ -117,8 +117,8 @@ const char* XhciHidPollReasonName(uint32_t reason) {
     switch (reason) {
         case kXhciHidPollReasonNone:
             return "none";
-        case kXhciHidPollReasonTimeout:
-            return "timeout";
+        case kXhciHidPollReasonNoData:
+            return "no_data";
         case kXhciHidPollReasonTransfer:
             return "transfer";
         case kXhciHidPollReasonDecode:

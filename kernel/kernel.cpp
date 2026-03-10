@@ -186,7 +186,7 @@ const uint32_t kXhciHidAutoStartFailSetConfiguration = 6;
 const uint32_t kXhciHidAutoStartFailFindEndpoint = 7;
 const uint32_t kXhciHidAutoStartFailConfigEndpoint = 8;
 const uint32_t kXhciHidPollReasonNone = 0;
-const uint32_t kXhciHidPollReasonTimeout = 1;
+const uint32_t kXhciHidPollReasonNoData = 1;
 const uint32_t kXhciHidPollReasonTransfer = 2;
 const uint32_t kXhciHidPollReasonDecode = 3;
 uint8_t g_hid_format_mode = 0;  // 0=unknown,1=A,2=B
@@ -446,11 +446,11 @@ void ResetHIDDecodeLearning() {
 bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t timeout_iters = 3000000) {
     XHCIInterruptInResult rr{};
     if (!XHCIPollInterruptIn(g_xhci_caps, slot, req_len, &rr, timeout_iters)) {
-        g_xhci_hid_last_poll_reason = kXhciHidPollReasonTimeout;
+        g_xhci_hid_last_poll_reason = kXhciHidPollReasonNoData;
         g_xhci_hid_last_poll_ccode = 0;
         g_xhci_hid_last_poll_length = 0;
         if (verbose) {
-            console->PrintLine("xhcihidpoll: timeout/fail");
+            console->PrintLine("xhcihidpoll: no data");
         }
         return false;
     }
@@ -666,6 +666,9 @@ bool HandleXHCIAutoPollOnIdle() {
         if (PollHIDAndApply(g_xhci_hid_auto_slot, g_xhci_hid_auto_len, false)) {
             g_xhci_hid_auto_consecutive_failures = 0;
             return true;
+        }
+        if (g_xhci_hid_last_poll_reason == kXhciHidPollReasonNoData) {
+            return false;
         }
         ++g_xhci_hid_auto_fail_count;
         ++g_xhci_hid_auto_consecutive_failures;
