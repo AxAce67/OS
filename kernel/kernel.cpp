@@ -182,7 +182,8 @@ const uint32_t kXhciHidAutoStartFailRingInit = 2;
 const uint32_t kXhciHidAutoStartFailEnableSlot = 3;
 const uint32_t kXhciHidAutoStartFailFindPort = 4;
 const uint32_t kXhciHidAutoStartFailAddressDevice = 5;
-const uint32_t kXhciHidAutoStartFailConfigEndpoint = 6;
+const uint32_t kXhciHidAutoStartFailSetConfiguration = 6;
+const uint32_t kXhciHidAutoStartFailConfigEndpoint = 7;
 const uint32_t kXhciHidPollReasonNone = 0;
 const uint32_t kXhciHidPollReasonTimeout = 1;
 const uint32_t kXhciHidPollReasonTransfer = 2;
@@ -591,6 +592,17 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
         !addr_result.ok) {
         g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailAddressDevice;
         g_xhci_hid_auto_start_fail_ccode = addr_result.completion_code;
+        return false;
+    }
+
+    XHCIControlTransferResult set_config_result{};
+    if (!XHCISetConfiguration(g_xhci_caps,
+                              slot_result.slot_id,
+                              1,
+                              &set_config_result) ||
+        !set_config_result.ok) {
+        g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailSetConfiguration;
+        g_xhci_hid_auto_start_fail_ccode = set_config_result.completion_code;
         return false;
     }
 
