@@ -197,6 +197,30 @@ struct SchedulerPassSpec {
     PassStopPolicy stop_policy;
 };
 
+SchedulerPassSpec MakeReadyPassSpec() {
+    return SchedulerPassSpec{
+        PassSelectPolicy::kReady,
+        nullptr,
+        PassStopPolicy::kStopOnYielded,
+    };
+}
+
+SchedulerPassSpec MakeYieldedPassSpec() {
+    return SchedulerPassSpec{
+        PassSelectPolicy::kYielded,
+        nullptr,
+        PassStopPolicy::kStopOnYielded,
+    };
+}
+
+SchedulerPassSpec MakeAutoScheduledPassSpec() {
+    return SchedulerPassSpec{
+        PassSelectPolicy::kAutoScheduled,
+        AccountAutoScheduledResult,
+        PassStopPolicy::kStopOnYielded,
+    };
+}
+
 int RunSelectedProcessPass(uint64_t now_tick,
                            proc::BootFileLookup lookup,
                            const SchedulerPassSpec& spec,
@@ -351,20 +375,12 @@ bool RunNextReadyProcess(proc::BootFileLookup lookup, RunResult* out_result) {
 }
 
 int RunAllReadyProcesses(proc::BootFileLookup lookup, RunResult* out_results, int max_results) {
-    const SchedulerPassSpec spec{
-        PassSelectPolicy::kReady,
-        nullptr,
-        PassStopPolicy::kStopOnYielded,
-    };
+    const SchedulerPassSpec spec = MakeReadyPassSpec();
     return RunSelectedProcessPass(0, lookup, spec, out_results, max_results);
 }
 
 int RunAllYieldedProcesses(proc::BootFileLookup lookup, RunResult* out_results, int max_results) {
-    const SchedulerPassSpec spec{
-        PassSelectPolicy::kYielded,
-        nullptr,
-        PassStopPolicy::kStopOnYielded,
-    };
+    const SchedulerPassSpec spec = MakeYieldedPassSpec();
     return RunSelectedProcessPass(0, lookup, spec, out_results, max_results);
 }
 
@@ -377,11 +393,7 @@ int RunAutoScheduledTick(uint64_t now_tick,
                          RunResult* out_results,
                          int max_results) {
     g_pass_tick_context = now_tick;
-    const SchedulerPassSpec spec{
-        PassSelectPolicy::kAutoScheduled,
-        AccountAutoScheduledResult,
-        PassStopPolicy::kStopOnYielded,
-    };
+    const SchedulerPassSpec spec = MakeAutoScheduledPassSpec();
     return RunSelectedProcessPass(now_tick, lookup, spec, out_results, max_results);
 }
 
