@@ -80,6 +80,62 @@ bool RunProcessAndCollectResult(const proc::Info& info,
     return out_result->ok;
 }
 
+bool DequeueNextRunnableInfo(proc::Info* out_info) {
+    if (out_info == nullptr) {
+        return false;
+    }
+    if (!proc::PeekNextRunnableProcess(out_info)) {
+        return false;
+    }
+    proc::AdvanceRunnableProcessCursor();
+    return true;
+}
+
+bool DequeueNextReadyInfo(proc::Info* out_info) {
+    if (out_info == nullptr) {
+        return false;
+    }
+    if (!proc::PeekNextRunnableProcess(out_info)) {
+        return false;
+    }
+    if (out_info->state != proc::State::kReady) {
+        return false;
+    }
+    proc::AdvanceRunnableProcessCursor();
+    return true;
+}
+
+bool DequeueNextYieldedInfo(proc::Info* out_info) {
+    if (out_info == nullptr) {
+        return false;
+    }
+    if (!proc::PeekNextYieldedProcess(out_info)) {
+        return false;
+    }
+    proc::AdvanceYieldedProcessCursor();
+    return true;
+}
+
+bool DequeueAutoScheduledInfoForTick(uint64_t now_tick, proc::Info* out_info) {
+    if (!g_auto_schedule_enabled) {
+        return false;
+    }
+    if (g_autosched_rearm_pending || now_tick != g_last_autosched_tick) {
+        g_last_autosched_tick = now_tick;
+        ++g_autosched_tick_count;
+        g_tick_burst_remaining = kAutoScheduleBurstLimit;
+        g_autosched_rearm_pending = false;
+    }
+    if (g_tick_burst_remaining <= 0) {
+        return false;
+    }
+    if (!DequeueNextRunnableInfo(out_info)) {
+        return false;
+    }
+    --g_tick_burst_remaining;
+    return true;
+}
+
 }  // namespace
 
 const char* PolicyName() {
@@ -190,10 +246,9 @@ bool RunNextRunnableProcess(proc::BootFileLookup lookup, RunResult* out_result) 
         return false;
     }
     proc::Info info{};
-    if (!proc::PeekNextRunnableProcess(&info)) {
+    if (!DequeueNextRunnableInfo(&info)) {
         return false;
     }
-    proc::AdvanceRunnableProcessCursor();
     return RunProcessAndCollectResult(info, lookup, out_result);
 }
 
@@ -202,13 +257,9 @@ bool RunNextReadyProcess(proc::BootFileLookup lookup, RunResult* out_result) {
         return false;
     }
     proc::Info info{};
-    if (!proc::PeekNextRunnableProcess(&info)) {
+    if (!DequeueNextReadyInfo(&info)) {
         return false;
     }
-    if (info.state != proc::State::kReady) {
-        return false;
-    }
-    proc::AdvanceRunnableProcessCursor();
     return RunProcessAndCollectResult(info, lookup, out_result);
 }
 
@@ -233,10 +284,9 @@ int RunAllYieldedProcesses(proc::BootFileLookup lookup, RunResult* out_results, 
     int ran = 0;
     while (ran < max_results) {
         proc::Info info{};
-        if (!proc::PeekNextYieldedProcess(&info)) {
+        if (!DequeueNextYieldedInfo(&info)) {
             break;
         }
-        proc::AdvanceYieldedProcessCursor();
         RunProcessAndCollectResult(info, lookup, &out_results[ran]);
         ++ran;
         if (out_results[ran - 1].final_info.state == proc::State::kYielded) {
@@ -247,24 +297,7 @@ int RunAllYieldedProcesses(proc::BootFileLookup lookup, RunResult* out_results, 
 }
 
 bool DequeueAutoScheduledProcessForTick(uint64_t now_tick, proc::Info* out_info) {
-    if (!g_auto_schedule_enabled) {
-        return false;
-    }
-    if (g_autosched_rearm_pending || now_tick != g_last_autosched_tick) {
-        g_last_autosched_tick = now_tick;
-        ++g_autosched_tick_count;
-        g_tick_burst_remaining = kAutoScheduleBurstLimit;
-        g_autosched_rearm_pending = false;
-    }
-    if (g_tick_burst_remaining <= 0) {
-        return false;
-    }
-    if (!proc::PeekNextRunnableProcess(out_info)) {
-        return false;
-    }
-    proc::AdvanceRunnableProcessCursor();
-    --g_tick_burst_remaining;
-    return true;
+    return DequeueAutoScheduledInfoForTick(now_tick, out_info);
 }
 
 int RunAutoScheduledTick(uint64_t now_tick,
