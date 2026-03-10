@@ -1,4 +1,5 @@
 #include "xhci.hpp"
+#include "arch/x86_64/timer.hpp"
 
 namespace {
 struct alignas(16) TRB {
@@ -176,10 +177,17 @@ bool WaitTransferEvent(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t 
     if (out_result == nullptr) {
         return false;
     }
-    for (uint32_t i = 0; i < timeout_iters; ++i) {
+    const uint64_t start_tick = CurrentTick();
+    const bool use_tick_timeout = (start_tick != 0);
+    for (uint32_t i = 0;; ++i) {
         TRB& ev = g_event_ring[g_event_dequeue_index];
         const uint8_t cycle = static_cast<uint8_t>(ev.dword3 & 1u);
         if (cycle != g_event_cycle_bit) {
+            if (i >= timeout_iters &&
+                (!use_tick_timeout || CurrentTick() != start_tick)) {
+                break;
+            }
+            __asm__ volatile("pause");
             continue;
         }
 
