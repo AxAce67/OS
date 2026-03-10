@@ -152,6 +152,10 @@ void AccountAutoScheduledResult(uint64_t now_tick, const RunResult& result) {
     g_last_yield_tick = now_tick;
 }
 
+bool ShouldStopPassAfterResult(const RunResult& result) {
+    return result.final_info.state == proc::State::kYielded;
+}
+
 using SelectInfoFn = bool (*)(proc::Info*);
 using AccountResultFn = void (*)(uint64_t, const RunResult&);
 
@@ -175,7 +179,7 @@ int RunSelectedProcessPass(uint64_t now_tick,
             account_result(now_tick, out_results[ran]);
         }
         ++ran;
-        if (out_results[ran - 1].final_info.state == proc::State::kYielded) {
+        if (ShouldStopPassAfterResult(out_results[ran - 1])) {
             break;
         }
     }
