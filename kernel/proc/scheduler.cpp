@@ -156,9 +156,30 @@ bool ShouldStopPassAfterResult(const RunResult& result) {
     return result.final_info.state == proc::State::kYielded;
 }
 
+enum class PassSelectPolicy : uint8_t {
+    kRunnable = 0,
+    kReady,
+    kYielded,
+    kAutoScheduled,
+};
+
 enum class PassStopPolicy : uint8_t {
     kStopOnYielded = 0,
 };
+
+bool SelectProcessForPolicy(PassSelectPolicy policy, proc::Info* out_info) {
+    switch (policy) {
+        case PassSelectPolicy::kRunnable:
+            return DequeueNextRunnableInfo(out_info);
+        case PassSelectPolicy::kReady:
+            return DequeueNextReadyInfo(out_info);
+        case PassSelectPolicy::kYielded:
+            return DequeueNextYieldedInfo(out_info);
+        case PassSelectPolicy::kAutoScheduled:
+            return DequeueAutoScheduledInfoFromContext(out_info);
+    }
+    return false;
+}
 
 bool ShouldStopPassForPolicy(PassStopPolicy policy, const RunResult& result) {
     switch (policy) {
@@ -168,23 +189,22 @@ bool ShouldStopPassForPolicy(PassStopPolicy policy, const RunResult& result) {
     return false;
 }
 
-using SelectInfoFn = bool (*)(proc::Info*);
 using AccountResultFn = void (*)(uint64_t, const RunResult&);
 
 int RunSelectedProcessPass(uint64_t now_tick,
                            proc::BootFileLookup lookup,
-                           SelectInfoFn select_info,
+                           PassSelectPolicy select_policy,
                            AccountResultFn account_result,
                            PassStopPolicy stop_policy,
                            RunResult* out_results,
                            int max_results) {
-    if (lookup == nullptr || select_info == nullptr || out_results == nullptr || max_results <= 0) {
+    if (lookup == nullptr || out_results == nullptr || max_results <= 0) {
         return 0;
     }
     int ran = 0;
     while (ran < max_results) {
         proc::Info info{};
-        if (!select_info(&info)) {
+        if (!SelectProcessForPolicy(select_policy, &info)) {
             break;
         }
         RunProcessAndCollectResult(info, lookup, &out_results[ran]);
@@ -327,12 +347,12 @@ bool RunNextReadyProcess(proc::BootFileLookup lookup, RunResult* out_result) {
 }
 
 int RunAllReadyProcesses(proc::BootFileLookup lookup, RunResult* out_results, int max_results) {
-    return RunSelectedProcessPass(0, lookup, DequeueNextReadyInfo, nullptr,
+    return RunSelectedProcessPass(0, lookup, PassSelectPolicy::kReady, nullptr,
                                   PassStopPolicy::kStopOnYielded, out_results, max_results);
 }
 
 int RunAllYieldedProcesses(proc::BootFileLookup lookup, RunResult* out_results, int max_results) {
-    return RunSelectedProcessPass(0, lookup, DequeueNextYieldedInfo, nullptr,
+    return RunSelectedProcessPass(0, lookup, PassSelectPolicy::kYielded, nullptr,
                                   PassStopPolicy::kStopOnYielded, out_results, max_results);
 }
 
@@ -345,7 +365,7 @@ int RunAutoScheduledTick(uint64_t now_tick,
                          RunResult* out_results,
                          int max_results) {
     g_pass_tick_context = now_tick;
-    return RunSelectedProcessPass(now_tick, lookup, DequeueAutoScheduledInfoFromContext,
+    return RunSelectedProcessPass(now_tick, lookup, PassSelectPolicy::kAutoScheduled,
                                   AccountAutoScheduledResult, PassStopPolicy::kStopOnYielded,
                                   out_results, max_results);
 }
