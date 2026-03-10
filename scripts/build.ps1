@@ -4,6 +4,7 @@ param(
     [switch]$NoRun,
     [switch]$UseWhpx,
     [switch]$UseUsbTablet,
+    [switch]$NoUsbTablet,
     [switch]$StrictDisk,
     [switch]$Smoke,
     [switch]$NoClipBridge
@@ -11,6 +12,14 @@ param(
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
+
+$enableUsbTablet = $true
+if ($NoUsbTablet) {
+    $enableUsbTablet = $false
+}
+elseif ($UseUsbTablet) {
+    $enableUsbTablet = $true
+}
 
 function Test-ToolExists {
     param(
@@ -386,7 +395,7 @@ $qemuArgs = @(
     "-machine", "q35",
     "-drive", $pflashArg
 )
-if ($UseUsbTablet) {
+if ($enableUsbTablet) {
     $qemuArgs += @("-device", "qemu-xhci,msi=off", "-device", "usb-tablet")
 }
 $qemuArgs += @("-drive", "format=raw,file=fat:rw:disk")
@@ -414,7 +423,7 @@ if ($Smoke) {
         "-machine", "q35",
         "-drive", $pflashArgForStartProcess
     )
-    if ($UseUsbTablet) {
+    if ($enableUsbTablet) {
         $qemuSmokeArgs += @("-device", "qemu-xhci,msi=off", "-device", "usb-tablet")
     }
     $qemuSmokeArgs += @(
