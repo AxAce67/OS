@@ -313,6 +313,25 @@ uint16_t DefaultControlMaxPacketSize(uint8_t speed) {
     }
 }
 
+uint8_t EncodeInterruptIntervalForXhci(uint8_t speed, uint8_t interval) {
+    if (interval == 0) {
+        interval = 1;
+    }
+    if (speed == 1 || speed == 2) {
+        uint8_t encoded = 0;
+        uint8_t value = interval;
+        while (value > 1) {
+            value >>= 1;
+            ++encoded;
+        }
+        return static_cast<uint8_t>(encoded + 3);
+    }
+    if (interval > 16) {
+        interval = 16;
+    }
+    return static_cast<uint8_t>(interval - 1);
+}
+
 int SlotIndexFromId(uint8_t slot_id) {
     if (slot_id == 0 || slot_id > kXHCIMaxManagedSlots) {
         return -1;
@@ -700,7 +719,9 @@ bool XHCIConfigureInterruptInEndpointEx(const XHCICapabilityInfo& info, uint8_t 
     const int ep_ctx_index = static_cast<int>(endpoint_id) + 1;
     uint32_t* ep1in_ctx = reinterpret_cast<uint32_t*>(ContextPtr(input_ctx, ep_ctx_index, ctx_size));
     const uint64_t ep1_ring = reinterpret_cast<uint64_t>(&g_ep1in_rings[idx][0]) | 1u;
-    ep1in_ctx[0] = (static_cast<uint32_t>(interval) << 16); // Interval
+    const uint8_t encoded_interval =
+        EncodeInterruptIntervalForXhci(g_slot_states[idx].port_speed, interval);
+    ep1in_ctx[0] = (static_cast<uint32_t>(encoded_interval) << 16); // Interval
     ep1in_ctx[1] = (3u << 1) | (7u << 3) | (static_cast<uint32_t>(max_packet_size) << 16); // CErr=3, Interrupt IN
     ep1in_ctx[2] = static_cast<uint32_t>(ep1_ring & 0xFFFFFFFFu);
     ep1in_ctx[3] = static_cast<uint32_t>(ep1_ring >> 32);
