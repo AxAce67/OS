@@ -63,6 +63,9 @@ const char* const kBuiltInCommands[] = {
     "xhciauto",
     "xhciautostart",
     "mouseabs",
+    "mousepos",
+    "mousebtn",
+    "mouseclick",
     "usbports",
 };
 

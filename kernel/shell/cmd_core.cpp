@@ -386,7 +386,7 @@ bool ExecuteHelpCommand() {
     console->PrintLine("help: fs1   pwd cd mkdir touch write append cp");
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
     console->PrintLine("help: misc  history clearhistory inputstat inputdiag about");
-    console->PrintLine("help: cfg   repeat layout ime(on/off/toggle/stat/save/import/export/resetlearn) set alias syscall ring3 xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcidesc xhcihidpoll xhcihidwatch xhcihidstat xhciauto xhciautostart mouseabs usbports");
+    console->PrintLine("help: cfg   repeat layout ime(on/off/toggle/stat/save/import/export/resetlearn) set alias syscall ring3 xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcidesc xhcihidpoll xhcihidwatch xhcihidstat xhciauto xhciautostart mouseabs mousepos mousebtn mouseclick usbports");
     return true;
 }
 

@@ -1,11 +1,13 @@
 #include <stdint.h>
 #include "console.hpp"
+#include "graphics/mouse.hpp"
 #include "usb/xhci.hpp"
 #include "timer.hpp"
 #include "shell/text.hpp"
 #include "shell/cmd_xhci.hpp"
 
 extern Console* console;
+extern MouseCursor* mouse_cursor;
 extern XHCICapabilityInfo g_xhci_caps;
 extern uint8_t g_last_xhci_slot_id;
 extern bool g_xhci_hid_auto_enabled;
@@ -35,6 +37,7 @@ extern uint16_t g_hid_min_y;
 extern uint16_t g_hid_max_x;
 extern uint16_t g_hid_max_y;
 extern uint8_t g_hid_buttons_mask;
+extern uint8_t g_mouse_buttons_current;
 
 int ParseInt(const char* s);
 void ResetHIDDecodeLearning();
@@ -760,6 +763,77 @@ bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
         int x = ParseInt(sx);
         int y = ParseInt(sy);
         EnqueueAbsolutePointerEvent(x, y, 0);
+        return true;
+    }
+
+    if (StrEqual(cmd, "mousepos")) {
+        if (mouse_cursor == nullptr) {
+            console->PrintLine("mousepos: cursor unavailable");
+            return true;
+        }
+        console->Print("mousepos: x=");
+        console->PrintDec(mouse_cursor->X());
+        console->Print(" y=");
+        console->PrintDec(mouse_cursor->Y());
+        console->Print(" btn=0x");
+        console->PrintHex(g_mouse_buttons_current, 2);
+        console->Print(" abs_tick=");
+        console->PrintDec(static_cast<int64_t>(g_last_absolute_mouse_tick));
+        console->Print("\n");
+        return true;
+    }
+
+    if (StrEqual(cmd, "mousebtn")) {
+        if (mouse_cursor == nullptr) {
+            console->PrintLine("mousebtn: cursor unavailable");
+            return true;
+        }
+        char smask[16];
+        if (!NextToken(command, &pos, smask, sizeof(smask))) {
+            console->Print("mousebtn: btn=0x");
+            console->PrintHex(g_mouse_buttons_current, 2);
+            console->Print("\n");
+            return true;
+        }
+        int mask = ParseInt(smask);
+        if (mask < 0 || mask > 255) {
+            console->PrintLine("mousebtn: mask must be 0..255");
+            return true;
+        }
+        EnqueueAbsolutePointerEvent(mouse_cursor->X(), mouse_cursor->Y(), 0,
+                                    static_cast<uint8_t>(mask));
+        console->Print("mousebtn: btn=0x");
+        console->PrintHex(static_cast<uint8_t>(mask), 2);
+        console->Print("\n");
+        return true;
+    }
+
+    if (StrEqual(cmd, "mouseclick")) {
+        if (mouse_cursor == nullptr) {
+            console->PrintLine("mouseclick: cursor unavailable");
+            return true;
+        }
+        char which[16];
+        if (!NextToken(command, &pos, which, sizeof(which))) {
+            console->PrintLine("mouseclick: use left/right/middle");
+            return true;
+        }
+        uint8_t mask = 0;
+        if (StrEqual(which, "left")) {
+            mask = 1;
+        } else if (StrEqual(which, "right")) {
+            mask = 2;
+        } else if (StrEqual(which, "middle")) {
+            mask = 4;
+        } else {
+            console->PrintLine("mouseclick: use left/right/middle");
+            return true;
+        }
+        EnqueueAbsolutePointerEvent(mouse_cursor->X(), mouse_cursor->Y(), 0, mask);
+        EnqueueAbsolutePointerEvent(mouse_cursor->X(), mouse_cursor->Y(), 0, 0);
+        console->Print("mouseclick: ");
+        console->Print(which);
+        console->Print("\n");
         return true;
     }
 
