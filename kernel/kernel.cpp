@@ -205,6 +205,12 @@ uint16_t g_hid_min_x = 0xFFFF;
 uint16_t g_hid_min_y = 0xFFFF;
 uint16_t g_hid_max_x = 0;
 uint16_t g_hid_max_y = 0;
+uint16_t g_hid_last_raw_x = 0;
+uint16_t g_hid_last_raw_y = 0;
+uint16_t g_hid_last_clamped_x = 0;
+uint16_t g_hid_last_clamped_y = 0;
+int g_hid_last_mapped_x = -1;
+int g_hid_last_mapped_y = -1;
 int g_hid_smooth_x = -1;
 int g_hid_smooth_y = -1;
 const int kHidSmoothAlphaNum = 1;  // 1/6 EMA
@@ -362,6 +368,8 @@ bool DecodeHIDAbsoluteXY(const uint8_t* data, uint32_t len, int* out_x, int* out
     if (raw_x > g_hid_observed_max_raw) g_hid_observed_max_raw = raw_x;
     if (raw_y > g_hid_observed_max_raw) g_hid_observed_max_raw = raw_y;
     ++g_hid_sample_count;
+    g_hid_last_raw_x = raw_x;
+    g_hid_last_raw_y = raw_y;
 
     uint32_t max_raw = 0xFFFFu;
     if (g_hid_observed_max_raw <= 0x7FFFu && g_hid_sample_count >= 8) {
@@ -399,6 +407,8 @@ bool DecodeHIDAbsoluteXY(const uint8_t* data, uint32_t len, int* out_x, int* out
 
     uint16_t cx = ClampU16(raw_x, use_min_x, use_max_x);
     uint16_t cy = ClampU16(raw_y, use_min_y, use_max_y);
+    g_hid_last_clamped_x = cx;
+    g_hid_last_clamped_y = cy;
 
     const int w = ScreenWidth();
     const int h = ScreenHeight();
@@ -414,6 +424,8 @@ bool DecodeHIDAbsoluteXY(const uint8_t* data, uint32_t len, int* out_x, int* out
     }
     px = ClampInt(px, 0, w - 1);
     py = ClampInt(py, 0, h - 1);
+    g_hid_last_mapped_x = px;
+    g_hid_last_mapped_y = py;
 
     if (g_hid_smooth_x < 0 || g_hid_smooth_y < 0) {
         g_hid_smooth_x = px;
@@ -443,6 +455,12 @@ void ResetHIDDecodeLearning() {
     g_hid_min_y = 0xFFFF;
     g_hid_max_x = 0;
     g_hid_max_y = 0;
+    g_hid_last_raw_x = 0;
+    g_hid_last_raw_y = 0;
+    g_hid_last_clamped_x = 0;
+    g_hid_last_clamped_y = 0;
+    g_hid_last_mapped_x = -1;
+    g_hid_last_mapped_y = -1;
     g_hid_smooth_x = -1;
     g_hid_smooth_y = -1;
     g_hid_buttons_mask = 0;
@@ -525,7 +543,7 @@ bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t time
         const int ady = (dy < 0) ? -dy : dy;
         if (wheel == 0 &&
             buttons == g_last_abs_dispatched_buttons &&
-            adx <= 3 && ady <= 3) {
+            adx <= 1 && ady <= 1) {
             return true;
         }
     }

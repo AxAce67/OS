@@ -61,6 +61,10 @@ extern uint64_t g_last_absolute_mouse_tick;
 extern uint8_t g_hid_format_mode;
 extern uint32_t g_hid_sample_count;
 extern bool g_hid_calibrated;
+extern uint16_t g_hid_last_raw_x;
+extern uint16_t g_hid_last_raw_y;
+extern int g_hid_last_mapped_x;
+extern int g_hid_last_mapped_y;
 extern uint64_t g_clip_rx_bytes;
 extern uint64_t g_clip_rx_lines;
 
@@ -828,6 +832,16 @@ bool ExecuteInputDiagCommand() {
     console->PrintDec(static_cast<int64_t>(g_hid_sample_count));
     console->Print(" calib=");
     console->Print(g_hid_calibrated ? "1" : "0");
+    console->Print(" raw=(");
+    console->PrintDec(static_cast<int64_t>(g_hid_last_raw_x));
+    console->Print(",");
+    console->PrintDec(static_cast<int64_t>(g_hid_last_raw_y));
+    console->Print(")");
+    console->Print(" map=(");
+    console->PrintDec(static_cast<int64_t>(g_hid_last_mapped_x));
+    console->Print(",");
+    console->PrintDec(static_cast<int64_t>(g_hid_last_mapped_y));
+    console->Print(")");
     console->Print(" start_fail=");
     console->Print(XhciHidAutoStartFailReasonName(g_xhci_hid_auto_start_fail_reason));
     console->Print(" ccode=");
