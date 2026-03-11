@@ -2925,7 +2925,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     constexpr uint64_t kSystemInfoBackgroundIntervalTicks = 480;
     uint64_t next_system_info_tick = 0;
     uint64_t last_pointer_move_tick = 0;
-    uint64_t last_drag_redraw_tick = 0;
     uint64_t last_pointer_redraw_tick = 0;
     bool drag_visual_dirty = false;
     int pointer_logical_x = mouse_cursor->X() + 1;
@@ -4153,13 +4152,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         titlebar_visual_dirty = false;
         return true;
     };
-    auto FlushDragCompositorIfNeeded = [&](uint64_t now_tick) -> bool {
-        if (!drag_visual_dirty || (now_tick == last_drag_redraw_tick && dragging_window >= 0)) {
+    auto FlushDragCompositorIfNeeded = [&]() -> bool {
+        if (!drag_visual_dirty) {
             return false;
         }
         FlushPendingDrag();
         drag_visual_dirty = false;
-        last_drag_redraw_tick = now_tick;
         return true;
     };
     auto RedrawPointerAfterCompositor = [&](bool compositor_drew, uint64_t now_tick) {
@@ -4194,7 +4192,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
     auto ProcessCompositorUpdates = [&]() {
         const uint64_t now_tick = CurrentTick();
-        const bool drag_drew = FlushDragCompositorIfNeeded(now_tick);
+        const bool drag_drew = FlushDragCompositorIfNeeded();
         const bool chrome_drew = DrawFocusFrames();
         const bool compositor_drew = drag_drew || chrome_drew;
         RedrawPointerAfterCompositor(compositor_drew, now_tick);
@@ -4231,8 +4229,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     HandleMouseMessage(msg);
                     const int pointer_x = pointer_logical_x - 1;
                     const int pointer_y = pointer_logical_y - 1;
-                    const int current_title_button = HitTestTitlebarButton(pointer_x, pointer_y);
-                    const int hovered_taskbar_button = HitTestTaskbarButton(pointer_x, pointer_y);
+                    const bool dragging_active = dragging_window >= 0 || drag_pending_move;
+                    const int current_title_button =
+                        dragging_active ? -1 : HitTestTitlebarButton(pointer_x, pointer_y);
+                    const int hovered_taskbar_button =
+                        dragging_active ? -1 : HitTestTaskbarButton(pointer_x, pointer_y);
                     if (current_title_button != hovered_title_button) {
                         hovered_title_button = current_title_button;
                         titlebar_visual_dirty = true;
