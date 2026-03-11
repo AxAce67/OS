@@ -213,8 +213,8 @@ int g_hid_last_mapped_x = -1;
 int g_hid_last_mapped_y = -1;
 int g_hid_smooth_x = -1;
 int g_hid_smooth_y = -1;
-const int kHidSmoothAlphaNum = 1;  // 1/6 EMA
-const int kHidSmoothAlphaDen = 6;
+int g_mouse_smooth_divisor = 6;
+int g_mouse_tiny_move_suppress = 1;
 uint8_t g_hid_buttons_mask = 0;
 uint8_t g_mouse_buttons_current = 0;
 uint64_t g_mouse_left_press_count = 0;
@@ -407,12 +407,13 @@ bool DecodeHIDAbsoluteXY(const uint8_t* data, uint32_t len, int* out_x, int* out
     g_hid_last_mapped_x = px;
     g_hid_last_mapped_y = py;
 
-    if (g_hid_smooth_x < 0 || g_hid_smooth_y < 0) {
+    if (g_hid_smooth_x < 0 || g_hid_smooth_y < 0 || g_mouse_smooth_divisor <= 1) {
         g_hid_smooth_x = px;
         g_hid_smooth_y = py;
     } else {
-        g_hid_smooth_x = (g_hid_smooth_x * (kHidSmoothAlphaDen - kHidSmoothAlphaNum) + px * kHidSmoothAlphaNum) / kHidSmoothAlphaDen;
-        g_hid_smooth_y = (g_hid_smooth_y * (kHidSmoothAlphaDen - kHidSmoothAlphaNum) + py * kHidSmoothAlphaNum) / kHidSmoothAlphaDen;
+        const int den = g_mouse_smooth_divisor;
+        g_hid_smooth_x = (g_hid_smooth_x * (den - 1) + px) / den;
+        g_hid_smooth_y = (g_hid_smooth_y * (den - 1) + py) / den;
     }
 
     *out_x = g_hid_smooth_x;
@@ -523,7 +524,7 @@ bool PollHIDAndApply(uint8_t slot, uint32_t req_len, bool verbose, uint32_t time
         const int ady = (dy < 0) ? -dy : dy;
         if (wheel == 0 &&
             buttons == g_last_abs_dispatched_buttons &&
-            adx <= 1 && ady <= 1) {
+            adx <= g_mouse_tiny_move_suppress && ady <= g_mouse_tiny_move_suppress) {
             return true;
         }
     }

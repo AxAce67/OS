@@ -58,6 +58,8 @@ extern uint64_t g_xhci_hid_auto_last_recover_tick;
 extern uint32_t g_xhci_hid_auto_start_fail_reason;
 extern uint8_t g_xhci_hid_auto_start_fail_ccode;
 extern uint64_t g_last_absolute_mouse_tick;
+extern int g_mouse_smooth_divisor;
+extern int g_mouse_tiny_move_suppress;
 extern uint8_t g_hid_format_mode;
 extern uint32_t g_hid_sample_count;
 extern bool g_hid_calibrated;
@@ -80,6 +82,7 @@ int CountImeLearningEntries();
 void ClearImeLearning();
 int ImportImeLearningFromBuffer(const uint8_t* data, int size, bool clear_before);
 int ExportImeLearningToBuffer(char* out, int out_len);
+int ParseInt(const char* s);
 
 namespace {
 constexpr int kExecMaxEnv = 24;
@@ -391,6 +394,7 @@ bool ExecuteHelpCommand() {
     console->PrintLine("help: fs2   rm rmdir mv find grep ls stat cat");
     console->PrintLine("help: misc  history clearhistory inputstat inputdiag about");
     console->PrintLine("help: cfg   repeat layout ime(on/off/toggle/stat/save/import/export/resetlearn) set alias syscall ring3 xhciinfo xhciregs xhcistop xhcistart xhcireset xhciinit xhcienableslot xhciaddress xhciconfigep xhciintrin xhcidesc xhcihidpoll xhcihidwatch xhcihidstat xhciauto xhciautostart mouseabs mousepos mousebtn mouseclick usbports");
+    console->PrintLine("help: set   mouse.auto mouse.smooth mouse.suppress hid.kbd");
     return true;
 }
 
@@ -583,6 +587,12 @@ bool ExecuteSetCommand(const char* command, int* pos_ptr) {
         PrintPairs("vars:", g_vars, static_cast<int>(sizeof(g_vars) / sizeof(g_vars[0])));
         console->Print("mouse.auto=");
         console->PrintLine(g_boot_mouse_auto_enabled ? "on" : "off");
+        console->Print("mouse.smooth=");
+        console->PrintDec(g_mouse_smooth_divisor);
+        console->Print("\n");
+        console->Print("mouse.suppress=");
+        console->PrintDec(g_mouse_tiny_move_suppress);
+        console->Print("\n");
         console->Print("hid.kbd=");
         console->PrintLine(g_xhci_hid_decode_keyboard ? "on" : "off");
         return true;
@@ -605,6 +615,44 @@ bool ExecuteSetCommand(const char* command, int* pos_ptr) {
             return true;
         }
         console->PrintLine("set mouse.auto: use on/off");
+        return true;
+    }
+    if (StrEqual(key, "mouse.smooth")) {
+        const char* v = RestOfLine(command, pos);
+        if (v[0] == '\0') {
+            console->Print("mouse.smooth=");
+            console->PrintDec(g_mouse_smooth_divisor);
+            console->Print("\n");
+            return true;
+        }
+        const int n = ParseInt(v);
+        if (n < 0 || n > 16) {
+            console->PrintLine("set mouse.smooth: use 0..16");
+            return true;
+        }
+        g_mouse_smooth_divisor = n;
+        console->Print("mouse.smooth=");
+        console->PrintDec(g_mouse_smooth_divisor);
+        console->Print("\n");
+        return true;
+    }
+    if (StrEqual(key, "mouse.suppress")) {
+        const char* v = RestOfLine(command, pos);
+        if (v[0] == '\0') {
+            console->Print("mouse.suppress=");
+            console->PrintDec(g_mouse_tiny_move_suppress);
+            console->Print("\n");
+            return true;
+        }
+        const int n = ParseInt(v);
+        if (n < 0 || n > 8) {
+            console->PrintLine("set mouse.suppress: use 0..8");
+            return true;
+        }
+        g_mouse_tiny_move_suppress = n;
+        console->Print("mouse.suppress=");
+        console->PrintDec(g_mouse_tiny_move_suppress);
+        console->Print("\n");
         return true;
     }
     if (StrEqual(key, "hid.kbd")) {
@@ -801,6 +849,10 @@ bool ExecuteInputDiagCommand() {
     console->PrintDec(static_cast<int64_t>(g_mouse_dropped_events));
     console->Print(" last_abs_tick=");
     console->PrintDec(static_cast<int64_t>(g_last_absolute_mouse_tick));
+    console->Print(" smooth=");
+    console->PrintDec(static_cast<int64_t>(g_mouse_smooth_divisor));
+    console->Print(" suppress=");
+    console->PrintDec(static_cast<int64_t>(g_mouse_tiny_move_suppress));
     console->Print("\n");
 
     console->Print("hid auto=");
