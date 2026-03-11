@@ -22,6 +22,7 @@ extern uint32_t g_xhci_hid_auto_consecutive_failures;
 extern uint64_t g_xhci_hid_auto_fail_count;
 extern uint64_t g_xhci_hid_auto_recover_count;
 extern uint64_t g_xhci_hid_next_recover_tick;
+extern uint64_t g_last_absolute_mouse_tick;
 extern uint8_t g_hid_format_mode;
 extern uint32_t g_hid_observed_max_raw;
 extern uint32_t g_hid_sample_count;
@@ -520,8 +521,26 @@ bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
         console->PrintDec(ticks);
         console->Print("\n");
         const uint64_t start_tick = CurrentTick();
+        const bool passive_auto_watch =
+            g_xhci_hid_auto_enabled &&
+            g_xhci_hid_auto_slot == static_cast<uint8_t>(slot) &&
+            g_xhci_hid_auto_len == static_cast<uint32_t>(req_len);
+        const uint64_t start_abs_tick = g_last_absolute_mouse_tick;
+        const uint32_t start_samples = g_hid_sample_count;
         uint64_t polls = 0;
         while ((CurrentTick() - start_tick) < static_cast<uint64_t>(ticks)) {
+            if (passive_auto_watch) {
+                if (g_last_absolute_mouse_tick != start_abs_tick || g_hid_sample_count != start_samples) {
+                    console->Print("xhcihidwatch: success polls=");
+                    console->PrintDec(static_cast<int64_t>(polls));
+                    console->Print(" elapsed_ticks=");
+                    console->PrintDec(static_cast<int64_t>(CurrentTick() - start_tick));
+                    console->Print(" mode=passive");
+                    console->Print("\n");
+                    return true;
+                }
+                continue;
+            }
             ++polls;
             if (PollHIDAndApply(static_cast<uint8_t>(slot),
                                 static_cast<uint32_t>(req_len),
@@ -539,6 +558,9 @@ bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
         console->PrintDec(static_cast<int64_t>(polls));
         console->Print(" elapsed_ticks=");
         console->PrintDec(static_cast<int64_t>(CurrentTick() - start_tick));
+        if (passive_auto_watch) {
+            console->Print(" mode=passive");
+        }
         console->Print("\n");
         return true;
     }
