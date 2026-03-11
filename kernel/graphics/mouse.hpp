@@ -1,12 +1,12 @@
 #pragma once
 #include <stdint.h>
-#include "frame_buffer_config.h"
-
 #include "layer.hpp"
 
 // マウスカーソルのドット絵のサイズ
 const int kMouseCursorWidth = 15;
 const int kMouseCursorHeight = 24;
+
+class Window;
 
 class MouseCursor {
 public:
@@ -18,13 +18,10 @@ public:
     int Y() const;
 
 private:
-    void SaveBackgroundAt(int x, int y);
-    void RestoreSavedBackground(int x, int y);
-    void DrawCursorAt(int x, int y);
+    void DrawCursorWindow();
     LayerManager* layer_manager_;
+    Layer* layer_{nullptr};
+    Window* window_{nullptr};
     int x_{0};
     int y_{0};
-    PixelColor saved_bg_[kMouseCursorWidth * kMouseCursorHeight]{};
-    bool saved_valid_[kMouseCursorWidth * kMouseCursorHeight]{};
-    uint64_t saved_generation_{0};
 };
