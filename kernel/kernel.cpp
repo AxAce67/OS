@@ -2452,6 +2452,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     const int taskbar_button_h = 22;
     const int taskbar_button_gap = 8;
     const int taskbar_button_y = 6;
+    const int start_button_x = 10;
+    const int start_button_w = 72;
 
     // 3. デスクトップ背景
     Window* bg_window = new Window(screen_w, screen_h);
@@ -2466,7 +2468,6 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     Window* taskbar_window = new Window(screen_w, taskbar_h);
     taskbar_window->FillRectangle(0, 0, screen_w, taskbar_h, {24, 24, 28});
     taskbar_window->FillRectangle(0, 0, screen_w, 1, {58, 58, 66});
-    taskbar_window->DrawString(10, 9, "Native OS", {235, 235, 240});
     Layer* taskbar_layer = layer_manager->NewLayer();
     taskbar_layer->SetWindow(taskbar_window).Move(0, screen_h - taskbar_h);
     layer_manager->UpDown(taskbar_layer, 1);
@@ -2560,6 +2561,17 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     layer_manager->UpDown(pointer_panel_layer, 6);
     ui::PointerTestPanel pointer_test_panel(pointer_panel_window, pointer_panel_layer, layer_manager,
                                             pointer_panel_w, pointer_panel_h);
+    const int launcher_panel_w = 196;
+    const int launcher_panel_h = 96;
+    const int launcher_item_x = 12;
+    const int launcher_item_y0 = 34;
+    const int launcher_item_gap = 8;
+    const int launcher_item_h = 18;
+    const int launcher_item_w = launcher_panel_w - 24;
+    Window* launcher_panel_window = new Window(launcher_panel_w, launcher_panel_h);
+    Layer* launcher_panel_layer = layer_manager->NewLayer();
+    launcher_panel_layer->SetWindow(launcher_panel_window).Move(start_button_x, screen_h - taskbar_h - launcher_panel_h - 8);
+    layer_manager->UpDown(launcher_panel_layer, -1);
     const int drag_preview_w = (term_frame_w > info_frame_w) ? term_frame_w : info_frame_w;
     const int drag_preview_h = (term_frame_h > info_frame_h) ? term_frame_h : info_frame_h;
     const PixelColor kDragPreviewTransparent{255, 0, 255};
@@ -2643,6 +2655,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     bool taskbar_visual_dirty = true;
     int taskbar_hovered_button = -1; // 0=system, 1=terminal
     int taskbar_pressed_button = -1;
+    bool launcher_visible = false;
+    int launcher_hovered_item = -1; // 0=terminal 1=system
+    int launcher_pressed_item = -1;
+    bool launcher_visual_dirty = true;
     auto GetWindowState = [&](int which) -> WindowUiState {
         return (which == 0) ? terminal_state : system_state;
     };
@@ -2660,6 +2676,20 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         return GetWindowState(which) == WindowUiState::kClosed;
     };
     auto DrawTaskbarButtons = [&]() {
+        auto DrawStartButton = [&](bool hovered, bool pressed) {
+            PixelColor fill = pressed ? PixelColor{40, 48, 62}
+                                      : (hovered ? PixelColor{76, 92, 122}
+                                                 : PixelColor{60, 70, 90});
+            PixelColor border = ChromeBorderColor(true, hovered);
+            taskbar_window->FillRectangle(start_button_x, taskbar_button_y, start_button_w, taskbar_button_h, fill);
+            taskbar_window->FillRectangle(start_button_x, taskbar_button_y, start_button_w, 1, border);
+            taskbar_window->FillRectangle(start_button_x, taskbar_button_y + taskbar_button_h - 1, start_button_w, 1, border);
+            taskbar_window->FillRectangle(start_button_x, taskbar_button_y, 1, taskbar_button_h, border);
+            taskbar_window->FillRectangle(start_button_x + start_button_w - 1, taskbar_button_y, 1, taskbar_button_h, border);
+            taskbar_window->FillRectangle(start_button_x + 10, taskbar_button_y + 7, 8, 8,
+                                          hovered ? PixelColor{182, 226, 255} : PixelColor{134, 204, 255});
+            taskbar_window->DrawString(start_button_x + 26, taskbar_button_y + 6, "Start", ChromeTextColor(true));
+        };
         auto DrawTaskbarStateMarker = [&](int x,
                                          bool visible,
                                          bool closed,
@@ -2724,9 +2754,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             DrawTaskbarStateMarker(x, visible, closed, focused, hovered, pressed);
             taskbar_window->DrawString(x + 20, taskbar_button_y + 6, label, text);
         };
-        taskbar_window->FillRectangle(system_taskbar_button_x - taskbar_button_gap, taskbar_button_y,
-                                      screen_w - (system_taskbar_button_x - taskbar_button_gap) - 8,
-                                      taskbar_button_h, {24, 24, 28});
+        taskbar_window->FillRectangle(0, 0, screen_w, taskbar_h, {24, 24, 28});
+        taskbar_window->FillRectangle(0, 0, screen_w, 1, {58, 58, 66});
+        taskbar_window->DrawString(start_button_x + start_button_w + 12, 9, "Native OS", {235, 235, 240});
+        DrawStartButton(taskbar_hovered_button == 2, taskbar_pressed_button == 2);
         DrawWindowTaskbarButton(system_taskbar_button_x, "System",
                                 IsWindowVisible(1), IsWindowClosed(1), IsWindowVisible(1) && active_window == 1,
                                 taskbar_hovered_button == 0, taskbar_pressed_button == 0);
@@ -2734,6 +2765,41 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                 IsWindowVisible(0), IsWindowClosed(0), IsWindowVisible(0) && active_window == 0,
                                 taskbar_hovered_button == 1, taskbar_pressed_button == 1);
         taskbar_visual_dirty = false;
+    };
+    auto DrawLauncherPanel = [&]() {
+        launcher_panel_window->FillRectangle(0, 0, launcher_panel_w, launcher_panel_h, {26, 28, 34});
+        launcher_panel_window->FillRectangle(0, 0, launcher_panel_w, 1, {92, 104, 130});
+        launcher_panel_window->FillRectangle(0, launcher_panel_h - 1, launcher_panel_w, 1, {64, 70, 86});
+        launcher_panel_window->FillRectangle(0, 0, 1, launcher_panel_h, {92, 104, 130});
+        launcher_panel_window->FillRectangle(launcher_panel_w - 1, 0, 1, launcher_panel_h, {64, 70, 86});
+        launcher_panel_window->DrawString(12, 10, "Launcher", {236, 236, 242});
+        auto DrawLauncherItem = [&](int index, const char* label, int which) {
+            const int y = launcher_item_y0 + index * (launcher_item_h + launcher_item_gap);
+            const bool hovered = launcher_hovered_item == index;
+            const bool pressed = launcher_pressed_item == index;
+            const bool visible = IsWindowVisible(which);
+            const bool closed = IsWindowClosed(which);
+            PixelColor fill = closed
+                ? PixelColor{48, 34, 36}
+                : (pressed ? PixelColor{46, 58, 78}
+                           : (hovered ? PixelColor{60, 74, 96}
+                                      : PixelColor{40, 46, 58}));
+            PixelColor border = closed
+                ? PixelColor{150, 78, 82}
+                : ChromeBorderColor(visible, hovered);
+            PixelColor text = closed
+                ? PixelColor{236, 198, 202}
+                : (visible ? ChromeTextColor(visible) : PixelColor{208, 212, 224});
+            launcher_panel_window->FillRectangle(launcher_item_x, y, launcher_item_w, launcher_item_h, fill);
+            launcher_panel_window->FillRectangle(launcher_item_x, y, launcher_item_w, 1, border);
+            launcher_panel_window->FillRectangle(launcher_item_x, y + launcher_item_h - 1, launcher_item_w, 1, border);
+            launcher_panel_window->FillRectangle(launcher_item_x, y, 1, launcher_item_h, border);
+            launcher_panel_window->FillRectangle(launcher_item_x + launcher_item_w - 1, y, 1, launcher_item_h, border);
+            launcher_panel_window->DrawString(launcher_item_x + 12, y + 5, label, text);
+        };
+        DrawLauncherItem(0, "Open Terminal", 0);
+        DrawLauncherItem(1, "Open System", 1);
+        launcher_visual_dirty = false;
     };
 
     DrawFrameTitle(term_frame_window, term_frame_border, term_title_h, term_frame_w, "Terminal", true);
@@ -3655,6 +3721,40 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         SetWindowUiState(which, WindowUiState::kVisible);
         ApplyWindowFocus(which);
     };
+    auto OpenWindowFromLauncher = [&](int which) {
+        RestoreWindowFromTaskbar(which);
+    };
+    auto ShowLauncherPanel = [&]() {
+        if (launcher_visible) {
+            return;
+        }
+        launcher_visible = true;
+        launcher_hovered_item = -1;
+        launcher_pressed_item = -1;
+        launcher_visual_dirty = true;
+        layer_manager->UpDown(launcher_panel_layer, 6);
+    };
+    auto HideLauncherPanel = [&]() {
+        if (!launcher_visible) {
+            return;
+        }
+        const int old_x = launcher_panel_layer->GetX();
+        const int old_y = launcher_panel_layer->GetY();
+        launcher_visible = false;
+        launcher_hovered_item = -1;
+        launcher_pressed_item = -1;
+        launcher_visual_dirty = true;
+        layer_manager->UpDown(launcher_panel_layer, -1);
+        layer_manager->Draw(old_x, old_y, launcher_panel_w, launcher_panel_h);
+    };
+    auto ToggleLauncherPanel = [&]() {
+        if (launcher_visible) {
+            HideLauncherPanel();
+        } else {
+            ShowLauncherPanel();
+        }
+        taskbar_visual_dirty = true;
+    };
     auto MinimizeWindow = [&](int which) {
         SetWindowUiState(which, WindowUiState::kMinimized);
     };
@@ -3670,6 +3770,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (!IsPointInRect(local_x, local_y, 0, 0, screen_w, taskbar_h)) {
             return -1;
         }
+        if (IsPointInRect(local_x, local_y, start_button_x, taskbar_button_y, start_button_w, taskbar_button_h)) {
+            return 2;
+        }
         if (IsPointInRect(local_x, local_y, system_taskbar_button_x, taskbar_button_y, taskbar_button_w, taskbar_button_h)) {
             return 0;
         }
@@ -3677,6 +3780,24 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return 1;
         }
         return -1;
+    };
+    auto HitTestLauncherItem = [&](int px, int py) -> int {
+        if (!launcher_visible) {
+            return -1;
+        }
+        const int local_x = px - launcher_panel_layer->GetX();
+        const int local_y = py - launcher_panel_layer->GetY();
+        if (!IsPointInRect(local_x, local_y, 0, 0, launcher_panel_w, launcher_panel_h)) {
+            return -1;
+        }
+        if (IsPointInRect(local_x, local_y, launcher_item_x, launcher_item_y0, launcher_item_w, launcher_item_h)) {
+            return 0;
+        }
+        const int item1_y = launcher_item_y0 + launcher_item_h + launcher_item_gap;
+        if (IsPointInRect(local_x, local_y, launcher_item_x, item1_y, launcher_item_w, launcher_item_h)) {
+            return 1;
+        }
+        return -2;
     };
     auto HitTestTitlebarButton = [&](int px, int py) -> int {
         if (IsWindowVisible(0) &&
@@ -3765,9 +3886,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (hit < 0) {
             return false;
         }
+        if (hit == 2) {
+            ToggleLauncherPanel();
+            return true;
+        }
         const int which = (hit == 0) ? 1 : 0;
         const bool visible = IsWindowVisible(which);
         const bool closed = IsWindowClosed(which);
+        HideLauncherPanel();
         if (!visible || closed) {
             RestoreWindowFromTaskbar(which);
             return true;
@@ -3778,6 +3904,22 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         ApplyWindowFocus(which);
         return true;
+    };
+    auto TryHandleLauncherClickByHit = [&](int hit) -> bool {
+        if (hit < 0) {
+            return false;
+        }
+        if (hit == 0) {
+            OpenWindowFromLauncher(0);
+            HideLauncherPanel();
+            return true;
+        }
+        if (hit == 1) {
+            OpenWindowFromLauncher(1);
+            HideLauncherPanel();
+            return true;
+        }
+        return false;
     };
     auto TryHandleTaskbarClick = [&](int px, int py) -> bool {
         return TryHandleTaskbarClickByHit(HitTestTaskbarButton(px, py));
@@ -4219,7 +4361,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     auto DrawFocusFrames = [&]() -> bool {
         const bool should_draw_taskbar = taskbar_visual_dirty;
         const bool should_draw_titlebars = titlebar_visual_dirty;
-        if (!focus_visual_dirty && !should_draw_taskbar && !should_draw_titlebars) {
+        const bool should_draw_launcher = launcher_visible && launcher_visual_dirty;
+        if (!focus_visual_dirty && !should_draw_taskbar && !should_draw_titlebars && !should_draw_launcher) {
             return false;
         }
         if (IsWindowVisible(0)) {
@@ -4231,6 +4374,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (should_draw_taskbar) {
             DrawTaskbarButtons();
             layer_manager->Draw(taskbar_layer->GetX(), taskbar_layer->GetY(), screen_w, taskbar_h);
+        }
+        if (should_draw_launcher) {
+            DrawLauncherPanel();
+            layer_manager->Draw(launcher_panel_layer->GetX(), launcher_panel_layer->GetY(), launcher_panel_w, launcher_panel_h);
         }
         focus_visual_dirty = false;
         titlebar_visual_dirty = false;
@@ -4328,6 +4475,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         dragging_active ? -1 : HitTestTitlebarButton(pointer_x, pointer_y);
                     const int hovered_taskbar_button =
                         dragging_active ? -1 : HitTestTaskbarButton(pointer_x, pointer_y);
+                    const int hovered_launcher_item =
+                        dragging_active ? -1 : HitTestLauncherItem(pointer_x, pointer_y);
                     if (current_title_button != hovered_title_button) {
                         hovered_title_button = current_title_button;
                         titlebar_visual_dirty = true;
@@ -4335,6 +4484,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     if (hovered_taskbar_button != taskbar_hovered_button) {
                         taskbar_hovered_button = hovered_taskbar_button;
                         taskbar_visual_dirty = true;
+                    }
+                    if (hovered_launcher_item != launcher_hovered_item) {
+                        launcher_hovered_item = hovered_launcher_item;
+                        launcher_visual_dirty = launcher_visible;
                     }
                     pointer_test_panel.UpdatePointerState(pointer_logical_x - 1,
                                                          pointer_logical_y - 1,
@@ -4353,6 +4506,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         if (taskbar_pressed_button >= 0) {
                             taskbar_visual_dirty = true;
                         }
+                        launcher_pressed_item = hovered_launcher_item >= 0 ? hovered_launcher_item : -1;
+                        if (launcher_pressed_item >= 0) {
+                            launcher_visual_dirty = launcher_visible;
+                        }
                     }
                     if (left_released) {
                         if (drag_window_before >= 0) {
@@ -4369,6 +4526,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         if (released_button >= 0) {
                             taskbar_visual_dirty = true;
                         }
+                        const int released_launcher_item = launcher_pressed_item;
+                        launcher_pressed_item = -1;
+                        if (released_launcher_item >= 0) {
+                            launcher_visual_dirty = launcher_visible;
+                        }
                         if (dragging_window < 0 &&
                             released_title_button >= 0 &&
                             TryHandleWindowChromeButtonById(released_title_button)) {
@@ -4379,6 +4541,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             TryHandleTaskbarClickByHit(released_button)) {
                             break;
                         }
+                        if (dragging_window < 0 &&
+                            released_launcher_item >= 0 &&
+                            TryHandleLauncherClickByHit(released_launcher_item)) {
+                            break;
+                        }
                     }
                     if (left_pressed && current_title_button >= 0) {
                         break;
@@ -4386,9 +4553,20 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     if (left_pressed && hovered_taskbar_button >= 0) {
                         break;
                     }
+                    if (left_pressed && hovered_launcher_item >= 0) {
+                        break;
+                    }
                     if (left_pressed && dragging_window < 0) {
+                        if (launcher_visible &&
+                            hovered_launcher_item < 0 &&
+                            HitTestLauncherItem(pointer_x, pointer_y) == -1 &&
+                            hovered_taskbar_button != 2) {
+                            HideLauncherPanel();
+                            break;
+                        }
                         if (!TryHandleWindowChromeClick(pointer_x, pointer_y) &&
-                            !TryHandleTaskbarClick(pointer_x, pointer_y)) {
+                            !TryHandleTaskbarClick(pointer_x, pointer_y) &&
+                            !TryHandleLauncherClickByHit(HitTestLauncherItem(pointer_x, pointer_y))) {
                             pointer_test_panel.HandlePrimaryClick(pointer_x, pointer_y);
                         }
                     }
