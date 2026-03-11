@@ -2639,6 +2639,44 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         return GetWindowState(which) == WindowUiState::kClosed;
     };
     auto DrawTaskbarButtons = [&]() {
+        auto DrawTaskbarStateMarker = [&](int x,
+                                         bool visible,
+                                         bool closed,
+                                         bool focused,
+                                         bool hovered,
+                                         bool pressed) {
+            const int marker_x = x + 6;
+            const int marker_y = taskbar_button_y + 6;
+            if (closed) {
+                PixelColor c = hovered ? PixelColor{232, 156, 156} : PixelColor{196, 110, 110};
+                if (pressed) {
+                    c = PixelColor{168, 92, 92};
+                }
+                taskbar_window->FillRectangle(marker_x + 1, marker_y, 8, 2, c);
+                taskbar_window->FillRectangle(marker_x, marker_y + 1, 10, 2, c);
+                taskbar_window->FillRectangle(marker_x + 1, marker_y + 3, 8, 2, c);
+                return;
+            }
+            if (!visible) {
+                PixelColor c = hovered ? PixelColor{170, 176, 198} : PixelColor{110, 114, 132};
+                if (pressed) {
+                    c = PixelColor{90, 94, 110};
+                }
+                taskbar_window->FillRectangle(marker_x, marker_y + 4, 10, 2, c);
+                return;
+            }
+            PixelColor c = focused ? PixelColor{134, 204, 255} : PixelColor{186, 192, 214};
+            if (hovered) {
+                c = focused ? PixelColor{182, 226, 255} : PixelColor{216, 220, 236};
+            }
+            if (pressed) {
+                c = focused ? PixelColor{112, 180, 232} : PixelColor{160, 168, 192};
+            }
+            taskbar_window->FillRectangle(marker_x, marker_y + 1, 10, 3, c);
+            if (focused) {
+                taskbar_window->FillRectangle(marker_x + 2, marker_y, 6, 1, c);
+            }
+        };
         auto DrawWindowTaskbarButton = [&](int x, const char* label, bool visible, bool closed,
                                           bool focused, bool hovered, bool pressed) {
             PixelColor fill = closed
@@ -2665,7 +2703,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             taskbar_window->FillRectangle(x, taskbar_button_y + taskbar_button_h - 1, taskbar_button_w, 1, border);
             taskbar_window->FillRectangle(x, taskbar_button_y, 1, taskbar_button_h, border);
             taskbar_window->FillRectangle(x + taskbar_button_w - 1, taskbar_button_y, 1, taskbar_button_h, border);
-            taskbar_window->DrawString(x + 12, taskbar_button_y + 6, label, text);
+            DrawTaskbarStateMarker(x, visible, closed, focused, hovered, pressed);
+            taskbar_window->DrawString(x + 20, taskbar_button_y + 6, label, text);
         };
         taskbar_window->FillRectangle(system_taskbar_button_x - taskbar_button_gap, taskbar_button_y,
                                       screen_w - (system_taskbar_button_x - taskbar_button_gap) - 8,
