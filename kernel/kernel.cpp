@@ -207,8 +207,8 @@ uint16_t g_hid_max_x = 0;
 uint16_t g_hid_max_y = 0;
 int g_hid_smooth_x = -1;
 int g_hid_smooth_y = -1;
-const int kHidSmoothAlphaNum = 1;  // 1/4 EMA
-const int kHidSmoothAlphaDen = 4;
+const int kHidSmoothAlphaNum = 1;  // 1/6 EMA
+const int kHidSmoothAlphaDen = 6;
 uint8_t g_hid_buttons_mask = 0;
 uint8_t g_mouse_buttons_current = 0;
 uint64_t g_mouse_left_press_count = 0;
@@ -389,8 +389,8 @@ bool DecodeHIDAbsoluteXY(const uint8_t* data, uint32_t len, int* out_x, int* out
     uint16_t use_max_y = static_cast<uint16_t>(max_raw);
     if (g_hid_calibrated) {
         // 少しだけ余白を持たせて端への到達性を上げる
-        const uint16_t pad_x = (g_hid_max_x > g_hid_min_x) ? static_cast<uint16_t>((g_hid_max_x - g_hid_min_x) / 20) : 0;
-        const uint16_t pad_y = (g_hid_max_y > g_hid_min_y) ? static_cast<uint16_t>((g_hid_max_y - g_hid_min_y) / 20) : 0;
+        const uint16_t pad_x = (g_hid_max_x > g_hid_min_x) ? static_cast<uint16_t>((g_hid_max_x - g_hid_min_x) / 8) : 0;
+        const uint16_t pad_y = (g_hid_max_y > g_hid_min_y) ? static_cast<uint16_t>((g_hid_max_y - g_hid_min_y) / 8) : 0;
         use_min_x = (g_hid_min_x > pad_x) ? static_cast<uint16_t>(g_hid_min_x - pad_x) : 0;
         use_min_y = (g_hid_min_y > pad_y) ? static_cast<uint16_t>(g_hid_min_y - pad_y) : 0;
         use_max_x = ClampU16(static_cast<uint16_t>(g_hid_max_x + pad_x), use_min_x + 1, static_cast<uint16_t>(max_raw));
@@ -3780,6 +3780,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 {
                     const uint8_t prev_buttons = g_mouse_buttons_current;
                     HandleMouseMessage(msg);
+                    pointer_test_panel.UpdatePointerState(pointer_logical_x - 1,
+                                                         pointer_logical_y - 1,
+                                                         (g_mouse_buttons_current & 0x01u) != 0);
                     const bool left_pressed =
                         ((prev_buttons & 0x01u) == 0) &&
                         ((g_mouse_buttons_current & 0x01u) != 0);

@@ -67,8 +67,16 @@ void PointerTestPanel::DrawDynamic() {
     const PixelColor kSubtle{170, 178, 194};
     const PixelColor kOn{58, 150, 100};
     const PixelColor kOff{150, 72, 72};
+    const PixelColor kHover{214, 220, 232};
+    const PixelColor kPressed{255, 244, 196};
 
     window_->FillRectangle(kButtonX, kButtonY, kButtonW, kButtonH, toggled_ ? kOn : kOff);
+    if (hovered_) {
+        window_->FillRectangle(kButtonX, kButtonY, kButtonW, 2, pressed_ ? kPressed : kHover);
+        window_->FillRectangle(kButtonX, kButtonY + kButtonH - 2, kButtonW, 2, pressed_ ? kPressed : kHover);
+        window_->FillRectangle(kButtonX, kButtonY, 2, kButtonH, pressed_ ? kPressed : kHover);
+        window_->FillRectangle(kButtonX + kButtonW - 2, kButtonY, 2, kButtonH, pressed_ ? kPressed : kHover);
+    }
     window_->DrawString(kButtonX + 18, kButtonY + 8, toggled_ ? "ON" : "OFF", kText);
 
     window_->FillRectangle(14, 84, width_ - 28, 20, kBody);
@@ -80,11 +88,29 @@ void PointerTestPanel::DrawDynamic() {
     layer_manager_->Draw(layer_->GetX(), layer_->GetY(), width_, height_);
 }
 
-bool PointerTestPanel::HandlePrimaryClick(int global_x, int global_y) {
+bool PointerTestPanel::IsButtonHit(int global_x, int global_y) const {
     const int local_x = global_x - layer_->GetX();
     const int local_y = global_y - layer_->GetY();
-    if (local_x < kButtonX || local_y < kButtonY ||
-        local_x >= kButtonX + kButtonW || local_y >= kButtonY + kButtonH) {
+    return local_x >= kButtonX && local_y >= kButtonY &&
+           local_x < kButtonX + kButtonW && local_y < kButtonY + kButtonH;
+}
+
+void PointerTestPanel::UpdatePointerState(int global_x, int global_y, bool primary_down) {
+    const bool next_hovered = IsButtonHit(global_x, global_y);
+    const bool next_pressed = next_hovered && primary_down;
+    if (next_hovered == hovered_ && next_pressed == pressed_) {
+        return;
+    }
+    hovered_ = next_hovered;
+    pressed_ = next_pressed;
+    if (!static_drawn_) {
+        DrawStatic();
+    }
+    DrawDynamic();
+}
+
+bool PointerTestPanel::HandlePrimaryClick(int global_x, int global_y) {
+    if (!IsButtonHit(global_x, global_y)) {
         return false;
     }
     toggled_ = !toggled_;
