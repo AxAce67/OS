@@ -205,7 +205,7 @@ bool WaitTransferEvent(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t 
             continue;
         }
 
-        out_result->ok = (ccode == 1);
+        out_result->ok = (ccode == 1 || ccode == 13);
         out_result->completion_code = ccode;
         out_result->slot_id = ev_slot_id;
         out_result->endpoint_id = ev_endpoint_id;
