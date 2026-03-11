@@ -2561,27 +2561,44 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     ui::PointerTestPanel pointer_test_panel(pointer_panel_window, pointer_panel_layer, layer_manager,
                                             pointer_panel_w, pointer_panel_h);
 
+    auto ChromeSurfaceColor = [&](bool active) {
+        return active ? PixelColor{68, 84, 110} : PixelColor{56, 62, 76};
+    };
+    auto ChromeBorderColor = [&](bool active, bool hovered) {
+        if (hovered) {
+            return active ? PixelColor{208, 224, 250} : PixelColor{164, 178, 206};
+        }
+        return active ? PixelColor{156, 188, 238} : PixelColor{110, 120, 144};
+    };
+    auto ChromeTextColor = [&](bool active) {
+        return active ? PixelColor{238, 238, 242} : PixelColor{206, 208, 220};
+    };
+    auto MinimizeFillColor = [&](bool active, bool pressed) {
+        if (pressed) {
+            return active ? PixelColor{152, 124, 64} : PixelColor{106, 94, 70};
+        }
+        return active ? PixelColor{188, 152, 72} : PixelColor{126, 112, 78};
+    };
+    auto CloseFillColor = [&](bool active, bool pressed) {
+        if (pressed) {
+            return active ? PixelColor{146, 58, 58} : PixelColor{112, 68, 68};
+        }
+        return active ? PixelColor{175, 68, 68} : PixelColor{130, 74, 74};
+    };
     auto DrawFrameTitle = [&](Window* frame, int border, int title_h, int frame_w,
                               const char* title, bool active) {
-        PixelColor title_bg = active ? PixelColor{52, 56, 70} : PixelColor{46, 50, 62};
-        PixelColor title_fg = active ? PixelColor{238, 238, 242} : PixelColor{206, 208, 220};
+        PixelColor title_bg = ChromeSurfaceColor(active);
+        PixelColor title_fg = ChromeTextColor(active);
         frame->FillRectangle(border, border, frame_w - border * 2, title_h - border, title_bg);
+        frame->FillRectangle(border, title_h - 1, frame_w - border * 2, 1,
+                             ChromeBorderColor(active, false));
         frame->DrawString(10, 5, title, title_fg);
     };
     bool titlebar_visual_dirty = false;
     int hovered_title_button = -1; // 0=tmin 1=tclose 2=smin 3=sclose
     int pressed_title_button = -1;
-    auto DrawChromeButton = [&](Window* frame, int x, PixelColor base_fill,
-                                PixelColor hover_border, bool hovered, bool pressed) {
-        PixelColor fill = base_fill;
-        PixelColor border = hovered ? hover_border : PixelColor{78, 82, 96};
-        if (pressed) {
-            fill = PixelColor{
-                static_cast<uint8_t>(base_fill.r > 24 ? base_fill.r - 24 : 0),
-                static_cast<uint8_t>(base_fill.g > 24 ? base_fill.g - 24 : 0),
-                static_cast<uint8_t>(base_fill.b > 24 ? base_fill.b - 24 : 0),
-            };
-        }
+    auto DrawChromeButton = [&](Window* frame, int x, PixelColor fill,
+                                PixelColor border) {
         frame->FillRectangle(x, title_button_y, title_button_w, title_button_h, fill);
         frame->FillRectangle(x, title_button_y, title_button_w, 1, border);
         frame->FillRectangle(x, title_button_y + title_button_h - 1, title_button_w, 1, border);
@@ -2594,16 +2611,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         const int close_button_id = is_terminal ? 1 : 3;
         DrawChromeButton(frame,
                          frame_w - minimize_button_offset_x,
-                         focused ? PixelColor{188, 152, 72} : PixelColor{126, 112, 78},
-                         PixelColor{228, 206, 124},
-                         hovered_title_button == min_button_id,
-                         pressed_title_button == min_button_id);
+                         MinimizeFillColor(focused, pressed_title_button == min_button_id),
+                         ChromeBorderColor(focused, hovered_title_button == min_button_id));
         DrawChromeButton(frame,
                          frame_w - close_button_offset_x,
-                         focused ? PixelColor{175, 68, 68} : PixelColor{130, 74, 74},
-                         PixelColor{226, 142, 142},
-                         hovered_title_button == close_button_id,
-                         pressed_title_button == close_button_id);
+                         CloseFillColor(focused, pressed_title_button == close_button_id),
+                         ChromeBorderColor(focused, hovered_title_button == close_button_id));
     };
     const int terminal_taskbar_button_x = screen_w - taskbar_button_gap - taskbar_button_w;
     const int system_taskbar_button_x =
@@ -2682,19 +2695,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             PixelColor fill = closed
                 ? PixelColor{48, 34, 36}
                 : (visible
-                    ? (focused ? PixelColor{68, 84, 110} : PixelColor{56, 62, 76})
+                    ? ChromeSurfaceColor(focused)
                     : PixelColor{34, 34, 40});
             PixelColor border = closed
                 ? PixelColor{150, 78, 82}
                 : (visible
-                    ? (focused ? PixelColor{156, 188, 238} : PixelColor{110, 120, 144})
+                    ? ChromeBorderColor(focused, hovered)
                     : PixelColor{72, 72, 84});
             PixelColor text = closed
                 ? PixelColor{236, 198, 202}
-                : (visible ? PixelColor{236, 236, 242} : PixelColor{148, 148, 164});
-            if (hovered) {
-                border = focused ? PixelColor{208, 224, 250} : PixelColor{164, 178, 206};
-            }
+                : (visible ? ChromeTextColor(focused) : PixelColor{148, 148, 164});
             if (pressed) {
                 fill = visible ? PixelColor{40, 48, 62} : PixelColor{28, 28, 34};
             }
