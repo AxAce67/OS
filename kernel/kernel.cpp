@@ -171,6 +171,8 @@ uint32_t g_xhci_hid_auto_consecutive_no_data = 0;
 uint64_t g_xhci_hid_auto_fail_count = 0;
 uint64_t g_xhci_hid_auto_recover_count = 0;
 uint64_t g_xhci_hid_next_recover_tick = 0;
+uint32_t g_xhci_hid_auto_last_recover_reason = 0;
+uint64_t g_xhci_hid_auto_last_recover_tick = 0;
 uint32_t g_xhci_hid_auto_start_fail_reason = 0;
 uint8_t g_xhci_hid_auto_start_fail_ccode = 0;
 bool g_boot_mouse_auto_enabled = true;
@@ -685,6 +687,8 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
     g_xhci_hid_auto_consecutive_failures = 0;
     g_xhci_hid_auto_consecutive_no_data = 0;
     g_xhci_hid_next_recover_tick = 0;
+    g_xhci_hid_auto_last_recover_reason = kXhciHidPollReasonNone;
+    g_xhci_hid_auto_last_recover_tick = 0;
     g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailNone;
     g_xhci_hid_auto_start_fail_ccode = 0;
 
@@ -735,6 +739,8 @@ bool HandleXHCIAutoPollOnIdle() {
         ResetHIDDecodeLearning();
         if (StartXHCIAutoMouse(g_xhci_hid_auto_len, g_xhci_hid_auto_mps, g_xhci_hid_auto_interval)) {
             ++g_xhci_hid_auto_recover_count;
+            g_xhci_hid_auto_last_recover_reason = g_xhci_hid_last_poll_reason;
+            g_xhci_hid_auto_last_recover_tick = now_tick;
             g_xhci_hid_auto_consecutive_failures = 0;
             g_xhci_hid_auto_consecutive_no_data = 0;
         }

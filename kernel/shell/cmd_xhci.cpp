@@ -23,6 +23,8 @@ extern uint64_t g_xhci_hid_auto_fail_count;
 extern uint64_t g_xhci_hid_auto_recover_count;
 extern uint64_t g_xhci_hid_next_recover_tick;
 extern uint32_t g_xhci_hid_auto_consecutive_no_data;
+extern uint32_t g_xhci_hid_auto_last_recover_reason;
+extern uint64_t g_xhci_hid_auto_last_recover_tick;
 extern uint64_t g_last_absolute_mouse_tick;
 extern uint8_t g_hid_format_mode;
 extern uint32_t g_hid_observed_max_raw;
@@ -616,6 +618,10 @@ bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
         console->PrintDec(g_xhci_hid_auto_consecutive_no_data);
         console->Print(" auto_recover=");
         console->PrintDec(g_xhci_hid_auto_recover_count);
+        console->Print(" rec.reason=");
+        console->Print(XhciHidPollReasonName(g_xhci_hid_auto_last_recover_reason));
+        console->Print(" rec.tick=");
+        console->PrintDec(g_xhci_hid_auto_last_recover_tick);
         console->Print("\n");
         return true;
     }
@@ -678,6 +684,8 @@ bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
         g_xhci_hid_auto_fail_count = 0;
         g_xhci_hid_auto_recover_count = 0;
         g_xhci_hid_next_recover_tick = 0;
+        g_xhci_hid_auto_last_recover_reason = 0;
+        g_xhci_hid_auto_last_recover_tick = 0;
         ResetHIDDecodeLearning();
         console->Print("xhciauto: on slot=");
         console->PrintDec(slot);
@@ -723,7 +731,10 @@ bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
         g_xhci_hid_auto_fail_count = 0;
         g_xhci_hid_auto_recover_count = 0;
         g_xhci_hid_auto_consecutive_failures = 0;
+        g_xhci_hid_auto_consecutive_no_data = 0;
         g_xhci_hid_next_recover_tick = 0;
+        g_xhci_hid_auto_last_recover_reason = 0;
+        g_xhci_hid_auto_last_recover_tick = 0;
         if (!StartXHCIAutoMouse(static_cast<uint32_t>(req_len),
                                 static_cast<uint16_t>(mps),
                                 static_cast<uint8_t>(interval))) {

@@ -53,6 +53,8 @@ extern uint32_t g_xhci_hid_last_poll_length;
 extern uint64_t g_xhci_hid_auto_fail_count;
 extern uint64_t g_xhci_hid_auto_recover_count;
 extern uint32_t g_xhci_hid_auto_consecutive_no_data;
+extern uint32_t g_xhci_hid_auto_last_recover_reason;
+extern uint64_t g_xhci_hid_auto_last_recover_tick;
 extern uint32_t g_xhci_hid_auto_start_fail_reason;
 extern uint8_t g_xhci_hid_auto_start_fail_ccode;
 extern uint64_t g_last_absolute_mouse_tick;
@@ -842,6 +844,10 @@ bool ExecuteInputDiagCommand() {
     console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_consecutive_no_data));
     console->Print(" recover=");
     console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_recover_count));
+    console->Print(" rec.reason=");
+    console->Print(XhciHidPollReasonName(g_xhci_hid_auto_last_recover_reason));
+    console->Print(" rec.tick=");
+    console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_last_recover_tick));
     console->Print("\n");
 
     console->Print("clip rx.bytes=");
