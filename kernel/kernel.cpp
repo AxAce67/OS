@@ -727,7 +727,7 @@ bool HandleXHCIAutoPollOnIdle() {
     }
 
     const uint32_t kRecoverFailThreshold = 24;
-    const uint32_t kRecoverNoDataThreshold = 180;
+    const uint32_t kRecoverNoDataThreshold = 24;
     if ((g_xhci_hid_auto_consecutive_failures >= kRecoverFailThreshold ||
          g_xhci_hid_auto_consecutive_no_data >= kRecoverNoDataThreshold) &&
         now_tick >= g_xhci_hid_next_recover_tick) {
