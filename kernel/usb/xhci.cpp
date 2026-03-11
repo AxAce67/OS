@@ -346,6 +346,18 @@ int SlotIndexFromId(uint8_t slot_id) {
     }
     return static_cast<int>(slot_id - 1);
 }
+
+void ResetInterruptInRingState(int idx) {
+    MemorySet(&g_ep1in_rings[idx][0], 0, sizeof(g_ep1in_rings[idx]));
+    TRB& ep1_link = g_ep1in_rings[idx][255];
+    const uint64_t ep1_ring_base = reinterpret_cast<uint64_t>(&g_ep1in_rings[idx][0]);
+    ep1_link.dword0 = static_cast<uint32_t>(ep1_ring_base & 0xFFFFFFFFu);
+    ep1_link.dword1 = static_cast<uint32_t>(ep1_ring_base >> 32);
+    ep1_link.dword2 = 0;
+    ep1_link.dword3 = (6u << 10) | (1u << 1);
+    g_ep1_cycle_bits[idx] = 1;
+    g_ep1_enqueue_indices[idx] = 0;
+}
 }  // namespace
 
 bool ProbeXHCIController(const XHCIControllerInfo& controller, XHCICapabilityInfo* out_info) {
@@ -764,6 +776,23 @@ bool XHCIConfigureInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t sl
     return XHCIConfigureInterruptInEndpointEx(info, slot_id, 3, max_packet_size, interval, out_result, timeout_iters);
 }
 
+bool XHCIRearmInterruptInEndpoint(const XHCICapabilityInfo& info, uint8_t slot_id, uint32_t timeout_iters) {
+    const int idx = SlotIndexFromId(slot_id);
+    if (!info.valid || idx < 0 || !g_slot_states[idx].interrupt_in_configured) {
+        return false;
+    }
+    ResetInterruptInRingState(idx);
+    XHCIConfigureEndpointResult r{};
+    return XHCIConfigureInterruptInEndpointEx(info,
+                                              slot_id,
+                                              g_slot_states[idx].interrupt_in_endpoint_id,
+                                              g_slot_states[idx].interrupt_in_max_packet_size,
+                                              g_slot_states[idx].interrupt_in_interval,
+                                              &r,
+                                              timeout_iters) &&
+           r.ok;
+}
+
 bool XHCISetConfiguration(const XHCICapabilityInfo& info, uint8_t slot_id, uint8_t configuration_value, XHCIControlTransferResult* out_result, uint32_t timeout_iters) {
     return SubmitControlTransfer(info, slot_id, 0x00, 9u, configuration_value, 0, 0, false, nullptr, out_result, timeout_iters);
 }
@@ -896,6 +925,12 @@ bool XHCIPollInterruptIn(const XHCICapabilityInfo& info, uint8_t slot_id, uint32
     }
 
     uint16_t enqueue = g_ep1_enqueue_indices[idx];
+    if (enqueue >= 240) {
+        if (!XHCIRearmInterruptInEndpoint(info, slot_id, timeout_iters)) {
+            return false;
+        }
+        enqueue = g_ep1_enqueue_indices[idx];
+    }
     if (enqueue >= 255) {
         enqueue = 0;
     }
