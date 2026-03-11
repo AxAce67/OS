@@ -2484,6 +2484,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int term_frame_y = (screen_h - taskbar_h - term_frame_h) / 2;
     if (term_frame_x < 8) term_frame_x = 8;
     if (term_frame_y < 8) term_frame_y = 8;
+    const int term_default_frame_x = term_frame_x;
+    const int term_default_frame_y = term_frame_y;
 
     Window* term_frame_window = new Window(term_frame_w, term_frame_h);
     term_frame_window->FillRectangle(0, 0, term_frame_w, term_frame_h, {74, 76, 86});
@@ -2514,6 +2516,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     if (info_frame_y + info_frame_h > screen_h - taskbar_h) info_frame_y = screen_h - taskbar_h - info_frame_h;
     if (info_frame_x < 0) info_frame_x = 0;
     if (info_frame_y < 0) info_frame_y = 0;
+    const int info_default_frame_x = info_frame_x;
+    const int info_default_frame_y = info_frame_y;
 
     Window* info_frame_window = new Window(info_frame_w, info_frame_h);
     info_frame_window->FillRectangle(0, 0, info_frame_w, info_frame_h, {74, 76, 86});
@@ -2575,37 +2579,44 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     const int terminal_taskbar_button_x = screen_w - taskbar_button_gap - taskbar_button_w;
     const int system_taskbar_button_x =
         terminal_taskbar_button_x - taskbar_button_gap - taskbar_button_w;
-    auto DrawTaskbarButton = [&](int x, const char* label, bool visible, bool focused) {
-        PixelColor fill = visible
-            ? (focused ? PixelColor{68, 84, 110} : PixelColor{56, 62, 76})
-            : PixelColor{34, 34, 40};
-        PixelColor border = visible
-            ? (focused ? PixelColor{156, 188, 238} : PixelColor{110, 120, 144})
-            : PixelColor{72, 72, 84};
-        PixelColor text = visible ? PixelColor{236, 236, 242} : PixelColor{148, 148, 164};
-        taskbar_window->FillRectangle(x, taskbar_button_y, taskbar_button_w, taskbar_button_h, fill);
-        taskbar_window->FillRectangle(x, taskbar_button_y, taskbar_button_w, 1, border);
-        taskbar_window->FillRectangle(x, taskbar_button_y + taskbar_button_h - 1, taskbar_button_w, 1, border);
-        taskbar_window->FillRectangle(x, taskbar_button_y, 1, taskbar_button_h, border);
-        taskbar_window->FillRectangle(x + taskbar_button_w - 1, taskbar_button_y, 1, taskbar_button_h, border);
-        taskbar_window->DrawString(x + 12, taskbar_button_y + 6, label, text);
-    };
-
     int active_window = 0; // 0=terminal, 1=system-info
     int dragging_window = -1;
     bool drag_pending_move = false;
     bool focus_visual_dirty = false;
     bool terminal_visible = true;
     bool system_visible = true;
+    bool terminal_closed = false;
+    bool system_closed = false;
     bool taskbar_visual_dirty = true;
     auto DrawTaskbarButtons = [&]() {
+        auto DrawWindowTaskbarButton = [&](int x, const char* label, bool visible, bool closed, bool focused) {
+            PixelColor fill = closed
+                ? PixelColor{48, 34, 36}
+                : (visible
+                    ? (focused ? PixelColor{68, 84, 110} : PixelColor{56, 62, 76})
+                    : PixelColor{34, 34, 40});
+            PixelColor border = closed
+                ? PixelColor{150, 78, 82}
+                : (visible
+                    ? (focused ? PixelColor{156, 188, 238} : PixelColor{110, 120, 144})
+                    : PixelColor{72, 72, 84});
+            PixelColor text = closed
+                ? PixelColor{236, 198, 202}
+                : (visible ? PixelColor{236, 236, 242} : PixelColor{148, 148, 164});
+            taskbar_window->FillRectangle(x, taskbar_button_y, taskbar_button_w, taskbar_button_h, fill);
+            taskbar_window->FillRectangle(x, taskbar_button_y, taskbar_button_w, 1, border);
+            taskbar_window->FillRectangle(x, taskbar_button_y + taskbar_button_h - 1, taskbar_button_w, 1, border);
+            taskbar_window->FillRectangle(x, taskbar_button_y, 1, taskbar_button_h, border);
+            taskbar_window->FillRectangle(x + taskbar_button_w - 1, taskbar_button_y, 1, taskbar_button_h, border);
+            taskbar_window->DrawString(x + 12, taskbar_button_y + 6, label, text);
+        };
         taskbar_window->FillRectangle(system_taskbar_button_x - taskbar_button_gap, taskbar_button_y,
                                       screen_w - (system_taskbar_button_x - taskbar_button_gap) - 8,
                                       taskbar_button_h, {24, 24, 28});
-        DrawTaskbarButton(system_taskbar_button_x, "System",
-                          system_visible, system_visible && active_window == 1);
-        DrawTaskbarButton(terminal_taskbar_button_x, "Terminal",
-                          terminal_visible, terminal_visible && active_window == 0);
+        DrawWindowTaskbarButton(system_taskbar_button_x, "System",
+                                system_visible, system_closed, system_visible && active_window == 1);
+        DrawWindowTaskbarButton(terminal_taskbar_button_x, "Terminal",
+                                terminal_visible, terminal_closed, terminal_visible && active_window == 0);
         taskbar_visual_dirty = false;
     };
 
@@ -3383,9 +3394,43 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         focus_visual_dirty = true;
         RedrawWindowRegion(which, old_x, old_y);
     };
+    auto ResetWindowPosition = [&](int which) {
+        if (which == 0) {
+            term_frame_layer->Move(term_default_frame_x, term_default_frame_y);
+            term_console_layer->Move(term_default_frame_x + term_frame_border, term_default_frame_y + term_title_h);
+            return;
+        }
+        info_frame_layer->Move(info_default_frame_x, info_default_frame_y);
+        info_content_layer->Move(info_default_frame_x + info_frame_border, info_default_frame_y + info_title_h);
+    };
     auto RestoreWindowFromTaskbar = [&](int which) {
+        const bool was_closed = (which == 0) ? terminal_closed : system_closed;
+        if (which == 0) {
+            terminal_closed = false;
+        } else {
+            system_closed = false;
+        }
+        if (was_closed) {
+            ResetWindowPosition(which);
+        }
         SetWindowVisibility(which, true);
         ApplyWindowFocus(which);
+    };
+    auto MinimizeWindow = [&](int which) {
+        if (which == 0) {
+            terminal_closed = false;
+        } else {
+            system_closed = false;
+        }
+        SetWindowVisibility(which, false);
+    };
+    auto CloseWindow = [&](int which) {
+        if (which == 0) {
+            terminal_closed = true;
+        } else {
+            system_closed = true;
+        }
+        SetWindowVisibility(which, false);
     };
     auto IsPointInRect = [&](int px, int py, int x, int y, int w, int h) {
         return px >= x && py >= y && px < x + w && py < y + h;
@@ -3396,12 +3441,17 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             const int local_x = px - term_frame_layer->GetX();
             const int local_y = py - term_frame_layer->GetY();
             if (IsPointInRect(local_x, local_y, term_frame_w - minimize_button_offset_x, title_button_y,
-                              title_button_w, title_button_h) ||
-                IsPointInRect(local_x, local_y, term_frame_w - close_button_offset_x, title_button_y,
                               title_button_w, title_button_h)) {
                 dragging_window = -1;
                 drag_pending_move = false;
-                SetWindowVisibility(0, false);
+                MinimizeWindow(0);
+                return true;
+            }
+            if (IsPointInRect(local_x, local_y, term_frame_w - close_button_offset_x, title_button_y,
+                              title_button_w, title_button_h)) {
+                dragging_window = -1;
+                drag_pending_move = false;
+                CloseWindow(0);
                 return true;
             }
         }
@@ -3410,12 +3460,17 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             const int local_x = px - info_frame_layer->GetX();
             const int local_y = py - info_frame_layer->GetY();
             if (IsPointInRect(local_x, local_y, info_frame_w - minimize_button_offset_x, title_button_y,
-                              title_button_w, title_button_h) ||
-                IsPointInRect(local_x, local_y, info_frame_w - close_button_offset_x, title_button_y,
                               title_button_w, title_button_h)) {
                 dragging_window = -1;
                 drag_pending_move = false;
-                SetWindowVisibility(1, false);
+                MinimizeWindow(1);
+                return true;
+            }
+            if (IsPointInRect(local_x, local_y, info_frame_w - close_button_offset_x, title_button_y,
+                              title_button_w, title_button_h)) {
+                dragging_window = -1;
+                drag_pending_move = false;
+                CloseWindow(1);
                 return true;
             }
         }
