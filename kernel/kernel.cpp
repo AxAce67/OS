@@ -3407,12 +3407,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             layer_manager->Draw(old_x, old_y, term_frame_w, term_frame_h);
             if (terminal_visible) {
                 layer_manager->Draw(term_frame_layer->GetX(), term_frame_layer->GetY(), term_frame_w, term_frame_h);
+                layer_manager->Draw(term_console_layer->GetX(), term_console_layer->GetY(),
+                                    term_content_w, term_content_h);
             }
             return;
         }
         layer_manager->Draw(old_x, old_y, info_frame_w, info_frame_h);
         if (system_visible) {
             layer_manager->Draw(info_frame_layer->GetX(), info_frame_layer->GetY(), info_frame_w, info_frame_h);
+            layer_manager->Draw(info_content_layer->GetX(), info_content_layer->GetY(),
+                                info_content_w, info_content_h);
         }
     };
     auto SetWindowVisibility = [&](int which, bool visible) {
@@ -3450,6 +3454,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         } else {
             system_closed = false;
         }
+        taskbar_pressed_button = -1;
         if (was_closed) {
             ResetWindowPosition(which);
         }
