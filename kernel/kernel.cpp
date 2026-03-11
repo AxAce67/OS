@@ -2588,8 +2588,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     bool terminal_closed = false;
     bool system_closed = false;
     bool taskbar_visual_dirty = true;
+    int taskbar_hovered_button = -1; // 0=system, 1=terminal
+    int taskbar_pressed_button = -1;
     auto DrawTaskbarButtons = [&]() {
-        auto DrawWindowTaskbarButton = [&](int x, const char* label, bool visible, bool closed, bool focused) {
+        auto DrawWindowTaskbarButton = [&](int x, const char* label, bool visible, bool closed,
+                                          bool focused, bool hovered, bool pressed) {
             PixelColor fill = closed
                 ? PixelColor{48, 34, 36}
                 : (visible
@@ -2603,6 +2606,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             PixelColor text = closed
                 ? PixelColor{236, 198, 202}
                 : (visible ? PixelColor{236, 236, 242} : PixelColor{148, 148, 164});
+            if (hovered) {
+                border = focused ? PixelColor{208, 224, 250} : PixelColor{164, 178, 206};
+            }
+            if (pressed) {
+                fill = visible ? PixelColor{40, 48, 62} : PixelColor{28, 28, 34};
+            }
             taskbar_window->FillRectangle(x, taskbar_button_y, taskbar_button_w, taskbar_button_h, fill);
             taskbar_window->FillRectangle(x, taskbar_button_y, taskbar_button_w, 1, border);
             taskbar_window->FillRectangle(x, taskbar_button_y + taskbar_button_h - 1, taskbar_button_w, 1, border);
@@ -2614,9 +2623,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                       screen_w - (system_taskbar_button_x - taskbar_button_gap) - 8,
                                       taskbar_button_h, {24, 24, 28});
         DrawWindowTaskbarButton(system_taskbar_button_x, "System",
-                                system_visible, system_closed, system_visible && active_window == 1);
+                                system_visible, system_closed, system_visible && active_window == 1,
+                                taskbar_hovered_button == 0, taskbar_pressed_button == 0);
         DrawWindowTaskbarButton(terminal_taskbar_button_x, "Terminal",
-                                terminal_visible, terminal_closed, terminal_visible && active_window == 0);
+                                terminal_visible, terminal_closed, terminal_visible && active_window == 0,
+                                taskbar_hovered_button == 1, taskbar_pressed_button == 1);
         taskbar_visual_dirty = false;
     };
 
@@ -3435,6 +3446,20 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     auto IsPointInRect = [&](int px, int py, int x, int y, int w, int h) {
         return px >= x && py >= y && px < x + w && py < y + h;
     };
+    auto HitTestTaskbarButton = [&](int px, int py) -> int {
+        const int local_x = px - taskbar_layer->GetX();
+        const int local_y = py - taskbar_layer->GetY();
+        if (!IsPointInRect(local_x, local_y, 0, 0, screen_w, taskbar_h)) {
+            return -1;
+        }
+        if (IsPointInRect(local_x, local_y, system_taskbar_button_x, taskbar_button_y, taskbar_button_w, taskbar_button_h)) {
+            return 0;
+        }
+        if (IsPointInRect(local_x, local_y, terminal_taskbar_button_x, taskbar_button_y, taskbar_button_w, taskbar_button_h)) {
+            return 1;
+        }
+        return -1;
+    };
     auto TryHandleWindowChromeClick = [&](int px, int py) -> bool {
         if (terminal_visible &&
             IsPointInRect(px, py, term_frame_layer->GetX(), term_frame_layer->GetY(), term_frame_w, term_title_h)) {
@@ -3477,20 +3502,23 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         return false;
     };
     auto TryHandleTaskbarClick = [&](int px, int py) -> bool {
-        const int local_x = px - taskbar_layer->GetX();
-        const int local_y = py - taskbar_layer->GetY();
-        if (!IsPointInRect(local_x, local_y, 0, 0, screen_w, taskbar_h)) {
+        const int hit = HitTestTaskbarButton(px, py);
+        if (hit < 0) {
             return false;
         }
-        if (IsPointInRect(local_x, local_y, terminal_taskbar_button_x, taskbar_button_y, taskbar_button_w, taskbar_button_h)) {
-            RestoreWindowFromTaskbar(0);
+        const int which = (hit == 0) ? 1 : 0;
+        const bool visible = (which == 0) ? terminal_visible : system_visible;
+        const bool closed = (which == 0) ? terminal_closed : system_closed;
+        if (!visible || closed) {
+            RestoreWindowFromTaskbar(which);
             return true;
         }
-        if (IsPointInRect(local_x, local_y, system_taskbar_button_x, taskbar_button_y, taskbar_button_w, taskbar_button_h)) {
-            RestoreWindowFromTaskbar(1);
+        if (active_window == which) {
+            MinimizeWindow(which);
             return true;
         }
-        return false;
+        ApplyWindowFocus(which);
+        return true;
     };
     auto ScrollConsoleUp = [&](int lines) { console->ScrollUp(lines); };
     auto ScrollConsoleDown = [&](int lines) { console->ScrollDown(lines); };
@@ -4018,6 +4046,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     HandleMouseMessage(msg);
                     const int pointer_x = pointer_logical_x - 1;
                     const int pointer_y = pointer_logical_y - 1;
+                    const int hovered_taskbar_button = HitTestTaskbarButton(pointer_x, pointer_y);
+                    if (hovered_taskbar_button != taskbar_hovered_button) {
+                        taskbar_hovered_button = hovered_taskbar_button;
+                        taskbar_visual_dirty = true;
+                    }
                     pointer_test_panel.UpdatePointerState(pointer_logical_x - 1,
                                                          pointer_logical_y - 1,
                                                          (g_mouse_buttons_current & 0x01u) != 0);
@@ -4027,8 +4060,27 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     const bool left_released =
                         ((prev_buttons & 0x01u) != 0) &&
                         ((g_mouse_buttons_current & 0x01u) == 0);
-                    if ((left_pressed || left_released) && dragging_window < 0 &&
-                        TryHandleTaskbarClick(pointer_x, pointer_y)) {
+                    if (left_pressed) {
+                        taskbar_pressed_button = hovered_taskbar_button;
+                        if (taskbar_pressed_button >= 0) {
+                            taskbar_visual_dirty = true;
+                        }
+                    }
+                    if (left_released) {
+                        const int released_button = taskbar_pressed_button;
+                        taskbar_pressed_button = -1;
+                        if (released_button >= 0) {
+                            taskbar_visual_dirty = true;
+                        }
+                        if (dragging_window < 0 &&
+                            released_button >= 0 &&
+                            released_button == hovered_taskbar_button &&
+                            TryHandleTaskbarClick(pointer_x, pointer_y)) {
+                            break;
+                        }
+                    }
+                    if (left_pressed && dragging_window < 0 &&
+                        hovered_taskbar_button >= 0) {
                         break;
                     }
                     if (left_pressed && dragging_window < 0) {
