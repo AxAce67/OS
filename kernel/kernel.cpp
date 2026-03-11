@@ -108,6 +108,7 @@ void DrawString(const struct FrameBufferConfig* config, uint32_t start_x, uint32
 #include "shell/cmd_xhci.hpp"
 #include "shell/tab_completion.hpp"
 #include "shell/text.hpp"
+#include "ui/pointer_test_panel.hpp"
 #include "ui/system_monitor.hpp"
 #include "user/ring3.hpp"
 
@@ -2534,6 +2535,21 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     ui::SystemMonitorPanel system_monitor_panel(info_content_window, info_content_layer, layer_manager,
                                                 info_content_w, info_content_h);
 
+    const int pointer_panel_w = 160;
+    const int pointer_panel_h = 112;
+    int pointer_panel_x = screen_w - pointer_panel_w - 28;
+    int pointer_panel_y = 52;
+    if (pointer_panel_x < 0) pointer_panel_x = 0;
+    if (pointer_panel_y + pointer_panel_h > screen_h - taskbar_h) {
+        pointer_panel_y = screen_h - taskbar_h - pointer_panel_h;
+    }
+    Window* pointer_panel_window = new Window(pointer_panel_w, pointer_panel_h);
+    Layer* pointer_panel_layer = layer_manager->NewLayer();
+    pointer_panel_layer->SetWindow(pointer_panel_window).Move(pointer_panel_x, pointer_panel_y);
+    layer_manager->UpDown(pointer_panel_layer, 6);
+    ui::PointerTestPanel pointer_test_panel(pointer_panel_window, pointer_panel_layer, layer_manager,
+                                            pointer_panel_w, pointer_panel_h);
+
     auto DrawFrameTitle = [&](Window* frame, int border, int title_h, int frame_w,
                               const char* title, bool active) {
         PixelColor title_bg = active ? PixelColor{52, 56, 70} : PixelColor{46, 50, 62};
@@ -3761,7 +3777,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     auto DispatchMessage = [&](const Message& msg) {
         switch (msg.type) {
             case Message::Type::kInterruptMouse:
-                HandleMouseMessage(msg);
+                {
+                    const uint8_t prev_buttons = g_mouse_buttons_current;
+                    HandleMouseMessage(msg);
+                    const bool left_pressed =
+                        ((prev_buttons & 0x01u) == 0) &&
+                        ((g_mouse_buttons_current & 0x01u) != 0);
+                    if (left_pressed && dragging_window < 0) {
+                        pointer_test_panel.HandlePrimaryClick(pointer_logical_x - 1, pointer_logical_y - 1);
+                    }
+                }
                 break;
             case Message::Type::kInterruptKeyboard:
                 HandleKeyboardMessage(msg);
