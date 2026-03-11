@@ -167,6 +167,7 @@ uint32_t g_xhci_hid_last_poll_length = 0;
 uint16_t g_xhci_hid_auto_mps = 8;
 uint8_t g_xhci_hid_auto_interval = 4;
 uint32_t g_xhci_hid_auto_consecutive_failures = 0;
+uint32_t g_xhci_hid_auto_consecutive_no_data = 0;
 uint64_t g_xhci_hid_auto_fail_count = 0;
 uint64_t g_xhci_hid_auto_recover_count = 0;
 uint64_t g_xhci_hid_next_recover_tick = 0;
@@ -682,6 +683,7 @@ bool StartXHCIAutoMouse(uint32_t req_len, uint16_t mps, uint8_t interval) {
     g_xhci_hid_auto_enabled = true;
     g_xhci_hid_last_poll_tick = CurrentTick();
     g_xhci_hid_auto_consecutive_failures = 0;
+    g_xhci_hid_auto_consecutive_no_data = 0;
     g_xhci_hid_next_recover_tick = 0;
     g_xhci_hid_auto_start_fail_reason = kXhciHidAutoStartFailNone;
     g_xhci_hid_auto_start_fail_ccode = 0;
@@ -712,23 +714,29 @@ bool HandleXHCIAutoPollOnIdle() {
         g_xhci_hid_last_poll_tick = now_tick;
         if (PollHIDAndApply(g_xhci_hid_auto_slot, g_xhci_hid_auto_len, false)) {
             g_xhci_hid_auto_consecutive_failures = 0;
+            g_xhci_hid_auto_consecutive_no_data = 0;
             return true;
         }
         if (g_xhci_hid_last_poll_reason == kXhciHidPollReasonNoData) {
-            return false;
+            ++g_xhci_hid_auto_consecutive_no_data;
+        } else {
+            g_xhci_hid_auto_consecutive_no_data = 0;
+            ++g_xhci_hid_auto_fail_count;
+            ++g_xhci_hid_auto_consecutive_failures;
         }
-        ++g_xhci_hid_auto_fail_count;
-        ++g_xhci_hid_auto_consecutive_failures;
     }
 
     const uint32_t kRecoverFailThreshold = 24;
-    if (g_xhci_hid_auto_consecutive_failures >= kRecoverFailThreshold &&
+    const uint32_t kRecoverNoDataThreshold = 180;
+    if ((g_xhci_hid_auto_consecutive_failures >= kRecoverFailThreshold ||
+         g_xhci_hid_auto_consecutive_no_data >= kRecoverNoDataThreshold) &&
         now_tick >= g_xhci_hid_next_recover_tick) {
         g_xhci_hid_next_recover_tick = now_tick + 120;  // retry after a short cool down
         ResetHIDDecodeLearning();
         if (StartXHCIAutoMouse(g_xhci_hid_auto_len, g_xhci_hid_auto_mps, g_xhci_hid_auto_interval)) {
             ++g_xhci_hid_auto_recover_count;
             g_xhci_hid_auto_consecutive_failures = 0;
+            g_xhci_hid_auto_consecutive_no_data = 0;
         }
     }
     return false;

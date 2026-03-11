@@ -22,6 +22,7 @@ extern uint32_t g_xhci_hid_auto_consecutive_failures;
 extern uint64_t g_xhci_hid_auto_fail_count;
 extern uint64_t g_xhci_hid_auto_recover_count;
 extern uint64_t g_xhci_hid_next_recover_tick;
+extern uint32_t g_xhci_hid_auto_consecutive_no_data;
 extern uint64_t g_last_absolute_mouse_tick;
 extern uint8_t g_hid_format_mode;
 extern uint32_t g_hid_observed_max_raw;
@@ -611,6 +612,8 @@ bool ExecuteXHCICommand(const char* cmd, const char* command, int* pos_ptr) {
         console->PrintDec(g_xhci_hid_last_poll_length);
         console->Print(" auto_fail=");
         console->PrintDec(g_xhci_hid_auto_fail_count);
+        console->Print(" auto_nodata=");
+        console->PrintDec(g_xhci_hid_auto_consecutive_no_data);
         console->Print(" auto_recover=");
         console->PrintDec(g_xhci_hid_auto_recover_count);
         console->Print("\n");

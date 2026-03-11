@@ -52,6 +52,7 @@ extern uint8_t g_xhci_hid_last_poll_ccode;
 extern uint32_t g_xhci_hid_last_poll_length;
 extern uint64_t g_xhci_hid_auto_fail_count;
 extern uint64_t g_xhci_hid_auto_recover_count;
+extern uint32_t g_xhci_hid_auto_consecutive_no_data;
 extern uint32_t g_xhci_hid_auto_start_fail_reason;
 extern uint8_t g_xhci_hid_auto_start_fail_ccode;
 extern uint64_t g_last_absolute_mouse_tick;
@@ -837,6 +838,8 @@ bool ExecuteInputDiagCommand() {
     console->PrintDec(static_cast<int64_t>(g_xhci_hid_last_poll_length));
     console->Print(" fail=");
     console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_fail_count));
+    console->Print(" nodata=");
+    console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_consecutive_no_data));
     console->Print(" recover=");
     console->PrintDec(static_cast<int64_t>(g_xhci_hid_auto_recover_count));
     console->Print("\n");
