@@ -4312,9 +4312,18 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     const uint8_t prev_buttons = g_mouse_buttons_current;
                     const int drag_window_before = dragging_window;
                     HandleMouseMessage(msg);
+                    const bool left_pressed =
+                        ((prev_buttons & 0x01u) == 0) &&
+                        ((g_mouse_buttons_current & 0x01u) != 0);
+                    const bool left_released =
+                        ((prev_buttons & 0x01u) != 0) &&
+                        ((g_mouse_buttons_current & 0x01u) == 0);
                     const int pointer_x = pointer_logical_x - 1;
                     const int pointer_y = pointer_logical_y - 1;
-                    const bool dragging_active = dragging_window >= 0 || drag_pending_move;
+                    const bool dragging_active =
+                        (dragging_window >= 0 || drag_pending_move) &&
+                        !left_pressed &&
+                        !left_released;
                     const int current_title_button =
                         dragging_active ? -1 : HitTestTitlebarButton(pointer_x, pointer_y);
                     const int hovered_taskbar_button =
@@ -4330,16 +4339,11 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     pointer_test_panel.UpdatePointerState(pointer_logical_x - 1,
                                                          pointer_logical_y - 1,
                                                          (g_mouse_buttons_current & 0x01u) != 0);
-                    const bool left_pressed =
-                        ((prev_buttons & 0x01u) == 0) &&
-                        ((g_mouse_buttons_current & 0x01u) != 0);
-                    const bool left_released =
-                        ((prev_buttons & 0x01u) != 0) &&
-                        ((g_mouse_buttons_current & 0x01u) == 0);
                     if (left_pressed) {
                         if (current_title_button >= 0) {
                             dragging_window = -1;
                             drag_pending_move = false;
+                            HideDragPreview();
                         }
                         pressed_title_button = current_title_button;
                         if (pressed_title_button >= 0) {
