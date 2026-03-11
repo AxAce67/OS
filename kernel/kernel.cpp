@@ -2560,6 +2560,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     layer_manager->UpDown(pointer_panel_layer, 6);
     ui::PointerTestPanel pointer_test_panel(pointer_panel_window, pointer_panel_layer, layer_manager,
                                             pointer_panel_w, pointer_panel_h);
+    const int drag_preview_w = (term_frame_w > info_frame_w) ? term_frame_w : info_frame_w;
+    const int drag_preview_h = (term_frame_h > info_frame_h) ? term_frame_h : info_frame_h;
+    const PixelColor kDragPreviewTransparent{255, 0, 255};
+    Window* drag_preview_window = new Window(drag_preview_w, drag_preview_h);
+    drag_preview_window->SetTransparentColor(kDragPreviewTransparent);
+    Layer* drag_preview_layer = layer_manager->NewLayer();
+    drag_preview_layer->SetWindow(drag_preview_window).Move(0, 0);
+    layer_manager->UpDown(drag_preview_layer, -1);
 
     auto ChromeSurfaceColor = [&](bool active) {
         return active ? PixelColor{68, 84, 110} : PixelColor{56, 62, 76};
@@ -2933,39 +2941,82 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int drag_pending_window = -1;  // 0=terminal, 1=system-info
     int drag_pending_x = 0;
     int drag_pending_y = 0;
-    auto FlushPendingDrag = [&]() {
-        if (!drag_pending_move || drag_pending_window < 0) {
+    int drag_preview_window_id = -1;
+    int drag_preview_x = 0;
+    int drag_preview_y = 0;
+    int drag_preview_draw_w = 0;
+    int drag_preview_draw_h = 0;
+    auto DrawDragPreviewWindow = [&](int which) {
+        const int preview_w = (which == 0) ? term_frame_w : info_frame_w;
+        const int preview_h = (which == 0) ? term_frame_h : info_frame_h;
+        const PixelColor border = (which == 0)
+            ? PixelColor{156, 188, 238}
+            : PixelColor{164, 178, 206};
+        drag_preview_window->FillRectangle(0, 0, drag_preview_w, drag_preview_h, kDragPreviewTransparent);
+        drag_preview_window->FillRectangle(0, 0, preview_w, 2, border);
+        drag_preview_window->FillRectangle(0, preview_h - 2, preview_w, 2, border);
+        drag_preview_window->FillRectangle(0, 0, 2, preview_h, border);
+        drag_preview_window->FillRectangle(preview_w - 2, 0, 2, preview_h, border);
+        drag_preview_draw_w = preview_w;
+        drag_preview_draw_h = preview_h;
+        drag_preview_window_id = which;
+    };
+    auto RedrawDragPreviewRect = [&](int x, int y, int w, int h) {
+        constexpr int kDragPreviewPad = 3;
+        layer_manager->Draw(x - kDragPreviewPad,
+                            y - kDragPreviewPad,
+                            w + kDragPreviewPad * 2,
+                            h + kDragPreviewPad * 2);
+    };
+    auto HideDragPreview = [&]() {
+        if (drag_preview_window_id < 0) {
             return;
         }
-        auto DrawMovedRects = [&](int old_x, int old_y, int new_x, int new_y, int w, int h) {
-            constexpr int kDragRedrawPad = 2;
-            auto DrawPaddedRect = [&](int x, int y, int width, int height) {
-                layer_manager->Draw(x - kDragRedrawPad,
-                                    y - kDragRedrawPad,
-                                    width + kDragRedrawPad * 2,
-                                    height + kDragRedrawPad * 2);
-            };
-            const int dx = (new_x > old_x) ? (new_x - old_x) : (old_x - new_x);
-            const int dy = (new_y > old_y) ? (new_y - old_y) : (old_y - new_y);
-            const bool overlaps = dx < w && dy < h;
-            if (overlaps) {
-                const int union_x = (old_x < new_x) ? old_x : new_x;
-                const int union_y = (old_y < new_y) ? old_y : new_y;
-                const int old_end_x = old_x + w;
-                const int old_end_y = old_y + h;
-                const int new_end_x = new_x + w;
-                const int new_end_y = new_y + h;
-                const int union_w = ((old_end_x > new_end_x) ? old_end_x : new_end_x) - union_x;
-                const int union_h = ((old_end_y > new_end_y) ? old_end_y : new_end_y) - union_y;
-                DrawPaddedRect(union_x, union_y, union_w, union_h);
-                return;
-            }
-            // Large discontinuous jumps are cheaper to redraw separately.
-            DrawPaddedRect(old_x, old_y, w, h);
-            if (new_x != old_x || new_y != old_y) {
-                DrawPaddedRect(new_x, new_y, w, h);
-            }
+        const int old_x = drag_preview_x;
+        const int old_y = drag_preview_y;
+        const int old_w = drag_preview_draw_w;
+        const int old_h = drag_preview_draw_h;
+        layer_manager->UpDown(drag_preview_layer, -1);
+        drag_preview_window_id = -1;
+        drag_preview_draw_w = 0;
+        drag_preview_draw_h = 0;
+        if (old_w > 0 && old_h > 0) {
+            RedrawDragPreviewRect(old_x, old_y, old_w, old_h);
+        }
+    };
+    auto DrawMovedWindowRects = [&](int old_x, int old_y, int new_x, int new_y, int w, int h) {
+        constexpr int kDragRedrawPad = 2;
+        auto DrawPaddedRect = [&](int x, int y, int width, int height) {
+            layer_manager->Draw(x - kDragRedrawPad,
+                                y - kDragRedrawPad,
+                                width + kDragRedrawPad * 2,
+                                height + kDragRedrawPad * 2);
         };
+        const int dx = (new_x > old_x) ? (new_x - old_x) : (old_x - new_x);
+        const int dy = (new_y > old_y) ? (new_y - old_y) : (old_y - new_y);
+        const bool overlaps = dx < w && dy < h;
+        if (overlaps) {
+            const int union_x = (old_x < new_x) ? old_x : new_x;
+            const int union_y = (old_y < new_y) ? old_y : new_y;
+            const int old_end_x = old_x + w;
+            const int old_end_y = old_y + h;
+            const int new_end_x = new_x + w;
+            const int new_end_y = new_y + h;
+            const int union_w = ((old_end_x > new_end_x) ? old_end_x : new_end_x) - union_x;
+            const int union_h = ((old_end_y > new_end_y) ? old_end_y : new_end_y) - union_y;
+            DrawPaddedRect(union_x, union_y, union_w, union_h);
+            return;
+        }
+        DrawPaddedRect(old_x, old_y, w, h);
+        if (new_x != old_x || new_y != old_y) {
+            DrawPaddedRect(new_x, new_y, w, h);
+        }
+    };
+    auto CommitPendingDrag = [&]() {
+        if (!drag_pending_move || drag_pending_window < 0) {
+            HideDragPreview();
+            return;
+        }
         if (drag_pending_window == 0) {
             const int old_x = term_frame_layer->GetX();
             const int old_y = term_frame_layer->GetY();
@@ -2974,7 +3025,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             if (old_x != new_x || old_y != new_y) {
                 term_frame_layer->Move(new_x, new_y);
                 term_console_layer->Move(new_x + term_frame_border, new_y + term_title_h);
-                DrawMovedRects(old_x, old_y, new_x, new_y, term_frame_w, term_frame_h);
+                DrawMovedWindowRects(old_x, old_y, new_x, new_y, term_frame_w, term_frame_h);
             }
         } else if (drag_pending_window == 1) {
             const int old_x = info_frame_layer->GetX();
@@ -2984,11 +3035,41 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             if (old_x != new_x || old_y != new_y) {
                 info_frame_layer->Move(new_x, new_y);
                 info_content_layer->Move(new_x + info_frame_border, new_y + info_title_h);
-                DrawMovedRects(old_x, old_y, new_x, new_y, info_frame_w, info_frame_h);
+                DrawMovedWindowRects(old_x, old_y, new_x, new_y, info_frame_w, info_frame_h);
             }
         }
+        HideDragPreview();
         drag_pending_move = false;
         drag_pending_window = -1;
+    };
+    auto FlushPendingDragPreview = [&]() {
+        if (!drag_pending_move || drag_pending_window < 0) {
+            return;
+        }
+        const int new_x = drag_pending_x;
+        const int new_y = drag_pending_y;
+        const int preview_w = (drag_pending_window == 0) ? term_frame_w : info_frame_w;
+        const int preview_h = (drag_pending_window == 0) ? term_frame_h : info_frame_h;
+        if (drag_preview_window_id != drag_pending_window) {
+            HideDragPreview();
+            DrawDragPreviewWindow(drag_pending_window);
+            drag_preview_x = new_x;
+            drag_preview_y = new_y;
+            drag_preview_layer->Move(new_x, new_y);
+            layer_manager->UpDown(drag_preview_layer, 7);
+            RedrawDragPreviewRect(new_x, new_y, preview_w, preview_h);
+            return;
+        }
+        const int old_x = drag_preview_x;
+        const int old_y = drag_preview_y;
+        if (old_x == new_x && old_y == new_y) {
+            return;
+        }
+        drag_preview_x = new_x;
+        drag_preview_y = new_y;
+        drag_preview_layer->Move(new_x, new_y);
+        layer_manager->UpDown(drag_preview_layer, 7);
+        DrawMovedWindowRects(old_x, old_y, new_x, new_y, preview_w, preview_h);
     };
     auto FlushPointerVisual = [&]() {
         if (!pointer_visual_dirty) {
@@ -3507,6 +3588,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             drag_pending_x = 0;
             drag_pending_y = 0;
             drag_pending_move = false;
+        }
+        if (drag_preview_window_id == which) {
+            HideDragPreview();
         }
     };
     auto RedrawWindowRegion = [&](int which, int old_x, int old_y) {
@@ -4156,7 +4240,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (!drag_visual_dirty) {
             return false;
         }
-        FlushPendingDrag();
+        FlushPendingDragPreview();
         drag_visual_dirty = false;
         return true;
     };
@@ -4226,6 +4310,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             case Message::Type::kInterruptMouse:
                 {
                     const uint8_t prev_buttons = g_mouse_buttons_current;
+                    const int drag_window_before = dragging_window;
                     HandleMouseMessage(msg);
                     const int pointer_x = pointer_logical_x - 1;
                     const int pointer_y = pointer_logical_y - 1;
@@ -4266,6 +4351,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         }
                     }
                     if (left_released) {
+                        if (drag_window_before >= 0) {
+                            CommitPendingDrag();
+                            drag_visual_dirty = false;
+                        }
                         const int released_title_button = pressed_title_button;
                         pressed_title_button = -1;
                         if (released_title_button >= 0) {
