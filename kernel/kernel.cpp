@@ -371,39 +371,19 @@ bool DecodeHIDAbsoluteXY(const uint8_t* data, uint32_t len, int* out_x, int* out
     g_hid_last_raw_x = raw_x;
     g_hid_last_raw_y = raw_y;
 
-    uint32_t max_raw = 0xFFFFu;
-    if (g_hid_observed_max_raw <= 0x7FFFu && g_hid_sample_count >= 8) {
-        max_raw = 0x7FFFu;
-    }
-    if (g_hid_observed_max_raw > 0x7FFFu) {
-        max_raw = 0xFFFFu;
-    }
-    if (chosen_mode == 2 && max_raw == 0xFFFFu && raw_x <= 0x7FFFu && raw_y <= 0x7FFFu) {
-        // ReportID付き形式で16bit full rangeが使われないケースが多いので補正
-        max_raw = 0x7FFFu;
-    }
+    const uint16_t max_raw =
+        ((chosen_mode == 2 || raw_x <= 0x7FFFu) && raw_y <= 0x7FFFu) ? 0x7FFFu : 0xFFFFu;
 
     if (raw_x < g_hid_min_x) g_hid_min_x = raw_x;
     if (raw_y < g_hid_min_y) g_hid_min_y = raw_y;
     if (raw_x > g_hid_max_x) g_hid_max_x = raw_x;
     if (raw_y > g_hid_max_y) g_hid_max_y = raw_y;
-    if (g_hid_sample_count >= 12) {
-        g_hid_calibrated = true;
-    }
+    g_hid_calibrated = true;
 
-    uint16_t use_min_x = 0;
-    uint16_t use_min_y = 0;
-    uint16_t use_max_x = static_cast<uint16_t>(max_raw);
-    uint16_t use_max_y = static_cast<uint16_t>(max_raw);
-    if (g_hid_calibrated) {
-        // 少しだけ余白を持たせて端への到達性を上げる
-        const uint16_t pad_x = (g_hid_max_x > g_hid_min_x) ? static_cast<uint16_t>((g_hid_max_x - g_hid_min_x) / 8) : 0;
-        const uint16_t pad_y = (g_hid_max_y > g_hid_min_y) ? static_cast<uint16_t>((g_hid_max_y - g_hid_min_y) / 8) : 0;
-        use_min_x = (g_hid_min_x > pad_x) ? static_cast<uint16_t>(g_hid_min_x - pad_x) : 0;
-        use_min_y = (g_hid_min_y > pad_y) ? static_cast<uint16_t>(g_hid_min_y - pad_y) : 0;
-        use_max_x = ClampU16(static_cast<uint16_t>(g_hid_max_x + pad_x), use_min_x + 1, static_cast<uint16_t>(max_raw));
-        use_max_y = ClampU16(static_cast<uint16_t>(g_hid_max_y + pad_y), use_min_y + 1, static_cast<uint16_t>(max_raw));
-    }
+    const uint16_t use_min_x = 0;
+    const uint16_t use_min_y = 0;
+    const uint16_t use_max_x = max_raw;
+    const uint16_t use_max_y = max_raw;
 
     uint16_t cx = ClampU16(raw_x, use_min_x, use_max_x);
     uint16_t cy = ClampU16(raw_y, use_min_y, use_max_y);
