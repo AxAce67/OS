@@ -3919,14 +3919,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (dragging_window >= 0 || now_tick < next_system_info_tick) {
             return;
         }
-        // Avoid periodic hitch while pointer is actively moving.
-        if ((active_window == 1 || (now_tick - last_pointer_move_tick) >= kSystemInfoPointerIdleTicks) &&
+        // Keep system panel updates out of the pointer fast-path.
+        if ((now_tick - last_pointer_move_tick) >= kSystemInfoPointerIdleTicks &&
             event_queue::Count(main_queue) <= 8) {
             RefreshSystemInfo();
         }
-        next_system_info_tick = now_tick + ((active_window == 1)
-            ? kSystemInfoRefreshIntervalTicks
-            : kSystemInfoBackgroundIntervalTicks);
+        next_system_info_tick = now_tick + kSystemInfoBackgroundIntervalTicks;
     };
     auto ProcessCompositorUpdates = [&]() {
         const uint64_t now_tick = CurrentTick();
@@ -3971,6 +3969,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     const bool left_pressed =
                         ((prev_buttons & 0x01u) == 0) &&
                         ((g_mouse_buttons_current & 0x01u) != 0);
+                    const bool left_released =
+                        ((prev_buttons & 0x01u) != 0) &&
+                        ((g_mouse_buttons_current & 0x01u) == 0);
+                    if ((left_pressed || left_released) && dragging_window < 0 &&
+                        TryHandleTaskbarClick(pointer_x, pointer_y)) {
+                        break;
+                    }
                     if (left_pressed && dragging_window < 0) {
                         if (!TryHandleWindowChromeClick(pointer_x, pointer_y) &&
                             !TryHandleTaskbarClick(pointer_x, pointer_y)) {
