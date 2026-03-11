@@ -3340,16 +3340,39 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         ApplyFocusVisualState(which);
         focus_visual_dirty = true;
     };
+    auto ClearPendingDragState = [&](int which) {
+        if (dragging_window == which) {
+            dragging_window = -1;
+        }
+        if (drag_pending_window == which) {
+            drag_pending_window = -1;
+            drag_pending_x = 0;
+            drag_pending_y = 0;
+            drag_pending_move = false;
+        }
+    };
+    auto RedrawWindowRegion = [&](int which, int old_x, int old_y) {
+        if (which == 0) {
+            layer_manager->Draw(old_x, old_y, term_frame_w, term_frame_h);
+            if (terminal_visible) {
+                layer_manager->Draw(term_frame_layer->GetX(), term_frame_layer->GetY(), term_frame_w, term_frame_h);
+            }
+            return;
+        }
+        layer_manager->Draw(old_x, old_y, info_frame_w, info_frame_h);
+        if (system_visible) {
+            layer_manager->Draw(info_frame_layer->GetX(), info_frame_layer->GetY(), info_frame_w, info_frame_h);
+        }
+    };
     auto SetWindowVisibility = [&](int which, bool visible) {
         bool* visible_flag = (which == 0) ? &terminal_visible : &system_visible;
         if (*visible_flag == visible) {
             return;
         }
+        const int old_x = (which == 0) ? term_frame_layer->GetX() : info_frame_layer->GetX();
+        const int old_y = (which == 0) ? term_frame_layer->GetY() : info_frame_layer->GetY();
         *visible_flag = visible;
-        if (!visible && dragging_window == which) {
-            dragging_window = -1;
-            drag_pending_move = false;
-        }
+        ClearPendingDragState(which);
         if (!terminal_visible && system_visible) {
             active_window = 1;
         } else if (terminal_visible && !system_visible) {
@@ -3358,6 +3381,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         ApplyFocusLayerOrder(active_window);
         ApplyFocusVisualState(active_window);
         focus_visual_dirty = true;
+        RedrawWindowRegion(which, old_x, old_y);
     };
     auto RestoreWindowFromTaskbar = [&](int which) {
         SetWindowVisibility(which, true);
