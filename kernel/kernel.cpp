@@ -3550,8 +3550,34 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         return false;
     };
-    auto TryHandleTaskbarClick = [&](int px, int py) -> bool {
-        const int hit = HitTestTaskbarButton(px, py);
+    auto TryHandleWindowChromeButtonById = [&](int button_id) -> bool {
+        switch (button_id) {
+            case 0:
+                dragging_window = -1;
+                drag_pending_move = false;
+                MinimizeWindow(0);
+                return true;
+            case 1:
+                dragging_window = -1;
+                drag_pending_move = false;
+                CloseWindow(0);
+                return true;
+            case 2:
+                dragging_window = -1;
+                drag_pending_move = false;
+                MinimizeWindow(1);
+                return true;
+            case 3:
+                dragging_window = -1;
+                drag_pending_move = false;
+                CloseWindow(1);
+                return true;
+            default:
+                break;
+        }
+        return false;
+    };
+    auto TryHandleTaskbarClickByHit = [&](int hit) -> bool {
         if (hit < 0) {
             return false;
         }
@@ -3568,6 +3594,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         ApplyWindowFocus(which);
         return true;
+    };
+    auto TryHandleTaskbarClick = [&](int px, int py) -> bool {
+        return TryHandleTaskbarClickByHit(HitTestTaskbarButton(px, py));
     };
     auto ScrollConsoleUp = [&](int lines) { console->ScrollUp(lines); };
     auto ScrollConsoleDown = [&](int lines) { console->ScrollDown(lines); };
@@ -4143,14 +4172,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         }
                         if (dragging_window < 0 &&
                             released_title_button >= 0 &&
-                            released_title_button == current_title_button &&
-                            TryHandleWindowChromeClick(pointer_x, pointer_y)) {
+                            TryHandleWindowChromeButtonById(released_title_button)) {
                             break;
                         }
                         if (dragging_window < 0 &&
                             released_button >= 0 &&
-                            released_button == hovered_taskbar_button &&
-                            TryHandleTaskbarClick(pointer_x, pointer_y)) {
+                            TryHandleTaskbarClickByHit(released_button)) {
                             break;
                         }
                     }
