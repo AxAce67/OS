@@ -2939,6 +2939,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return;
         }
         auto DrawMovedRects = [&](int old_x, int old_y, int new_x, int new_y, int w, int h) {
+            constexpr int kDragRedrawPad = 2;
+            auto DrawPaddedRect = [&](int x, int y, int width, int height) {
+                layer_manager->Draw(x - kDragRedrawPad,
+                                    y - kDragRedrawPad,
+                                    width + kDragRedrawPad * 2,
+                                    height + kDragRedrawPad * 2);
+            };
             const int dx = (new_x > old_x) ? (new_x - old_x) : (old_x - new_x);
             const int dy = (new_y > old_y) ? (new_y - old_y) : (old_y - new_y);
             const bool overlaps = dx < w && dy < h;
@@ -2951,13 +2958,13 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 const int new_end_y = new_y + h;
                 const int union_w = ((old_end_x > new_end_x) ? old_end_x : new_end_x) - union_x;
                 const int union_h = ((old_end_y > new_end_y) ? old_end_y : new_end_y) - union_y;
-                layer_manager->Draw(union_x, union_y, union_w, union_h);
+                DrawPaddedRect(union_x, union_y, union_w, union_h);
                 return;
             }
             // Large discontinuous jumps are cheaper to redraw separately.
-            layer_manager->Draw(old_x, old_y, w, h);
+            DrawPaddedRect(old_x, old_y, w, h);
             if (new_x != old_x || new_y != old_y) {
-                layer_manager->Draw(new_x, new_y, w, h);
+                DrawPaddedRect(new_x, new_y, w, h);
             }
         };
         if (drag_pending_window == 0) {
