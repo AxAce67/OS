@@ -3031,6 +3031,25 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         RenderInputLine();
         RefreshInputLine();
     };
+    auto ResetTerminalWindowContent = [&]() {
+        console->Clear();
+        command_buffer[0] = '\0';
+        command_len = 0;
+        cursor_pos = 0;
+        rendered_len = 0;
+        ime_romaji_len = 0;
+        ime_romaji_buffer[0] = '\0';
+        ClearImeCandidate();
+        ClearSelection();
+        command_history.ResetNavigation();
+        PrintPrompt();
+        input_row = console->CursorRow();
+        input_col = console->CursorColumn();
+        RenderInputLine();
+    };
+    auto ResetSystemWindowContent = [&]() {
+        RefreshSystemInfo();
+    };
     auto RestorePromptAndInput = [&](const char* snapshot, int saved_cursor) {
         shell_ui.RestorePromptAndInput(snapshot, saved_cursor,
                                        ReplaceInputLine,
@@ -3466,11 +3485,19 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         info_frame_layer->Move(info_default_frame_x, info_default_frame_y);
         info_content_layer->Move(info_default_frame_x + info_frame_border, info_default_frame_y + info_title_h);
     };
+    auto ResetWindowContent = [&](int which) {
+        if (which == 0) {
+            ResetTerminalWindowContent();
+            return;
+        }
+        ResetSystemWindowContent();
+    };
     auto RestoreWindowFromTaskbar = [&](int which) {
         const bool was_closed = IsWindowClosed(which);
         taskbar_pressed_button = -1;
         if (was_closed) {
             ResetWindowPosition(which);
+            ResetWindowContent(which);
         }
         SetWindowUiState(which, WindowUiState::kVisible);
         ApplyWindowFocus(which);
