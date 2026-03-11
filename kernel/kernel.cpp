@@ -2612,13 +2612,32 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     int dragging_window = -1;
     bool drag_pending_move = false;
     bool focus_visual_dirty = false;
-    bool terminal_visible = true;
-    bool system_visible = true;
-    bool terminal_closed = false;
-    bool system_closed = false;
+    enum class WindowUiState {
+        kVisible,
+        kMinimized,
+        kClosed,
+    };
+    WindowUiState terminal_state = WindowUiState::kVisible;
+    WindowUiState system_state = WindowUiState::kVisible;
     bool taskbar_visual_dirty = true;
     int taskbar_hovered_button = -1; // 0=system, 1=terminal
     int taskbar_pressed_button = -1;
+    auto GetWindowState = [&](int which) -> WindowUiState {
+        return (which == 0) ? terminal_state : system_state;
+    };
+    auto SetWindowState = [&](int which, WindowUiState state) {
+        if (which == 0) {
+            terminal_state = state;
+        } else {
+            system_state = state;
+        }
+    };
+    auto IsWindowVisible = [&](int which) {
+        return GetWindowState(which) == WindowUiState::kVisible;
+    };
+    auto IsWindowClosed = [&](int which) {
+        return GetWindowState(which) == WindowUiState::kClosed;
+    };
     auto DrawTaskbarButtons = [&]() {
         auto DrawWindowTaskbarButton = [&](int x, const char* label, bool visible, bool closed,
                                           bool focused, bool hovered, bool pressed) {
@@ -2652,10 +2671,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                                       screen_w - (system_taskbar_button_x - taskbar_button_gap) - 8,
                                       taskbar_button_h, {24, 24, 28});
         DrawWindowTaskbarButton(system_taskbar_button_x, "System",
-                                system_visible, system_closed, system_visible && active_window == 1,
+                                IsWindowVisible(1), IsWindowClosed(1), IsWindowVisible(1) && active_window == 1,
                                 taskbar_hovered_button == 0, taskbar_pressed_button == 0);
         DrawWindowTaskbarButton(terminal_taskbar_button_x, "Terminal",
-                                terminal_visible, terminal_closed, terminal_visible && active_window == 0,
+                                IsWindowVisible(0), IsWindowClosed(0), IsWindowVisible(0) && active_window == 0,
                                 taskbar_hovered_button == 1, taskbar_pressed_button == 1);
         taskbar_visual_dirty = false;
     };
@@ -3336,21 +3355,21 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         DrawWindowControls(info_frame_window, info_frame_w, focused);
     };
     auto ApplyFocusLayerOrder = [&](int which) {
-        if (!terminal_visible && !system_visible) {
+        if (!IsWindowVisible(0) && !IsWindowVisible(1)) {
             layer_manager->UpDown(term_frame_layer, -1);
             layer_manager->UpDown(term_console_layer, -1);
             layer_manager->UpDown(info_frame_layer, -1);
             layer_manager->UpDown(info_content_layer, -1);
             return;
         }
-        if (!terminal_visible) {
+        if (!IsWindowVisible(0)) {
             layer_manager->UpDown(term_frame_layer, -1);
             layer_manager->UpDown(term_console_layer, -1);
             layer_manager->UpDown(info_frame_layer, 4);
             layer_manager->UpDown(info_content_layer, 5);
             return;
         }
-        if (!system_visible) {
+        if (!IsWindowVisible(1)) {
             layer_manager->UpDown(info_frame_layer, -1);
             layer_manager->UpDown(info_content_layer, -1);
             layer_manager->UpDown(term_frame_layer, 4);
@@ -3370,14 +3389,14 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         layer_manager->UpDown(info_content_layer, 5);
     };
     auto ApplyFocusVisualState = [&](int which) {
-        const bool terminal_focused = terminal_visible && (which == 0);
-        const bool system_focused = system_visible && (which == 1);
+        const bool terminal_focused = IsWindowVisible(0) && (which == 0);
+        const bool system_focused = IsWindowVisible(1) && (which == 1);
         SetTerminalFocusVisual(terminal_focused);
         SetSystemFocusVisual(system_focused);
         taskbar_visual_dirty = true;
     };
     auto ApplyWindowFocus = [&](int which) {
-        if ((which == 0 && !terminal_visible) || (which == 1 && !system_visible)) {
+        if (!IsWindowVisible(which)) {
             return;
         }
         if (which == active_window) {
@@ -3405,7 +3424,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     auto RedrawWindowRegion = [&](int which, int old_x, int old_y) {
         if (which == 0) {
             layer_manager->Draw(old_x, old_y, term_frame_w, term_frame_h);
-            if (terminal_visible) {
+            if (IsWindowVisible(0)) {
                 layer_manager->Draw(term_frame_layer->GetX(), term_frame_layer->GetY(), term_frame_w, term_frame_h);
                 layer_manager->Draw(term_console_layer->GetX(), term_console_layer->GetY(),
                                     term_content_w, term_content_h);
@@ -3413,24 +3432,24 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return;
         }
         layer_manager->Draw(old_x, old_y, info_frame_w, info_frame_h);
-        if (system_visible) {
+        if (IsWindowVisible(1)) {
             layer_manager->Draw(info_frame_layer->GetX(), info_frame_layer->GetY(), info_frame_w, info_frame_h);
             layer_manager->Draw(info_content_layer->GetX(), info_content_layer->GetY(),
                                 info_content_w, info_content_h);
         }
     };
-    auto SetWindowVisibility = [&](int which, bool visible) {
-        bool* visible_flag = (which == 0) ? &terminal_visible : &system_visible;
-        if (*visible_flag == visible) {
+    auto SetWindowUiState = [&](int which, WindowUiState next_state) {
+        const WindowUiState current_state = GetWindowState(which);
+        if (current_state == next_state) {
             return;
         }
         const int old_x = (which == 0) ? term_frame_layer->GetX() : info_frame_layer->GetX();
         const int old_y = (which == 0) ? term_frame_layer->GetY() : info_frame_layer->GetY();
-        *visible_flag = visible;
+        SetWindowState(which, next_state);
         ClearPendingDragState(which);
-        if (!terminal_visible && system_visible) {
+        if (!IsWindowVisible(0) && IsWindowVisible(1)) {
             active_window = 1;
-        } else if (terminal_visible && !system_visible) {
+        } else if (IsWindowVisible(0) && !IsWindowVisible(1)) {
             active_window = 0;
         }
         ApplyFocusLayerOrder(active_window);
@@ -3448,34 +3467,19 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         info_content_layer->Move(info_default_frame_x + info_frame_border, info_default_frame_y + info_title_h);
     };
     auto RestoreWindowFromTaskbar = [&](int which) {
-        const bool was_closed = (which == 0) ? terminal_closed : system_closed;
-        if (which == 0) {
-            terminal_closed = false;
-        } else {
-            system_closed = false;
-        }
+        const bool was_closed = IsWindowClosed(which);
         taskbar_pressed_button = -1;
         if (was_closed) {
             ResetWindowPosition(which);
         }
-        SetWindowVisibility(which, true);
+        SetWindowUiState(which, WindowUiState::kVisible);
         ApplyWindowFocus(which);
     };
     auto MinimizeWindow = [&](int which) {
-        if (which == 0) {
-            terminal_closed = false;
-        } else {
-            system_closed = false;
-        }
-        SetWindowVisibility(which, false);
+        SetWindowUiState(which, WindowUiState::kMinimized);
     };
     auto CloseWindow = [&](int which) {
-        if (which == 0) {
-            terminal_closed = true;
-        } else {
-            system_closed = true;
-        }
-        SetWindowVisibility(which, false);
+        SetWindowUiState(which, WindowUiState::kClosed);
     };
     auto IsPointInRect = [&](int px, int py, int x, int y, int w, int h) {
         return px >= x && py >= y && px < x + w && py < y + h;
@@ -3495,7 +3499,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         return -1;
     };
     auto HitTestTitlebarButton = [&](int px, int py) -> int {
-        if (terminal_visible &&
+        if (IsWindowVisible(0) &&
             IsPointInRect(px, py, term_frame_layer->GetX(), term_frame_layer->GetY(), term_frame_w, term_title_h)) {
             const int local_x = px - term_frame_layer->GetX();
             const int local_y = py - term_frame_layer->GetY();
@@ -3508,7 +3512,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                 return 1;
             }
         }
-        if (system_visible &&
+        if (IsWindowVisible(1) &&
             IsPointInRect(px, py, info_frame_layer->GetX(), info_frame_layer->GetY(), info_frame_w, info_title_h)) {
             const int local_x = px - info_frame_layer->GetX();
             const int local_y = py - info_frame_layer->GetY();
@@ -3582,8 +3586,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             return false;
         }
         const int which = (hit == 0) ? 1 : 0;
-        const bool visible = (which == 0) ? terminal_visible : system_visible;
-        const bool closed = (which == 0) ? terminal_closed : system_closed;
+        const bool visible = IsWindowVisible(which);
+        const bool closed = IsWindowClosed(which);
         if (!visible || closed) {
             RestoreWindowFromTaskbar(which);
             return true;
@@ -4036,10 +4040,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         if (!focus_visual_dirty && !should_draw_taskbar && !should_draw_titlebars) {
             return false;
         }
-        if (terminal_visible) {
+        if (IsWindowVisible(0)) {
             layer_manager->Draw(term_frame_layer->GetX(), term_frame_layer->GetY(), term_frame_w, term_frame_h);
         }
-        if (system_visible) {
+        if (IsWindowVisible(1)) {
             layer_manager->Draw(info_frame_layer->GetX(), info_frame_layer->GetY(), info_frame_w, info_frame_h);
         }
         if (should_draw_taskbar) {
