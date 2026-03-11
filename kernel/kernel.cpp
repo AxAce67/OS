@@ -4194,7 +4194,9 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
     auto ProcessCompositorUpdates = [&]() {
         const uint64_t now_tick = CurrentTick();
-        const bool compositor_drew = DrawFocusFrames() || FlushDragCompositorIfNeeded(now_tick);
+        const bool drag_drew = FlushDragCompositorIfNeeded(now_tick);
+        const bool chrome_drew = DrawFocusFrames();
+        const bool compositor_drew = drag_drew || chrome_drew;
         RedrawPointerAfterCompositor(compositor_drew, now_tick);
         RefreshSystemInfoIfNeeded(now_tick);
     };
