@@ -66,11 +66,13 @@ void BuildMouseWindowGeometry(RuntimeMouseWindowGeometry* out_geometry,
                               int term_frame_w,
                               int term_frame_h,
                               int term_title_h,
+                              bool term_visible,
                               int info_frame_x,
                               int info_frame_y,
                               int info_frame_w,
                               int info_frame_h,
                               int info_title_h,
+                              bool info_visible,
                               int term_drag_max_x,
                               int term_drag_max_y,
                               int info_drag_max_x,
@@ -87,11 +89,13 @@ void BuildMouseWindowGeometry(RuntimeMouseWindowGeometry* out_geometry,
     out_geometry->term_frame_w = term_frame_w;
     out_geometry->term_frame_h = term_frame_h;
     out_geometry->term_title_h = term_title_h;
+    out_geometry->term_visible = term_visible;
     out_geometry->info_frame_x = info_frame_x;
     out_geometry->info_frame_y = info_frame_y;
     out_geometry->info_frame_w = info_frame_w;
     out_geometry->info_frame_h = info_frame_h;
     out_geometry->info_title_h = info_title_h;
+    out_geometry->info_visible = info_visible;
     out_geometry->term_drag_max_x = term_drag_max_x;
     out_geometry->term_drag_max_y = term_drag_max_y;
     out_geometry->info_drag_max_x = info_drag_max_x;

@@ -373,11 +373,13 @@ struct RuntimeMouseWindowGeometry {
     int term_frame_w;
     int term_frame_h;
     int term_title_h;
+    bool term_visible;
     int info_frame_x;
     int info_frame_y;
     int info_frame_w;
     int info_frame_h;
     int info_title_h;
+    bool info_visible;
     int term_drag_max_x;
     int term_drag_max_y;
     int info_drag_max_x;
@@ -394,11 +396,13 @@ inline RuntimeMouseWindowGeometry BuildRuntimeMouseWindowGeometry(
     int term_frame_w,
     int term_frame_h,
     int term_title_h,
+    bool term_visible,
     int info_frame_x,
     int info_frame_y,
     int info_frame_w,
     int info_frame_h,
     int info_title_h,
+    bool info_visible,
     int term_drag_max_x,
     int term_drag_max_y,
     int info_drag_max_x,
@@ -413,11 +417,13 @@ inline RuntimeMouseWindowGeometry BuildRuntimeMouseWindowGeometry(
         term_frame_w,
         term_frame_h,
         term_title_h,
+        term_visible,
         info_frame_x,
         info_frame_y,
         info_frame_w,
         info_frame_h,
         info_title_h,
+        info_visible,
         term_drag_max_x,
         term_drag_max_y,
         info_drag_max_x,
@@ -710,6 +716,15 @@ inline RuntimeWindowHitTestResult ComputeWindowHitTest(int pointer_x,
     };
 }
 
+inline RuntimeWindowHitTestResult BuildHiddenWindowHitTestResult() {
+    return RuntimeWindowHitTestResult{
+        0,
+        0,
+        false,
+        false,
+    };
+}
+
 inline int DecideMouseHitWindow(int active_window,
                                 bool in_term_frame,
                                 bool in_info_frame) {
@@ -929,20 +944,24 @@ inline bool ProcessMouseWindowFocusAndDrag(
         drag_refs.drag_offset_y == nullptr) {
         return false;
     }
-    const auto term_hit = ComputeWindowHitTest(pointer_x,
-                                               pointer_y,
-                                               geometry.term_frame_x,
-                                               geometry.term_frame_y,
-                                               geometry.term_frame_w,
-                                               geometry.term_frame_h,
-                                               geometry.term_title_h);
-    const auto info_hit = ComputeWindowHitTest(pointer_x,
-                                               pointer_y,
-                                               geometry.info_frame_x,
-                                               geometry.info_frame_y,
-                                               geometry.info_frame_w,
-                                               geometry.info_frame_h,
-                                               geometry.info_title_h);
+    const auto term_hit = geometry.term_visible
+                              ? ComputeWindowHitTest(pointer_x,
+                                                     pointer_y,
+                                                     geometry.term_frame_x,
+                                                     geometry.term_frame_y,
+                                                     geometry.term_frame_w,
+                                                     geometry.term_frame_h,
+                                                     geometry.term_title_h)
+                              : BuildHiddenWindowHitTestResult();
+    const auto info_hit = geometry.info_visible
+                              ? ComputeWindowHitTest(pointer_x,
+                                                     pointer_y,
+                                                     geometry.info_frame_x,
+                                                     geometry.info_frame_y,
+                                                     geometry.info_frame_w,
+                                                     geometry.info_frame_h,
+                                                     geometry.info_title_h)
+                              : BuildHiddenWindowHitTestResult();
     ProcessPrimaryClickWindowInteractions(pressed_buttons,
                                           active_window,
                                           term_hit,
