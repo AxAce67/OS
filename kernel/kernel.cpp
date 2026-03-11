@@ -2568,13 +2568,42 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         frame->FillRectangle(border, border, frame_w - border * 2, title_h - border, title_bg);
         frame->DrawString(10, 5, title, title_fg);
     };
+    bool titlebar_visual_dirty = false;
+    int hovered_title_button = -1; // 0=tmin 1=tclose 2=smin 3=sclose
+    int pressed_title_button = -1;
+    auto DrawChromeButton = [&](Window* frame, int x, PixelColor base_fill,
+                                PixelColor hover_border, bool hovered, bool pressed) {
+        PixelColor fill = base_fill;
+        PixelColor border = hovered ? hover_border : PixelColor{78, 82, 96};
+        if (pressed) {
+            fill = PixelColor{
+                static_cast<uint8_t>(base_fill.r > 24 ? base_fill.r - 24 : 0),
+                static_cast<uint8_t>(base_fill.g > 24 ? base_fill.g - 24 : 0),
+                static_cast<uint8_t>(base_fill.b > 24 ? base_fill.b - 24 : 0),
+            };
+        }
+        frame->FillRectangle(x, title_button_y, title_button_w, title_button_h, fill);
+        frame->FillRectangle(x, title_button_y, title_button_w, 1, border);
+        frame->FillRectangle(x, title_button_y + title_button_h - 1, title_button_w, 1, border);
+        frame->FillRectangle(x, title_button_y, 1, title_button_h, border);
+        frame->FillRectangle(x + title_button_w - 1, title_button_y, 1, title_button_h, border);
+    };
     auto DrawWindowControls = [&](Window* frame, int frame_w, bool focused) {
-        frame->FillRectangle(frame_w - minimize_button_offset_x, title_button_y,
-                             title_button_w, title_button_h,
-                             focused ? PixelColor{188, 152, 72} : PixelColor{126, 112, 78});
-        frame->FillRectangle(frame_w - close_button_offset_x, title_button_y,
-                             title_button_w, title_button_h,
-                             focused ? PixelColor{175, 68, 68} : PixelColor{130, 74, 74});
+        const bool is_terminal = (frame == term_frame_window);
+        const int min_button_id = is_terminal ? 0 : 2;
+        const int close_button_id = is_terminal ? 1 : 3;
+        DrawChromeButton(frame,
+                         frame_w - minimize_button_offset_x,
+                         focused ? PixelColor{188, 152, 72} : PixelColor{126, 112, 78},
+                         PixelColor{228, 206, 124},
+                         hovered_title_button == min_button_id,
+                         pressed_title_button == min_button_id);
+        DrawChromeButton(frame,
+                         frame_w - close_button_offset_x,
+                         focused ? PixelColor{175, 68, 68} : PixelColor{130, 74, 74},
+                         PixelColor{226, 142, 142},
+                         hovered_title_button == close_button_id,
+                         pressed_title_button == close_button_id);
     };
     const int terminal_taskbar_button_x = screen_w - taskbar_button_gap - taskbar_button_w;
     const int system_taskbar_button_x =
@@ -3460,24 +3489,18 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
         }
         return -1;
     };
-    auto TryHandleWindowChromeClick = [&](int px, int py) -> bool {
+    auto HitTestTitlebarButton = [&](int px, int py) -> int {
         if (terminal_visible &&
             IsPointInRect(px, py, term_frame_layer->GetX(), term_frame_layer->GetY(), term_frame_w, term_title_h)) {
             const int local_x = px - term_frame_layer->GetX();
             const int local_y = py - term_frame_layer->GetY();
             if (IsPointInRect(local_x, local_y, term_frame_w - minimize_button_offset_x, title_button_y,
                               title_button_w, title_button_h)) {
-                dragging_window = -1;
-                drag_pending_move = false;
-                MinimizeWindow(0);
-                return true;
+                return 0;
             }
             if (IsPointInRect(local_x, local_y, term_frame_w - close_button_offset_x, title_button_y,
                               title_button_w, title_button_h)) {
-                dragging_window = -1;
-                drag_pending_move = false;
-                CloseWindow(0);
-                return true;
+                return 1;
             }
         }
         if (system_visible &&
@@ -3486,18 +3509,39 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             const int local_y = py - info_frame_layer->GetY();
             if (IsPointInRect(local_x, local_y, info_frame_w - minimize_button_offset_x, title_button_y,
                               title_button_w, title_button_h)) {
+                return 2;
+            }
+            if (IsPointInRect(local_x, local_y, info_frame_w - close_button_offset_x, title_button_y,
+                              title_button_w, title_button_h)) {
+                return 3;
+            }
+        }
+        return -1;
+    };
+    auto TryHandleWindowChromeClick = [&](int px, int py) -> bool {
+        switch (HitTestTitlebarButton(px, py)) {
+            case 0:
+                dragging_window = -1;
+                drag_pending_move = false;
+                MinimizeWindow(0);
+                return true;
+            case 1:
+                dragging_window = -1;
+                drag_pending_move = false;
+                CloseWindow(0);
+                return true;
+            case 2:
                 dragging_window = -1;
                 drag_pending_move = false;
                 MinimizeWindow(1);
                 return true;
-            }
-            if (IsPointInRect(local_x, local_y, info_frame_w - close_button_offset_x, title_button_y,
-                              title_button_w, title_button_h)) {
+            case 3:
                 dragging_window = -1;
                 drag_pending_move = false;
                 CloseWindow(1);
                 return true;
-            }
+            default:
+                break;
         }
         return false;
     };
@@ -3954,7 +3998,8 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
     };
     auto DrawFocusFrames = [&]() -> bool {
         const bool should_draw_taskbar = taskbar_visual_dirty;
-        if (!focus_visual_dirty && !should_draw_taskbar) {
+        const bool should_draw_titlebars = titlebar_visual_dirty;
+        if (!focus_visual_dirty && !should_draw_taskbar && !should_draw_titlebars) {
             return false;
         }
         if (terminal_visible) {
@@ -3968,6 +4013,7 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
             layer_manager->Draw(taskbar_layer->GetX(), taskbar_layer->GetY(), screen_w, taskbar_h);
         }
         focus_visual_dirty = false;
+        titlebar_visual_dirty = false;
         return true;
     };
     auto FlushDragCompositorIfNeeded = [&](uint64_t now_tick) -> bool {
@@ -4046,7 +4092,12 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                     HandleMouseMessage(msg);
                     const int pointer_x = pointer_logical_x - 1;
                     const int pointer_y = pointer_logical_y - 1;
+                    const int current_title_button = HitTestTitlebarButton(pointer_x, pointer_y);
                     const int hovered_taskbar_button = HitTestTaskbarButton(pointer_x, pointer_y);
+                    if (current_title_button != hovered_title_button) {
+                        hovered_title_button = current_title_button;
+                        titlebar_visual_dirty = true;
+                    }
                     if (hovered_taskbar_button != taskbar_hovered_button) {
                         taskbar_hovered_button = hovered_taskbar_button;
                         taskbar_visual_dirty = true;
@@ -4061,16 +4112,31 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         ((prev_buttons & 0x01u) != 0) &&
                         ((g_mouse_buttons_current & 0x01u) == 0);
                     if (left_pressed) {
+                        pressed_title_button = current_title_button;
+                        if (pressed_title_button >= 0) {
+                            titlebar_visual_dirty = true;
+                        }
                         taskbar_pressed_button = hovered_taskbar_button;
                         if (taskbar_pressed_button >= 0) {
                             taskbar_visual_dirty = true;
                         }
                     }
                     if (left_released) {
+                        const int released_title_button = pressed_title_button;
+                        pressed_title_button = -1;
+                        if (released_title_button >= 0) {
+                            titlebar_visual_dirty = true;
+                        }
                         const int released_button = taskbar_pressed_button;
                         taskbar_pressed_button = -1;
                         if (released_button >= 0) {
                             taskbar_visual_dirty = true;
+                        }
+                        if (dragging_window < 0 &&
+                            released_title_button >= 0 &&
+                            released_title_button == current_title_button &&
+                            TryHandleWindowChromeClick(pointer_x, pointer_y)) {
+                            break;
                         }
                         if (dragging_window < 0 &&
                             released_button >= 0 &&
@@ -4078,6 +4144,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             TryHandleTaskbarClick(pointer_x, pointer_y)) {
                             break;
                         }
+                    }
+                    if (left_pressed && dragging_window < 0 &&
+                        current_title_button >= 0) {
+                        break;
                     }
                     if (left_pressed && dragging_window < 0 &&
                         hovered_taskbar_button >= 0) {
