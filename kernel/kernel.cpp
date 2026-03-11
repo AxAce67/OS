@@ -4112,6 +4112,10 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                         ((prev_buttons & 0x01u) != 0) &&
                         ((g_mouse_buttons_current & 0x01u) == 0);
                     if (left_pressed) {
+                        if (current_title_button >= 0) {
+                            dragging_window = -1;
+                            drag_pending_move = false;
+                        }
                         pressed_title_button = current_title_button;
                         if (pressed_title_button >= 0) {
                             titlebar_visual_dirty = true;
@@ -4145,22 +4149,16 @@ extern "C" void KernelMain(const struct BootInfo* boot_info) {
                             break;
                         }
                     }
-                    if (left_pressed && dragging_window < 0 &&
-                        current_title_button >= 0) {
+                    if (left_pressed && current_title_button >= 0) {
                         break;
                     }
-                    if (left_pressed && dragging_window < 0 &&
-                        hovered_taskbar_button >= 0) {
+                    if (left_pressed && hovered_taskbar_button >= 0) {
                         break;
                     }
                     if (left_pressed && dragging_window < 0) {
                         if (!TryHandleWindowChromeClick(pointer_x, pointer_y) &&
                             !TryHandleTaskbarClick(pointer_x, pointer_y)) {
                             pointer_test_panel.HandlePrimaryClick(pointer_x, pointer_y);
-                        }
-                    } else if (left_pressed) {
-                        if (TryHandleWindowChromeClick(pointer_x, pointer_y)) {
-                            break;
                         }
                     }
                 }
